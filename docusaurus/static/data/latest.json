@@ -1,29 +1,29 @@
 {
-  "generatedAt": "2026-10-14T10:04:16.637Z",
+  "generatedAt": "2026-10-14T10:18:20.071Z",
   "playwright": {
     "total": 3,
     "passed": 3,
     "failed": 0,
     "skipped": 0,
-    "ms": 12024.056,
+    "ms": 11606.82,
     "tests": [
       {
         "file": "demo-masdis.spec.ts",
         "title": "TC-D01 cek API",
         "status": "passed",
-        "ms": 1288
+        "ms": 1472
       },
       {
         "file": "demo-masdis.spec.ts",
         "title": "TC-D02 halaman login tampil (tanpa submit)",
         "status": "passed",
-        "ms": 4295
+        "ms": 5287
       },
       {
         "file": "demo-masdis.spec.ts",
         "title": "TC-D03 detail hotel",
         "status": "passed",
-        "ms": 1990
+        "ms": 1951
       }
     ]
   },
@@ -35,7 +35,7 @@
       {
         "path": "/",
         "scores": {
-          "performance": 0.96,
+          "performance": 0.99,
           "accessibility": 0.98,
           "best-practices": 1,
           "seo": 1
@@ -62,7 +62,7 @@
       {
         "path": "/dashboard/",
         "scores": {
-          "performance": 0.99,
+          "performance": 0.98,
           "accessibility": 0.96,
           "best-practices": 1,
           "seo": 1
