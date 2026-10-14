@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-10-14T08:57:59.871Z",
+  "lighthouse": {
+    "runs": 4,
+    "errors": 0,
+    "warnings": 0,
+    "urls": [
+      {
+        "path": "/",
+        "scores": {
+          "performance": 0.96,
+          "accessibility": 0.98,
+          "best-practices": 1,
+          "seo": 1
+        }
+      },
+      {
+        "path": "/404.html",
+        "scores": {
+          "performance": 0.99,
+          "accessibility": 1,
+          "best-practices": 1,
+          "seo": 0.92
+        }
+      },
+      {
+        "path": "/blog/",
+        "scores": {
+          "performance": 0.97,
+          "accessibility": 0.96,
+          "best-practices": 1,
+          "seo": 0.92
+        }
+      },
+      {
+        "path": "/dashboard/",
+        "scores": {
+          "performance": 0.99,
+          "accessibility": 0.96,
+          "best-practices": 1,
+          "seo": 1
+        }
+      }
+    ]
+  }
+}

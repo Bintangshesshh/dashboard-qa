@@ -1,0 +1,14 @@
+.env
+.env.local
+
+pw-out/
+test-results/
+playwright-report/
+*.log
+
+node_modules/
+docusaurus/build/
+docusaurus/.docusaurus/
+lhci-results/
+.lighthouseci/
+eureka/.auth/
