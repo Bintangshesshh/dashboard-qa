@@ -4,8 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "cek": "node scripts/cek.mjs",
-    "cek:docs": "npm --prefix docusaurus run build && node scripts/cek.mjs",
+    "cek": "node scripts/cek.mjs all",
+    "cek:pw": "node scripts/cek.mjs pw",
+    "cek:lh": "node scripts/cek.mjs lh",
+    "cek:docs": "npm --prefix docusaurus run build && node scripts/cek.mjs lh",
     "gabung": "node scripts/gabung.mjs",
     "lhci": "lhci autorun",
     "test": "playwright test"

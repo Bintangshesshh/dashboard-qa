@@ -1,33 +1,61 @@
 {
-  "generatedAt": "2026-10-14T10:18:20.071Z",
+  "generatedAt": "2026-10-14T10:43:02.086Z",
   "playwright": {
+    "ranAt": "2026-10-14T10:43:02.086Z",
+    "stale": false,
+    "targets": [
+      {
+        "site": "Masterdiskon (tanpa akun)",
+        "host": "masterdiskon.com",
+        "akun": false,
+        "total": 3,
+        "passed": 3,
+        "failed": 0
+      }
+    ],
     "total": 3,
     "passed": 3,
     "failed": 0,
     "skipped": 0,
-    "ms": 11606.82,
+    "ms": 6093.007,
     "tests": [
       {
         "file": "demo-masdis.spec.ts",
+        "site": "Masterdiskon (tanpa akun)",
+        "host": "masterdiskon.com",
+        "akun": false,
         "title": "TC-D01 cek API",
         "status": "passed",
-        "ms": 1472
+        "ms": 1566
       },
       {
         "file": "demo-masdis.spec.ts",
+        "site": "Masterdiskon (tanpa akun)",
+        "host": "masterdiskon.com",
+        "akun": false,
         "title": "TC-D02 halaman login tampil (tanpa submit)",
         "status": "passed",
-        "ms": 5287
+        "ms": 1795
       },
       {
         "file": "demo-masdis.spec.ts",
+        "site": "Masterdiskon (tanpa akun)",
+        "host": "masterdiskon.com",
+        "akun": false,
         "title": "TC-D03 detail hotel",
         "status": "passed",
-        "ms": 1951
+        "ms": 1802
       }
     ]
   },
   "lighthouse": {
+    "ranAt": "2026-10-14T10:43:02.086Z",
+    "stale": false,
+    "target": {
+      "site": "Docusaurus (docs)",
+      "host": "localhost",
+      "dist": "docusaurus/build"
+    },
     "runs": 4,
     "errors": 0,
     "warnings": 0,
@@ -35,7 +63,7 @@
       {
         "path": "/",
         "scores": {
-          "performance": 0.99,
+          "performance": 0.96,
           "accessibility": 0.98,
           "best-practices": 1,
           "seo": 1
@@ -44,7 +72,7 @@
       {
         "path": "/404.html",
         "scores": {
-          "performance": 0.99,
+          "performance": 0.98,
           "accessibility": 1,
           "best-practices": 1,
           "seo": 0.92
@@ -62,7 +90,7 @@
       {
         "path": "/dashboard/",
         "scores": {
-          "performance": 0.98,
+          "performance": 0.99,
           "accessibility": 0.96,
           "best-practices": 1,
           "seo": 1
