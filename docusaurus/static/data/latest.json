@@ -1,5 +1,32 @@
 {
-  "generatedAt": "2026-10-14T08:57:59.871Z",
+  "generatedAt": "2026-10-14T10:04:16.637Z",
+  "playwright": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "ms": 12024.056,
+    "tests": [
+      {
+        "file": "demo-masdis.spec.ts",
+        "title": "TC-D01 cek API",
+        "status": "passed",
+        "ms": 1288
+      },
+      {
+        "file": "demo-masdis.spec.ts",
+        "title": "TC-D02 halaman login tampil (tanpa submit)",
+        "status": "passed",
+        "ms": 4295
+      },
+      {
+        "file": "demo-masdis.spec.ts",
+        "title": "TC-D03 detail hotel",
+        "status": "passed",
+        "ms": 1990
+      }
+    ]
+  },
   "lighthouse": {
     "runs": 4,
     "errors": 0,

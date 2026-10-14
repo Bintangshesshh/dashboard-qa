@@ -7,7 +7,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 180000,
-  reporter: "html",
+  // html buat dilihat manusia, json buat dibaca scripts/gabung.mjs
+  reporter: [
+    ["html", { open: "never" }],
+    ["json", { outputFile: "pw-out/hasil.json" }],
+  ],
   use: {
     trace: "on-first-retry",
     actionTimeout: 30000,
