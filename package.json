@@ -1,21 +1,30 @@
 {
-  "name": "playwright",
+  "name": "dashboard-qa",
   "version": "1.0.0",
-  "description": "",
+  "description": "QA dashboard - Playwright + Lighthouse CI (Eureka Group: jaja, masdis, ebh)",
   "main": "index.js",
   "scripts": {
     "cek": "node scripts/cek.mjs all",
     "cek:pw": "node scripts/cek.mjs pw",
+    "cek:pw:jaja": "node scripts/cek.mjs pw eureka/co-jaja.spec.ts",
+    "cek:pw:ebh": "node scripts/cek.mjs pw eureka/co-ebh.spec.ts",
+    "cek:pw:masdis": "node scripts/cek.mjs pw eureka/co-masdis.spec.ts",
     "cek:lh": "node scripts/cek.mjs lh",
-    "cek:docs": "npm --prefix docusaurus run build && node scripts/cek.mjs lh",
+    "cek:lh:jaja": "node scripts/cek.mjs lh --target=jaja",
+    "cek:lh:ebh": "node scripts/cek.mjs lh --target=ebh",
+    "cek:lh:masdis": "node scripts/cek.mjs lh --target=masdis",
     "gabung": "node scripts/gabung.mjs",
-    "lhci": "lhci autorun",
-    "test": "playwright test"
+    "lapor": "node scripts/gabung.mjs --ringkas && node scripts/doc.mjs",
+    "test": "node scripts/cek.mjs pw"
   },
   "keywords": [],
   "type": "commonjs",
   "devDependencies": {
+    "@docusaurus/module-type-aliases": "^3.10.2",
+    "@docusaurus/tsconfig": "^3.10.2",
+    "@docusaurus/types": "^3.10.2",
     "@lhci/cli": "^0.15.1",
-    "@playwright/test": "^1.63.0"
+    "@playwright/test": "^1.63.0",
+    "typescript": "^7.0.2"
   }
 }

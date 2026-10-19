@@ -18,16 +18,25 @@ const argv = process.argv.slice(2);
 const mode = ['pw', 'lh', 'all'].includes(argv[0]) ? argv[0] : 'all';
 const rest = argv[0] === mode ? argv.slice(1) : argv;
 const semuaSpec = rest.includes('--all');
+const grep = rest.find((a) => a.startsWith('--grep='));
 const specs = rest.filter((a) => !a.startsWith('--'));
+// Run satu TC: log dibikin cuma berisi output Playwright.
+const senyap = Boolean(grep);
 
-const run = (cmd, args) =>
+const run = (cmd, args, {senyap = false} = {}) =>
   new Promise((res) => {
-    const p = spawn(cmd, args, {cwd: root, stdio: 'inherit', shell: process.platform === 'win32'});
+    const p = spawn(cmd, args, {
+      cwd: root,
+      stdio: senyap ? 'ignore' : 'inherit',
+      shell: process.platform === 'win32',
+    });
     p.on('error', () => res(127));
     p.on('close', (code) => res(code));
   });
 
-const step = (t) => console.log(`\n=== ${t} ===`);
+const step = (t) => {
+  if (!senyap) console.log(`\n=== ${t} ===`);
+};
 const hasil = [];
 const fresh = [];
 
@@ -48,6 +57,7 @@ if (mode === 'all' || mode === 'pw') {
     'test',
     `--output=${outDir}`,
     ...(semuaSpec ? [] : specs.length ? specs : ['eureka/demo-masdis.spec.ts']),
+    ...(grep ? [grep] : []),
   ]);
   if (pw === 127) console.log('npx/playwright nggak ketemu - npm i -D @playwright/test');
   hasil.push(['playwright', pw]);
@@ -68,6 +78,9 @@ if (mode === 'all' || mode === 'lh') {
 
 step('GABUNG');
 // Sumber yang gagal jangan ditandai fresh - gabung bakal nandain datanya 'stale'.
-await run('node', ['scripts/gabung.mjs', `--only=${fresh.join(',') || 'none'}`]);
+// Run satu TC: output gabung disembunyikan, biar log cuma nampilin tesnya.
+await run('node', ['scripts/gabung.mjs', `--only=${fresh.join(',') || 'none'}`], {senyap});
 
-console.log(`\ncek selesai (mode ${mode}): ${hasil.map(([n, c]) => `${n} exit ${c}`).join(', ')}`);
+if (!senyap) {
+  console.log(`\ncek selesai (mode ${mode}): ${hasil.map(([n, c]) => `${n} exit ${c}`).join(', ')}`);
+}
