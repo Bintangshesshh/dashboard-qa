@@ -32,25 +32,25 @@ Node.js 22 LTS, npm, PostgreSQL 17+ with UTF8 encoding. Linux servers need Playw
 
 Install from lockfiles:
 
-~~~sh
+```sh
 npm ci
 cd server && npm ci && cd ..
 cd web && npm ci && cd ..
 cd docusaurus && npm ci && cd ..
 npx playwright install chromium
-~~~
+```
 
 Linux without Docker:
 
-~~~sh
+```sh
 npx playwright install --with-deps chromium
-~~~
+```
 
 Copy .env.example to .env only if you do not already have .env. Merge dashboard keys into an existing file without losing legacy credentials. Generate a strong token and a URL-safe database password separately:
 
-~~~sh
+```sh
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-~~~
+```
 
 Set DATABASE_URL, OPERATOR_TOKEN (at least 24 characters), TARGET_ALLOWLIST (comma-separated exact origins), RUNS_DIR and COOKIE_SECURE. Create the database and grant the application user permission to create tables in its own schema. Startup creates required tables; it does not create the database. Use UTF8 so native Unicode logs can be stored.
 
@@ -58,12 +58,12 @@ Set DATABASE_URL, OPERATOR_TOKEN (at least 24 characters), TARGET_ALLOWLIST (com
 
 In separate terminals from project root:
 
-~~~sh
+```sh
 node --env-file=.env server/index.mjs
 npm run dev --prefix web
-~~~
+```
 
-Open http://127.0.0.1:3000. Enter the operator token. Local npm dev/start uses web/server.mjs, which forwards HTTP and WebSocket upgrades explicitly. Do not launch plain next start for local use: the earlier rewrite-only setup did not forward the terminal connection correctly. Docker keeps the standalone Next server behind the explicit Nginx gateway. API listens on 127.0.0.1:3001 by default. Local HTTP uses COOKIE_SECURE=false; never use that setting on an exposed deployment. Do not put OPERATOR_TOKEN in NEXT_PUBLIC_* variables or commit .env.
+Open http://127.0.0.1:3000. Enter the operator token. Local npm dev/start uses web/server.mjs, which forwards HTTP and WebSocket upgrades explicitly. Do not launch plain next start for local use: the earlier rewrite-only setup did not forward the terminal connection correctly. Docker keeps the standalone Next server behind the explicit Nginx gateway. API listens on 127.0.0.1:3001 by default. Local HTTP uses COOKIE*SECURE=false; never use that setting on an exposed deployment. Do not put OPERATOR_TOKEN in NEXT_PUBLIC*\* variables or commit .env.
 
 ### First test
 
@@ -76,18 +76,18 @@ Open http://127.0.0.1:3000. Enter the operator token. Local npm dev/start uses w
 
 Case example:
 
-~~~ts
-import { test, expect } from '@playwright/test';
+```ts
+import { test, expect } from "@playwright/test";
 
-test('local action works', async ({ page, request }) => {
-  await page.goto('/');
-  await expect(page.getByRole('heading')).toHaveText('QA verification fixture');
-  await page.getByRole('button', { name: 'Run action' }).click();
-  await expect(page.getByRole('status')).toHaveText('Action completed');
-  const response = await request.get('/api/health');
+test("local action works", async ({ page, request }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading")).toHaveText("QA verification fixture");
+  await page.getByRole("button", { name: "Run action" }).click();
+  await expect(page.getByRole("status")).toHaveText("Action completed");
+  const response = await request.get("/api/health");
   expect(response.ok()).toBeTruthy();
 });
-~~~
+```
 
 Developer writes assertions; dashboard stores, edits, organizes and runs them. CRUD does not infer business requirements automatically. Use relative URLs with the suite baseURL. Existing repository suites can be copied into cases after removing host-specific imports and secrets. Keep reusable complex suites in version control.
 
@@ -120,13 +120,13 @@ For a localhost-only HTTP Docker preview, set COOKIE_SECURE=false and keep the g
 
 Install dependencies, browser/system dependencies and PostgreSQL first. Configure .env, then:
 
-~~~sh
+```sh
 npm run build --prefix web
 npm install --global pm2
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
-~~~
+```
 
 Follow the command printed by pm2 startup on Linux. On Windows, configure a company-approved startup service instead. PM2 runs one backend instance: it owns one execution slot. Do not use cluster mode or scale backend replicas without adding a distributed queue and worker locks.
 
@@ -134,17 +134,17 @@ Route the public subdomain through the company reverse proxy: /api and /ws to 12
 
 ## Verification
 
-~~~sh
+```sh
 npm test --prefix server
 node scripts/test-run-docs.mjs
 npm run build --prefix web
-~~~
+```
 
 With local fixture and backend running, set OPERATOR_TOKEN in the terminal and run:
 
-~~~sh
+```sh
 node scripts/verify-dashboard.mjs
-~~~
+```
 
 The integration check creates temporary suite/case records, executes real Playwright, checks live logs, PostgreSQL history, authenticated Docusaurus serving and CRUD deletion. It preserves run history/artifacts as test evidence. VERIFY_MODE=both also executes Lighthouse. Do not aim this check at a company production target.
 
