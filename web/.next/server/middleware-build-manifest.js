@@ -1,33 +1,54 @@
 globalThis.__BUILD_MANIFEST = {
+  "pages": {
+    "/_app": []
+  },
+  "devFiles": [],
   "polyfillFiles": [
-    "static/chunks/polyfills.js"
+    "static/chunks/0cz1d0mv5g_q7.js"
   ],
-  "devFiles": [
-    "static/chunks/react-refresh.js"
+  "lowPriorityFiles": [
+    "static/_Lq8wV70Ye5lnDwFHtrKx/_buildManifest.js",
+    "static/_Lq8wV70Ye5lnDwFHtrKx/_ssgManifest.js",
+    "static/_Lq8wV70Ye5lnDwFHtrKx/_clientMiddlewareManifest.js"
   ],
-  "ampDevFiles": [],
-  "lowPriorityFiles": [],
   "rootMainFiles": [
-    "static/chunks/webpack.js",
-    "static/chunks/main-app.js"
+    "static/chunks/3cfn99dbrcvvp.js",
+    "static/chunks/3wlyum6yvennl.js",
+    "static/chunks/2khxl0v1q4i6n.js",
+    "static/chunks/turbopack-3-ry682tkyiqk.js"
   ],
   "rootMainFilesTree": {},
-  "pages": {
-    "/_app": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/_app.js"
-    ],
-    "/_error": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/_error.js"
-    ]
+  "pagesChunkGroupBootstrapParams": {
+    "/page": {
+      "otherChunks": [
+        "static/chunks/3cfn99dbrcvvp.js",
+        "static/chunks/3wlyum6yvennl.js",
+        "static/chunks/2khxl0v1q4i6n.js"
+      ],
+      "runtimeModuleIds": [
+        94553
+      ]
+    },
+    "/_not-found/page": {
+      "otherChunks": [
+        "static/chunks/3cfn99dbrcvvp.js",
+        "static/chunks/3wlyum6yvennl.js",
+        "static/chunks/2khxl0v1q4i6n.js"
+      ],
+      "runtimeModuleIds": [
+        94553
+      ]
+    },
+    "/_global-error/page": {
+      "otherChunks": [
+        "static/chunks/3cfn99dbrcvvp.js",
+        "static/chunks/3wlyum6yvennl.js",
+        "static/chunks/2khxl0v1q4i6n.js"
+      ],
+      "runtimeModuleIds": [
+        94553
+      ]
+    }
   },
-  "ampFirstPages": []
+  "chunkLoadingGlobal": "TURBOPACK"
 };
-globalThis.__BUILD_MANIFEST.lowPriorityFiles = [
-"/static/" + process.env.__NEXT_BUILD_ID + "/_buildManifest.js",
-,"/static/" + process.env.__NEXT_BUILD_ID + "/_ssgManifest.js",
-
-];

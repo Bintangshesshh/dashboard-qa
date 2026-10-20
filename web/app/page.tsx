@@ -1,593 +1,94 @@
 "use client";
+import {useCallback,useEffect,useRef,useState} from "react";
+const API=process.env.NEXT_PUBLIC_API||"";
+type Case={id:string;name:string;code:string;enabled:boolean};
+type Suite={id:string;name:string;description:string;targetUrl:string;cases:Case[]};
+type Run={id:string;suiteId:string;suiteName:string;targetUrl:string;mode:string;headed:boolean;status:string;startedAt:string;finishedAt?:string;exitCode?:number;error?:string;artifacts?:string[];reportUrl?:string;docsStatus?:string;summary?:{passed:number;failed:number;skipped:number;total:number;durationMs:number}};
+type Log={seq:number;text:string;stream:string};
+const stamp=(s?:string)=>s?new Date(s).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+const duration=(r:Run)=>r.finishedAt?Math.max(0,Date.parse(r.finishedAt)-Date.parse(r.startedAt)):null;
+const secs=(n:number|null)=>n===null?'—':(n/1000).toFixed(1)+'s';
+const starter=`import { test, expect } from '@playwright/test';
 
-import { useEffect, useMemo, useState } from "react";
-
-const API = process.env.NEXT_PUBLIC_API ?? "http://127.0.0.1:3001";
-
-type Step = { title: string; ms: number; error?: string | null };
-type Attachment = { name: string; contentType: string; path: string };
-type PwTest = {
-  file: string;
-  site: string;
-  host: string;
-  title: string;
-  status: string;
-  ms: number;
-  stale?: boolean;
-  steps?: Step[];
-  error?: string | null;
-  attachments?: Attachment[];
-};
-type Pw = {
-  passed: number;
-  failed: number;
-  skipped: number;
-  ms: number;
-  stale?: boolean;
-  tests: PwTest[];
-};
-type Issue = {
-  id: string;
-  title: string;
-  description?: string;
-  category: string;
-  display: string;
-  score: number;
-  impact: number;
-  details?: AuditDetail | null;
-};
-type AuditDetail = {
-  type: string;
-  headings?: { key: string; label: string; valueType?: string }[];
-  items?: any[];
-  overallSavingsMs?: number;
-  overallSavingsBytes?: number;
-};
-type Metric = { display: string; score: number | null; weight: number };
-type Lcp = {
-  element: { selector: string; snippet: string; label?: string } | null;
-  phases: { phase: string; timing: number; percent: string }[];
-};
-type LhUrl = {
-  path: string;
-  url: string;
-  scores: Record<string, number>;
-  metrics: Record<string, Metric>;
-  issues: Issue[];
-  lcp?: Lcp | null;
-};
-type LhTarget = {
-  target: { site: string; host: string; dist: string };
-  errors: number;
-  warnings: number;
-  stale?: boolean;
-  urls: LhUrl[];
-};
-type Data = {
-  generatedAt: string;
-  playwright: Pw | null;
-  lighthouse: { targets: Record<string, LhTarget> } | null;
-};
-
-type Sel =
-  | { kind: "home" }
-  | { kind: "pw"; id: string }
-  | { kind: "lh"; target: string; path: string };
-
-const base = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-const pct = (n?: number) => (typeof n === "number" ? Math.round(n * 100) : "—");
-const sec = (ms = 0) => `${(ms / 1000).toFixed(1)} s`;
-const ms = (n?: number) => (typeof n === "number" ? `${Math.round(n)} ms` : "—");
-const kb = (b?: number) => (typeof b === "number" ? `${Math.round(b / 1024)} KiB` : "—");
-const kelas = (s: string) =>
-  s === "passed" ? "pass" : ["failed", "timedOut", "interrupted"].includes(s) ? "fail" : "warn";
-// Warna lampu status: ijo kalau lulus, merah kalau gagal, kuning kalau di-skip.
-const lampu = (s: string) => (kelas(s) === "pass" ? "ok" : kelas(s) === "fail" ? "bad" : "warn");
-
-const artiFase: Record<string, string> = {
-  TTFB: "server lambat menjawab. Cek cache, DB, atau hosting.",
-  "Load Delay": "gambar telat ditemukan. Pasang preload, buang loading=lazy di atas fold, jangan disisipkan lewat JS.",
-  "Load Time": "file gambar kegedean atau origin lambat. Kompres, pakai AVIF/WebP, taruh di CDN.",
-  "Render Delay": "JS/CSS ngeblok render. Defer script, inline critical CSS.",
-};
-
-function diagnosaLcp(lcp: Lcp) {
-  const fase = [...lcp.phases].sort((a, b) => parseInt(b.percent) - parseInt(a.percent))[0];
-  if (!fase) return null;
-  return { fase: fase.phase, persen: fase.percent, saran: artiFase[fase.phase] ?? "" };
-}
-
-export default function Page() {
-  const [data, setData] = useState<Data | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [sel, setSel] = useState<Sel>({ kind: "home" });
-  const [extra, setExtra] = useState<Record<"pw" | "lh", string[]>>({ pw: [], lh: [] });
-  const [buka, setBuka] = useState(true);
-  const [running, setRunning] = useState(false);
-  const [log, setLog] = useState<string[]>([]);
-  const [bukaLog, setBukaLog] = useState(false);
-
-  useEffect(() => {
-    fetch(`${API}/api/latest`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(setData)
-      .catch((e) => setErr(String(e)));
-  }, []);
-
-  useEffect(() => {
-    if (window.innerWidth < 800) setBuka(false);
-  }, []);
-
-  useEffect(() => {
-    const ws = new WebSocket(`${API.replace(/^http/, "ws")}/ws`);
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.type === "start") {
-        const target = (msg.specs ?? []).filter((s: string) => !s.startsWith("--"));
-        setRunning(true);
-        setLog([`> jalan: ${target.length ? target.join(" ") : "semua spec"}\n`]);
-        setBukaLog(true);
-      } else if (msg.type === "log") {
-        setLog((prev) => [...prev, msg.line]);
-      } else if (msg.type === "done") {
-        setRunning(false);
-        // Jangan tutup log pas selesai — biar bisa dibaca dulu.
-        setBukaLog(true);
-        setLog((prev) => [...prev, `> selesai (exit ${msg.code})`]);
-        fetch(`${API}/api/latest`)
-          .then((r) => r.json())
-          .then(setData)
-          .catch(() => null);
-      } else if (msg.type === "status" && msg.running) {
-        setRunning(true);
-        setLog(msg.log ?? []);
-      }
-    };
-    return () => ws.close();
-  }, []);
-
-  const jalankan = () => {
-    if (running) return;
-    // Kalau ada TC yang dipilih, jalankan TC itu doang lewat --grep (nggak perlu pecah file).
-    // Ambil token TC id-nya saja: judul ada spasi, dan spawn pakai shell tanpa quote.
-    const satu = sel.kind === "pw" ? pw?.tests.find((t) => `${t.file}|${t.title}` === sel.id) : null;
-    const tc = satu?.title.split(" ")[0];
-    const specs = tc ? [satu.file, `--grep=${tc}`] : ["--all"];
-    fetch(`${API}/api/run`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mode: "pw", specs }),
-    });
-  };
-
-  const pw = data?.playwright ?? null;
-  const lh = data?.lighthouse?.targets ?? {};
-
-  const perSitus = useMemo(() => {
-    // Urutan tetap (file lalu judul TC), biar posisi nggak lompat-lompat tiap habis run.
-    const daftar = [...(pw?.tests ?? [])].sort(
-      (a, b) =>
-        a.site.localeCompare(b.site) ||
-        a.file.localeCompare(b.file) ||
-        a.title.localeCompare(b.title, "id", { numeric: true }),
-    );
-    const m = new Map<string, PwTest[]>();
-    for (const t of daftar) m.set(t.site, [...(m.get(t.site) ?? []), t]);
-    return [...m.entries()];
-  }, [pw]);
-
-  const tambah = (grup: "pw" | "lh") =>
-    setExtra((e) => ({ ...e, [grup]: [...e[grup], `item baru ${e[grup].length + 1}`] }));
-
-  const pilih = (s: Sel) => {
-    setSel(s);
-    if (window.innerWidth < 800) setBuka(false);
-  };
-
-  const tes = sel.kind === "pw" ? pw?.tests.find((t) => `${t.file}|${t.title}` === sel.id) : null;
-  const url =
-    sel.kind === "lh" ? lh[sel.target]?.urls.find((u) => u.path === sel.path) : undefined;
-  const lcpDiag = url?.lcp ? diagnosaLcp(url.lcp) : null;
-
-  return (
-    <div className={`shell ${buka ? "" : "tutup"}`}>
-      <aside className="sidebar">
-          <div>
-            <div className="group-title">
-              <span>Playwright</span>
-              <button className="add" onClick={() => tambah("pw")} title="tambah sub-menu">
-                +
-              </button>
-            </div>
-            {perSitus.map(([site, tests]) => (
-              <div key={site}>
-                <div className="sub-label">{site}</div>
-                <div className="nav-sub">
-                  {tests.map((t) => {
-                    const id = `${t.file}|${t.title}`;
-                    return (
-                      <button
-                        key={id}
-                        className={`nav-item ${sel.kind === "pw" && sel.id === id ? "on" : ""}`}
-                        onClick={() => pilih({ kind: "pw", id })}
-                        title={t.title}
-                      >
-                        <span
-                          className="dot"
-                          style={{
-                            background: `var(--${lampu(t.status)})`,
-                            boxShadow: `0 0 6px var(--${lampu(t.status)})`,
-                          }}
-                        />
-                        {t.title}
-                        {t.stale && <span className="muted"> · belum dijalankan ulang</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            {extra.pw.map((x) => (
-              <button key={x} className="nav-item muted" onClick={() => pilih({ kind: "home" })}>
-                {x}
-              </button>
-            ))}
-          </div>
-
-          <div>
-            <div className="group-title">
-              <span>Lighthouse</span>
-              <button className="add" onClick={() => tambah("lh")} title="tambah sub-menu">
-                +
-              </button>
-            </div>
-            {Object.entries(lh).map(([id, t]) => (
-              <div key={id}>
-                <div className="sub-label">{id}</div>
-                <div className="nav-sub">
-                  {t.urls.map((u) => (
-                    <button
-                      key={u.path}
-                      className={`nav-item ${sel.kind === "lh" && sel.target === id && sel.path === u.path ? "on" : ""}`}
-                      onClick={() => pilih({ kind: "lh", target: id, path: u.path })}
-                    >
-                      {u.path} · perf {pct(u.scores.performance)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-            {extra.lh.map((x) => (
-              <button key={x} className="nav-item muted" onClick={() => pilih({ kind: "home" })}>
-                {x}
-              </button>
-            ))}
-          </div>
-
-          <div className="spacer" />
-          <div className="side-bottom">
-            <a className="nav-item" href={`${base}/docs/intro/`}>
-              Docusaurus / report
-            </a>
-          </div>
-      </aside>
-
-      <button className="backdrop" onClick={() => setBuka(false)} aria-label="tutup menu" />
-
-      <main className="main">
-        <button className="burger" onClick={() => setBuka(true)} aria-label="menu">
-          ☰
-        </button>
-
-        <h1>QA Dashboard</h1>
-        <div className="muted">
-          Playwright + Lighthouse — jaja, masdis, ebh.
-          {data ? ` Data: ${new Date(data.generatedAt).toLocaleString("id-ID")}.` : " Memuat data…"}
-        </div>
-
-        {err && <p className="fail">Gagal baca latest.json: {err}</p>}
-
-        <h2>Proses</h2>
-        <div className="card">
-          <button className="btn" disabled={running} onClick={jalankan}>
-            {running ? "Sedang jalan..." : tes ? "Jalankan TC ini" : "Jalankan semua spec"}
-          </button>
-          <div className="note">
-            {running
-              ? "tunggu, spec sedang dijalankan"
-              : tes
-                ? `cuma ${tes.title.split(" ")[0]} (${tes.file}) yang dijalankan.`
-                : "klik untuk jalankan semua spec di eureka/."}
-          </div>
-
-          {log.length > 0 && (
-            <details
-              style={{ marginTop: 16 }}
-              open={bukaLog}
-              onToggle={(e) => setBukaLog((e.target as HTMLDetailsElement).open)}
-            >
-              <summary style={{ cursor: "pointer", fontWeight: 500 }}>
-                Log ({log.length} baris)
-              </summary>
-              <pre
-                style={{
-                  marginTop: 10,
-                  maxHeight: 300,
-                  overflow: "auto",
-                  fontSize: 11,
-                  background: "#0d1013",
-                  padding: 10,
-                  borderRadius: 6,
-                }}
-              >
-                {log.slice(-80).join("")}
-              </pre>
-            </details>
-          )}
-        </div>
-
-        {sel.kind === "home" && (
-          <>
-            <h2>Ringkasan</h2>
-            <div className="row">
-              <div className="card">
-                <div className="muted">Playwright</div>
-                <div className="big">
-                  {pw ? `${pw.passed}/${pw.passed + pw.failed + pw.skipped}` : "—"}
-                </div>
-                <div className="muted">
-                  {pw ? `${pw.failed} gagal · ${sec(pw.ms)}` : "belum ada hasil"}
-                </div>
-              </div>
-              {Object.entries(lh).map(([id, t]) => (
-                <div className="card" key={id}>
-                  <div className="muted">{t.target.site}</div>
-                  <div className="big">
-                    {pct(t.urls[0]?.scores.performance)}
-                    <span className="muted" style={{ fontSize: 13 }}> perf</span>
-                  </div>
-                  <div className="muted">
-                    {t.urls.length} URL · {t.errors} error · {t.warnings} warning
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {tes && (
-          <>
-            <h2>
-              {tes.title}{" "}
-              <span className={`pill ${kelas(tes.status)}`}>{tes.status}</span>
-            </h2>
-            <div className="muted">
-              <code>{tes.file}</code> · {tes.site} · {sec(tes.ms)}
-            </div>
-
-            <h2>Langkah</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Langkah</th>
-                  <th>Durasi</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(tes.steps ?? []).map((s, i) => (
-                  <tr key={i}>
-                    <td>{i + 1}</td>
-                    <td>{s.title}</td>
-                    <td>{sec(s.ms)}</td>
-                    <td>{s.error ? <span className="fail">gagal</span> : "ok"}</td>
-                  </tr>
-                ))}
-                {!tes.steps?.length && (
-                  <tr>
-                    <td colSpan={4} className="muted">
-                      langkah nggak terekam — pw-out/langkah.json kosong buat TC ini, jalankan
-                      ulang tesnya.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-
-            {tes.error && (
-              <>
-                <h2>Error</h2>
-                <pre>{tes.error}</pre>
-              </>
-            )}
-          </>
-        )}
-
-        {url && (
-          <>
-            <h2>
-              <code>{url.path}</code> — {lh[sel.kind === "lh" ? sel.target : ""]?.target.site}
-            </h2>
-            <div className="row">
-              {["performance", "accessibility", "best-practices", "seo"].map((k) => (
-                <div className="card" key={k}>
-                  <div className="muted">{k}</div>
-                  <div className="big">{pct(url.scores[k])}</div>
-                  <div className="bar">
-                    <i style={{ width: `${pct(url.scores[k])}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <h2>Metrik</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Metrik</th>
-                  <th>Nilai</th>
-                  <th>Skor</th>
-                  <th>Bobot</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(url.metrics).map(([k, m]) => (
-                  <tr key={k}>
-                    <td>{k}</td>
-                    <td>{m.display}</td>
-                    <td>{pct(m.score ?? undefined)}</td>
-                    <td>{Math.round(m.weight)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {url.lcp && (
-              <>
-                <h2>Diagnosa LCP — elemen terbesar</h2>
-                {url.lcp.element && (
-                  <div className="card" style={{ marginBottom: 16 }}>
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      Elemen
-                    </div>
-                    <div style={{ marginTop: 6 }}>
-                      <code style={{ fontSize: 11 }}>{url.lcp.element.selector}</code>
-                    </div>
-                    {url.lcp.element.label && (
-                      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                        Label: {url.lcp.element.label}
-                      </div>
-                    )}
-                    <details style={{ marginTop: 8 }}>
-                      <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>
-                        lihat snippet
-                      </summary>
-                      <pre style={{ fontSize: 11, marginTop: 6 }}>{url.lcp.element.snippet}</pre>
-                    </details>
-                  </div>
-                )}
-
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Fase</th>
-                      <th>Waktu</th>
-                      <th>% LCP</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {url.lcp.phases.map((p) => (
-                      <tr key={p.phase}>
-                        <td>{p.phase}</td>
-                        <td>{p.timing} ms</td>
-                        <td>
-                          <strong>{p.percent}</strong>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {lcpDiag && (
-                  <div className="card warn" style={{ marginTop: 16, borderColor: "#5a4415" }}>
-                    <div style={{ fontWeight: 500, marginBottom: 6 }}>
-                      Bottleneck: {lcpDiag.fase} ({lcpDiag.persen})
-                    </div>
-                    <div className="muted" style={{ fontSize: 13 }}>
-                      {lcpDiag.saran}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            <h2>Masalah, urut dampak</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Audit</th>
-                  <th>Kategori</th>
-                  <th>Temuan</th>
-                  <th>Dampak</th>
-                </tr>
-              </thead>
-              <tbody>
-                {url.issues.map((x, i) => (
-                  <tr key={x.id}>
-                    <td>{i + 1}</td>
-                    <td>
-                      <code>{x.id}</code>
-                    </td>
-                    <td>{x.category}</td>
-                    <td>{x.display || x.title}</td>
-                    <td>{x.impact.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {url.issues
-              .filter((x) => x.details?.items?.length)
-              .slice(0, 6)
-              .map((x) => {
-                const d = x.details!;
-                const head = d.headings ?? [];
-                const items = d.items ?? [];
-                if (!head.length || !items.length) return null;
-
-                const cellVal = (it: any, h: { key: string; valueType?: string }) => {
-                  const v = it[h.key];
-                  if (v && typeof v === "object") {
-                    if (v.type === "node") return v.selector || v.snippet || "—";
-                    if (v.url) return v.url;
-                    if (v.items)
-                      return v.items
-                        .slice(0, 2)
-                        .map((s: any) => `${s.url ?? "?"} (${ms(s.blockingTime ?? s.wastedMs)})`)
-                        .join(", ");
-                  }
-                  if (h.valueType === "bytes") return kb(v);
-                  if (h.valueType === "ms" || h.valueType === "timespanMs") return ms(v);
-                  return String(v ?? "—");
-                };
-
-                return (
-                  <details key={x.id} style={{ marginTop: 18 }} open={items.length <= 5}>
-                    <summary style={{ cursor: "pointer", fontWeight: 500, marginBottom: 10 }}>
-                      {x.title}
-                      {d.overallSavingsMs ? ` — hemat ${ms(d.overallSavingsMs)}` : ""}
-                      {d.overallSavingsBytes ? ` — hemat ${kb(d.overallSavingsBytes)}` : ""}
-                    </summary>
-                    <div style={{ overflowX: "auto" }}>
-                      <table style={{ fontSize: 12 }}>
-                        <thead>
-                          <tr>
-                            {head.map((h) => (
-                              <th key={h.key}>{h.label || h.key}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {items.map((it, j) => (
-                            <tr key={j}>
-                              {head.map((h) => (
-                                <td key={h.key} style={{ maxWidth: 400, overflow: "hidden" }}>
-                                  {cellVal(it, h)}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </details>
-                );
-              })}
-          </>
-        )}
-      </main>
-    </div>
-  );
+test('Page is available', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('body')).toBeVisible();
+});
+`;
+export default function Page(){
+ const [token,setToken]=useState(''),[authenticated,setAuthenticated]=useState(false),[input,setInput]=useState(''),[suites,setSuites]=useState<Suite[]>([]),[runs,setRuns]=useState<Run[]>([]);
+ const [sid,setSid]=useState(''),[cid,setCid]=useState(''),[code,setCode]=useState(''),[view,setView]=useState('workspace');
+ const [collapsed,setCollapsed]=useState(true),[open,setOpen]=useState<Record<string,boolean>>({}),[query,setQuery]=useState('');
+ const [mode,setMode]=useState('pw'),[headed,setHeaded]=useState(false),[scope,setScope]=useState('suite');
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[menu,setMenu]=useState(false);
+ const [modal,setModal]=useState(''),[editing,setEditing]=useState(false),[name,setName]=useState(''),[target,setTarget]=useState(''),[description,setDescription]=useState('');
+ const [detail,setDetail]=useState<Run|null>(null),[stream,setStream]=useState(''),[logs,setLogs]=useState<Log[]>([]),[connection,setConnection]=useState('standby'),[retry,setRetry]=useState(0);
+ const followLogs=useRef(true),terminal=useRef<HTMLDivElement>(null),socket=useRef<WebSocket|null>(null),seq=useRef(0);
+ const suite=suites.find(s=>s.id===sid),selected=suite?.cases.find(c=>c.id===cid),dirty=!!selected&&selected.code!==code;
+ const request=useCallback(async(path:string,init:RequestInit={},auth=token)=>{
+  if(init.method&&init.method!=='GET'&&!(path==='/api/session'&&init.method==='DELETE')&&!auth){setModal('auth');throw new Error('Reconnect with operator token to run tests or edit. Saved session can read reports and logs.')}
+  const response=await fetch(API+path,{...init,credentials:'include',headers:{'Content-Type':'application/json',...(auth?{Authorization:'Bearer '+auth}:{}),...init.headers}});
+  if(!response.ok){let text=await response.text();try{text=JSON.parse(text).error||text}catch{}throw new Error(text||'Request failed: '+response.status)}
+  return response.status===204?null:response.json();
+ },[token]);
+ const refresh=useCallback(async()=>{
+  const [rows,history]=await Promise.all([request('/api/suites'),request('/api/runs')]);
+  const all=await Promise.all((rows as Suite[]).map(async s=>({...s,cases:await request('/api/suites/'+s.id+'/cases')})));
+  setSuites(all);setRuns(history);setSid(id=>all.some(s=>s.id===id)?id:all[0]?.id||'');setOpen(o=>Object.keys(o).length?o:Object.fromEntries(all.map(s=>[s.id,true])));
+ },[request]);
+ useEffect(()=>{setCollapsed(window.innerWidth<1000)},[]);
+ useEffect(()=>{if(!authenticated)return;refresh().catch(e=>setError(e.message));const id=setInterval(()=>request('/api/runs').then(setRuns).catch(e=>setError(e.message)),4000);return()=>clearInterval(id)},[authenticated,refresh,request]);
+ useEffect(()=>{setCid(id=>suite?.cases.some(c=>c.id===id)?id:suite?.cases[0]?.id||'')},[suite]);
+ useEffect(()=>{setCode(selected?.code||'');setMenu(false)},[selected?.id,selected?.code]);
+ useEffect(()=>{setStream(id=>id||runs[0]?.id||'')},[runs]);
+ useEffect(()=>{request('/api/suites').then(()=>setAuthenticated(true)).catch(()=>{})},[request]);
+ const active=runs.find(r=>r.id===stream);
+ useEffect(()=>{
+  if(!stream||!authenticated)return;
+  let disposed=false,ws:WebSocket|undefined,reconnect:ReturnType<typeof setTimeout>,pollTimer:ReturnType<typeof setTimeout>,cursor=0,attempt=0;
+  seq.current=0;followLogs.current=true;setLogs([]);
+  const merge=(entries:Log[])=>{if(disposed)return;setLogs(previous=>{if(!entries.length)return previous;const all=new Map(previous.map(l=>[l.seq,l]));for(const l of entries)all.set(l.seq,l);return [...all.values()].sort((a,b)=>a.seq-b.seq).slice(-3000)});};
+  // HTTP cursor advances only from HTTP responses: WS delivery cannot skip persisted replay.
+  const poll=async()=>{try{const result=await request('/api/runs/'+stream+'/logs?after='+cursor);if(disposed)return;merge(result.logs);for(const l of result.logs)cursor=Math.max(cursor,l.seq);setPollError('');}catch(e){if(!disposed)setPollError(e instanceof Error?e.message:String(e));}finally{if(!disposed)pollTimer=setTimeout(poll,2000)}};
+  const connect=()=>{if(disposed)return;setConnection('connecting');const url=process.env.NEXT_PUBLIC_WS_URL||(API?API.replace(/^http/,'ws')+'/ws':location.protocol.replace('http','ws')+'//'+location.host+'/ws');
+   try{ws=new WebSocket(url)}catch{setConnection('polling');return}
+   ws.onopen=()=>{if(disposed)return;attempt=0;setConnection('connected');ws?.send(JSON.stringify({type:'subscribe',token,runId:stream,after:seq.current}))};
+   ws.onmessage=e=>{if(disposed)return;try{const m=JSON.parse(e.data);if(m.type==='log'&&m.runId===stream){seq.current=Math.max(seq.current,m.seq);merge([m]);}}catch{setConnection('polling')}};
+   ws.onerror=()=>{if(!disposed)setConnection('polling')};ws.onclose=()=>{if(disposed)return;setConnection('polling');reconnect=setTimeout(connect,Math.min(1000*2**attempt++,15000))};
+  };poll();if(token)connect();else setConnection('polling');return()=>{disposed=true;clearTimeout(reconnect);clearTimeout(pollTimer);ws?.close()};
+ },[stream,authenticated,token,request,retry]);
+ const [pollError,setPollError]=useState('');
+ useEffect(()=>{if(followLogs.current)terminal.current?.scrollTo({top:terminal.current.scrollHeight})},[logs]);
+ async function task(fn:()=>Promise<void>){setBusy(true);setError('');setNotice('');try{await fn()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}
+ function protectDirty(){return !dirty||confirm('Discard unsaved code changes?')}
+ function choose(s:Suite,c?:Case){if(!protectDirty())return;setSid(s.id);setCid(c?.id||s.cases[0]?.id||'');setView('workspace');if(innerWidth<760)setCollapsed(true)}
+ function form(kind:string,edit=false){if(!edit&&!protectDirty())return;setEditing(edit);setName(edit?(kind==='suite'?suite?.name:selected?.name)||'':'');setTarget(edit?suite?.targetUrl||'':'');setDescription(edit?suite?.description||'':'');setModal(kind);setMenu(false)}
+ useEffect(()=>{const leave=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',leave);return()=>window.removeEventListener('beforeunload',leave)},[dirty]);
+ async function connect(){await task(async()=>{await request('/api/session',{method:'POST'},input.trim());setToken(input.trim());setAuthenticated(true);setInput('');setModal('');setView('workspace')})}
+ async function saveForm(){await task(async()=>{
+  if(!name.trim())throw new Error('Name is required.');
+  if(modal==='suite'){const u=new URL(target);if(!['http:','https:'].includes(u.protocol))throw new Error('Use an HTTP or HTTPS target URL.');
+   const s=await request('/api/suites'+(editing?'/'+sid:''),{method:editing?'PATCH':'POST',body:JSON.stringify({name:name.trim(),targetUrl:target,description})});setSid(s.id);setOpen(o=>({...o,[s.id]:true}));
+  }else{const c=await request(editing?'/api/cases/'+cid:'/api/suites/'+sid+'/cases',{method:editing?'PATCH':'POST',body:JSON.stringify({name:name.trim(),...(editing?{}:{code:starter,enabled:true})})});setCid(c.id)}
+  await refresh();setModal('');setNotice('Changes saved.');
+ })}
+ async function remove(kind:string){if(!confirm(kind==='suite'?'Delete this suite and all its cases? This cannot be undone.':'Delete this test case? This cannot be undone.'))return;await task(async()=>{await request(kind==='suite'?'/api/suites/'+sid:'/api/cases/'+cid,{method:'DELETE'});await refresh();setMenu(false)})}
+ const running=runs.some(r=>['queued','running'].includes(r.status)||r.docsStatus==='building');
+ async function run(runMode=mode){await task(async()=>{if(runMode!=='lh'&&dirty)throw new Error('Save code changes before running.');const r=await request('/api/runs',{method:'POST',body:JSON.stringify({suiteId:sid,mode:runMode,headed,...(runMode!=='lh'&&scope==='case'&&selected?{caseIds:[cid]}:{})})});setRuns(p=>[r,...p]);setStream(r.id);setNotice('Run queued. Live output appears below.')})}
+ async function inspect(r:Run){setStream(r.id)}
+ function reportLinks(r:Run){return <>{r.reportUrl?.startsWith('/reports/')?<a href={API+r.reportUrl} target="_blank" rel="noopener noreferrer">Open report</a>:<span>No report yet</span>}<span>Docs: {r.docsStatus||'pending'}</span></>}
+ return <div className="app"><header><button aria-label="Toggle sidebar" aria-expanded={!collapsed} onClick={()=>setCollapsed(v=>!v)}>☰</button><strong>QA workbench</strong><nav aria-label="Main navigation">{[['workspace','Playwright'],['lighthouse','Lighthouse'],['history','Reports']].map(([id,label])=><button key={id} aria-current={view===id?'page':undefined} onClick={()=>setView(id)}>{label}</button>)}</nav><span>{authenticated?(token?'Operator connected':'Read-only session'):'Not connected'}</span>{authenticated&&!token&&<button onClick={()=>setModal('auth')}>Unlock editing</button>}{authenticated?<button onClick={()=>{if(!protectDirty())return;task(async()=>{await request('/api/session',{method:'DELETE'});setToken('');setAuthenticated(false);setRuns([]);setSuites([]);setStream('');setLogs([])})}}>Disconnect</button>:<button onClick={()=>setModal('auth')}>Connect workspace</button>}</header>
+ <main>{error&&<div role="alert" className="notice error">{error}<button onClick={()=>setError('')}>Dismiss</button></div>}{notice&&<div role="status" className="notice">{notice}</div>}
+ <div className={"workbench "+(collapsed?"sidebar-hidden":"")}><aside hidden={collapsed} aria-label="Suite navigation"><div className="section-title"><h2>Suites</h2><button disabled={!authenticated} onClick={()=>form('suite')}>New suite</button></div><input aria-label="Search suites" placeholder="Search suites" value={query} onChange={e=>setQuery(e.target.value)}/>{suites.filter(s=>s.name.toLowerCase().includes(query.toLowerCase())).map(s=><details key={s.id} open={open[s.id]??true} onToggle={e=>{const expanded=e.currentTarget.open;setOpen(o=>o[s.id]===expanded?o:{...o,[s.id]:expanded})}}><summary>{s.name}</summary><button className={'suite '+(sid===s.id?'selected':'')} onClick={()=>choose(s)}>{s.name}<small>{s.cases.length} cases</small></button>{s.cases.map(c=><button key={c.id} className={'tree-case '+(cid===c.id?'selected':'')} onClick={()=>choose(s,c)}>{c.name}</button>)}</details>)}{!suites.length&&<p className="muted">{authenticated?'No suites. Create a target suite to begin.':'Connect to load suites.'}</p>}</aside>
+ <section className="workspace"><div className="section-title"><div><h1>{view==='lighthouse'?'Lighthouse':view==='history'?'Reports':'Playwright'}</h1><p>{suite? suite.name+' · '+suite.targetUrl:'Select or create a suite.'}</p></div>{suite&&<div className="actions"><button onClick={()=>form('suite',true)}>Edit suite</button><button onClick={()=>remove('suite')}>Delete suite</button></div>}</div>
+ {view==='workspace'&&<><div className="toolbar"><label>Test selection<select aria-label="Test selection" value={scope} onChange={e=>setScope(e.target.value)}><option value="suite">All enabled cases</option><option value="case" disabled={!selected}>Selected case</option></select></label><label><input type="checkbox" checked={headed} onChange={e=>setHeaded(e.target.checked)}/> Headed browser</label><button className="primary" disabled={!authenticated||!suite||busy||running} onClick={()=>run('pw')}>Run Playwright</button><button className="primary" disabled={!authenticated||!suite||busy||running} onClick={()=>run('both')}>Run both</button></div><div className="cases"><div className="section-title"><h2>Test cases</h2><button disabled={!suite} onClick={()=>form('case')}>New test case</button></div><table><thead><tr><th>Case</th><th>Enabled</th><th>Actions</th></tr></thead><tbody>{suite?.cases.map(c=><tr key={c.id} className={cid===c.id?'selected':''}><td><button onClick={()=>choose(suite,c)}>{c.name}</button></td><td><input aria-label={'Enable '+c.name} type="checkbox" checked={c.enabled} onChange={()=>task(async()=>{await request('/api/cases/'+c.id,{method:'PATCH',body:JSON.stringify({enabled:!c.enabled})});await refresh()})}/></td><td>{cid===c.id&&<><button onClick={()=>form('case',true)}>Rename</button><button onClick={()=>remove('case')}>Delete</button></>}</td></tr>)}</tbody></table>{!suite?.cases.length&&<p>No test cases. Add a case for Playwright, or use Lighthouse without cases.</p>}</div>{selected&&<><div className="section-title"><h2>{selected.name}</h2><button disabled={!dirty||busy} onClick={()=>task(async()=>{await request('/api/cases/'+cid,{method:'PATCH',body:JSON.stringify({code})});await refresh();setNotice('Test code saved.')})}>Save changes</button></div><textarea className="code-editor" aria-label="Test case code editor" spellCheck={false} value={code} onChange={e=>setCode(e.target.value)}/><small>{dirty?'Unsaved changes':'Saved'}</small></>}</>}
+ {view==='lighthouse'&&<section className="audit"><h2>Run Lighthouse audit</h2><p>Audit target URL for performance, accessibility, best practices and SEO. No test case required.</p><label>Target suite<select aria-label="Lighthouse target suite" value={sid} onChange={e=>{if(protectDirty())setSid(e.target.value)}}>{suites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><p><code>{suite?.targetUrl||'Create a suite with a target URL.'}</code></p><button className="primary" disabled={!authenticated||!suite||busy||running} onClick={()=>run('lh')}>Run Lighthouse</button><p className="muted">Lighthouse-only runs do not execute Playwright cases.</p></section>}
+ {view==='history'&&<div className="scroll-table"><table><thead><tr><th>Started / run</th><th>Suite / mode</th><th>Status</th><th>Report</th></tr></thead><tbody>{runs.map(r=><tr key={r.id} className={stream===r.id?'selected':''}><td><button onClick={()=>inspect(r)}>{stamp(r.startedAt)}<small>{r.id.slice(0,8)}</small></button></td><td>{r.suiteName}<small>{r.mode==='lh'?'Lighthouse':r.mode==='both'?'Playwright + Lighthouse':'Playwright'}</small></td><td>{r.status}<small>{secs(duration(r))}</small></td><td className="report-links">{reportLinks(r)}</td></tr>)}</tbody></table>{!runs.length&&<p>No runs yet.</p>}</div>}
+ </section></div>
+ <section className="execution" aria-label="Selected run"><div className="section-title"><h2>Execution output</h2><label>Run<select aria-label="Terminal run" value={stream} onChange={e=>setStream(e.target.value)}>{!runs.length&&<option value="">No runs</option>}{runs.map(r=><option key={r.id} value={r.id}>{stamp(r.startedAt)} · {r.suiteName} · {r.mode} · {r.status}</option>)}</select></label><span>WebSocket: {connection} · HTTP fallback: {pollError?'retrying':'active'}</span><button disabled={!stream} onClick={()=>setRetry(n=>n+1)}>Reconnect</button></div>
+ {active&&<div className="run-summary"><strong>Status: {active.status}</strong><span>{active.mode.toUpperCase()} · {secs(duration(active))}</span>{reportLinks(active)}{active.summary&&<span>{active.summary.passed} passed / {active.summary.failed} failed / {active.summary.skipped} skipped</span>}{active.error&&<p role="alert">{active.error}</p>}</div>}{pollError&&<p role="alert">Log polling failed: {pollError}. Retrying automatically.</p>}
+ <div className="terminal" ref={terminal} onScroll={e=>{const el=e.currentTarget;followLogs.current=el.scrollHeight-el.scrollTop-el.clientHeight<40}} role="log" aria-label="Live execution terminal" aria-live="polite">{logs.length?logs.map(l=><pre key={l.seq} className={l.stream==='stderr'?'stderr':''}>{l.text}</pre>):<p>{stream?'Waiting for execution output. Persisted logs polled every 2 seconds.':'Idle. Select a run or launch Playwright / Lighthouse to see output here.'}</p>}</div>
+ {!!active?.artifacts?.length&&<details><summary>Artifacts ({active.artifacts.length})</summary><ul>{active.artifacts.map(a=><li key={a}><a href={API+'/api/runs/'+encodeURIComponent(active.id)+'/artifacts/'+a.split('/').map(encodeURIComponent).join('/')} target="_blank" rel="noopener noreferrer">{a}</a></li>)}</ul></details>}</section></main>
+ {modal&&<div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onKeyDown={e=>{if(e.key==='Escape')setModal('')}}><h2 id="dialog-title">{modal==='auth'?'Connect workspace':(editing?'Edit ':'New ')+modal}</h2><form onSubmit={e=>{e.preventDefault();if(modal==='auth')connect();else saveForm()}}>{modal==='auth'?<label>Operator token<input autoFocus required type="password" autoComplete="off" value={input} onChange={e=>setInput(e.target.value)}/></label>:<><label>Name<input autoFocus required maxLength={200} value={name} onChange={e=>setName(e.target.value)}/></label>{modal==='suite'&&<><label>Target URL<input required type="url" value={target} onChange={e=>setTarget(e.target.value)}/></label><label>Description (optional)<input maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)}/></label></>}</>}{error&&<p role="alert">{error}</p>}<div className="modal-actions"><button type="button" onClick={()=>setModal('')}>Cancel</button><button className="primary" disabled={busy} type="submit">{modal==='auth'?'Connect':editing?'Save changes':'Create '+modal}</button></div></form></section></div>}
+ </div>
 }

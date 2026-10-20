@@ -6,8 +6,6 @@ export default defineConfig({
   workers: 1,
   timeout: 180000,
   reporter: [
-    // Tanpa ini Playwright nggak nulis apa-apa ke stdout (reporter default ke-replace
-    // begitu kita daftarkan reporter sendiri), jadi log dashboard bakal kosong.
     ["list"],
     ["html", { open: "never" }],
     ["json", { outputFile: "pw-out/hasil.json" }],

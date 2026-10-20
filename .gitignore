@@ -13,3 +13,11 @@ docusaurus/.docusaurus/
 .lighthouseci*/
 lhci-results*/
 eureka/.auth/
+web/.next/
+web/out/
+web/*.tsbuildinfo
+data/
+.runs/
+.verification/
+.env.production
+

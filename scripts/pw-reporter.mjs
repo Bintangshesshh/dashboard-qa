@@ -1,25 +1,29 @@
-// Reporter tambahan: simpan LANGKAH tiap tes ke pw-out/langkah.json.
-//
-// Reporter JSON bawaan cuma nulis step ber-category 'test.step'
-// (node_modules/playwright/lib/runner/index.js:4194), jadi aksi bawaan
-// page.goto / locator.click (category 'pw:api') nggak pernah sampai ke dashboard.
-// Lewat API reporter, result.steps masih utuh.
 import {mkdirSync, writeFileSync} from 'node:fs';
-import {join} from 'node:path';
+import {dirname, join} from 'node:path';
 
-const out = {tests: []};
-
-const langkah = (s) => ({
-  title: s.title || s.category,
-  duration: s.duration,
-  error: s.error ?? null,
+const langkah = step => ({
+  title: step.title || step.category,
+  category: step.category,
+  duration: step.duration,
+  location: step.location,
+  error: step.error ?? null,
+  steps: (step.steps ?? []).map(langkah),
 });
 
 export default class LaporanLangkah {
+  constructor({outputFile = join('pw-out', 'langkah.json')} = {}) {
+    this.outputFile = outputFile;
+    this.tests = [];
+  }
+
   onTestEnd(test, result) {
-    out.tests.push({
-      file: test.location.file.replace(/^.*[\\/]/, ''),
-      title: test.title,
+    this.tests.push({
+      id: test.id,
+      file: test.location.file,
+      location: test.location,
+      title: test.titlePath().join(' / '),
+      projectName: test.parent.project()?.name,
+      retry: result.retry,
       status: result.status,
       ms: result.duration,
       steps: (result.steps ?? []).map(langkah),
@@ -27,7 +31,7 @@ export default class LaporanLangkah {
   }
 
   onEnd() {
-    mkdirSync('pw-out', {recursive: true});
-    writeFileSync(join('pw-out', 'langkah.json'), JSON.stringify(out, null, 2));
+    mkdirSync(dirname(this.outputFile), {recursive: true});
+    writeFileSync(this.outputFile, JSON.stringify({tests: this.tests}, null, 2));
   }
 }
