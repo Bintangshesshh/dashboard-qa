@@ -42,8 +42,10 @@ export class Store {
 
   migrate() {
     if (this.path === ':memory:') {
-      this.db.exec(readFileSync(join(migrationsDir, '0001_schema_v5.sql'), 'utf8'));
-      this.db.exec('PRAGMA user_version = 1');
+      for (const name of readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort()) {
+        this.db.exec(readFileSync(join(migrationsDir, name), 'utf8'));
+        this.db.exec(`PRAGMA user_version = ${Number(name.slice(0, 4))}`);
+      }
       return;
     }
     const version = this.db.prepare('PRAGMA user_version').get().user_version;
@@ -161,6 +163,7 @@ export class Store {
     if (to) { sql += ' AND s.created_at<=?'; vals.push(to); }
     sql += ' ORDER BY s.created_at DESC';
     const rows = this.db.prepare(sql).all(...vals);
+    for (const row of rows) row.reports = this.listReportsBySession(row.id);
     return status ? rows.filter(r => r.status === status) : rows;
   }
   deleteSession(id) {

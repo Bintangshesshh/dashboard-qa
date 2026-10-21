@@ -321,8 +321,10 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   app.delete('/api/runs/:id', requireAuth, requireAdmin, route(async (req, res) => {
-    if (!store.getRun(id(req.params.id))) fail('Not found', 404);
+    const run = store.getRun(id(req.params.id));
+    if (!run) fail('Not found', 404);
     store.deleteRun(req.params.id);
+    store.markReportsStale(run.session_id);
     store.audit({ userId: req.user.id, action: 'delete_run', entity: 'runs', entityId: req.params.id });
     res.sendStatus(204);
   }));

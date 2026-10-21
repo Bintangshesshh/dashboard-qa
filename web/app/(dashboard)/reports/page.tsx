@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { api, fmtDate, type Project, type Session } from "../../../lib/playbook";
+import { api, fmtDate, reportUrl, type Project, type Session } from "../../../lib/playbook";
 
 function ReportsInner() {
   const params = useSearchParams();
@@ -63,7 +63,7 @@ function ReportsInner() {
         ) : (
           <table className="pb-table">
             <thead>
-              <tr><th>Sesi</th><th>Env</th><th>Target</th><th>Status</th><th>Dibuat</th><th /></tr>
+              <tr><th>Sesi</th><th>Env</th><th>Target</th><th>Status</th><th>Laporan</th><th>Dibuat</th><th /></tr>
             </thead>
             <tbody>
               {sessions.map(s => (
@@ -72,6 +72,16 @@ function ReportsInner() {
                   <td className="pb-muted">{s.env}</td>
                   <td className="mono">{s.target_url}</td>
                   <td><span className={`pb-badge ${s.status}`}>{s.status}</span></td>
+                  <td>
+                    {(s.reports?.length ?? 0) === 0
+                      ? <span className="pb-muted">—</span>
+                      : s.reports!.map(rep => (
+                        <a key={rep.id} className="pb-btn sm" href={reportUrl(rep.id)} target="_blank" rel="noreferrer"
+                          title={`${rep.scope} · ${rep.status}`} style={{ marginRight: 6 }}>
+                          {rep.scope}{rep.status === "stale" ? " (basi)" : ""}
+                        </a>
+                      ))}
+                  </td>
                   <td className="mono">{fmtDate(s.created_at)}</td>
                   <td style={{ textAlign: "right" }}>
                     <Link className="pb-btn sm" href={`/reports/${s.id}`}>Detail</Link>

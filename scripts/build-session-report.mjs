@@ -1,7 +1,7 @@
 // Adapter JSON → HTML untuk satu report sesi (PRD §9, H3-1).
 // ponytail: HTML statis satu file + CSS inline, bukan `docusaurus build`.
 // Kalau nanti butuh navigasi antar halaman/navbar, ganti ke pipeline Docusaurus.
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Store } from '../server/store.mjs';
@@ -55,32 +55,63 @@ function playwrightSection(run, results, logs) {
     ${logs ? `<details><summary>Log run (500 baris terakhir)</summary><pre>${esc(logs)}</pre></details>` : ''}`;
 }
 
-function lighthouseSection(run, rows, logs) {
+async function lighthouseSection(run, rows, artifacts, logs) {
   if (!rows.length) return `<p class="mut">data tidak ditemukan — JSON Lighthouse hilang atau korup.</p>`;
-  const body = rows.map(r => `<tr>
+  // manifest.json lhci: url → htmlPath/jsonPath absolut. Dipakai untuk link report & audit gagal.
+  const dir = join(root, '.runs', run.id, 'artifacts');
+  const manifest = await readFile(join(dir, 'manifest.json'), 'utf8').then(JSON.parse).catch(() => []);
+  const byUrl = new Map();
+  for (const m of Array.isArray(manifest) ? manifest : []) {
+    if (!m.url) continue;
+    byUrl.set(m.url, {
+      html: m.htmlPath ? m.htmlPath.split(/[\\/]/).pop() : null,
+      json: m.jsonPath ? m.jsonPath.split(/[\\/]/).pop() : null,
+    });
+  }
+  const body = rows.map(r => {
+    const m = byUrl.get(r.url);
+    const report = m?.html ? link(`/artifacts/${run.id}/${m.html}`, 'report') : '—';
+    return `<tr>
       <td class="mono">${esc(r.url)}</td><td>${score(r.performance)}</td><td>${score(r.accessibility)}</td>
       <td>${score(r.best_practices)}</td><td>${score(r.seo)}</td><td class="mono">${ms(r.lcp_ms)}</td>
-      <td class="mono">${r.cls == null ? '—' : Number(r.cls).toFixed(3)}</td><td class="mono">${ms(r.tbt_ms)}</td></tr>`).join('');
+      <td class="mono">${r.cls == null ? '—' : Number(r.cls).toFixed(3)}</td><td class="mono">${ms(r.tbt_ms)}</td>
+      <td>${report}</td></tr>`;
+  }).join('');
+  // Audit yang skornya < 1 → daftar penyebab, dengan displayValue dari JSON.
+  const audits = [];
+  for (const r of rows) {
+    const file = byUrl.get(r.url)?.json;
+    if (!file) continue;
+    const lhr = await readFile(join(dir, file), 'utf8').then(JSON.parse).catch(() => null);
+    for (const [id, a] of Object.entries(lhr?.audits ?? {})) {
+      if (a.score == null || a.score >= 1 || a.scoreDisplayMode === 'notApplicable') continue;
+      audits.push(`${r.url} · ${a.title ?? id}${a.displayValue ? ` — ${a.displayValue}` : ''}`);
+    }
+  }
   const warns = rows.flatMap(r => {
     const list = [];
     try { list.push(...(JSON.parse(r.warnings ?? '[]') || []).map(w => `${r.url}: ${w}`)); } catch { /* bukan JSON, abaikan */ }
     if (r.budget_failed) list.push(`${r.url}: budget gagal — ${r.budget_failed}`);
     return list;
   });
-  return `<table><thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>CLS</th><th>TBT</th></tr></thead><tbody>${body}</tbody></table>
+  return `<table><thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>CLS</th><th>TBT</th><th /></tr></thead><tbody>${body}</tbody></table>
+    ${audits.length ? `<h3>Audit di bawah skor penuh</h3><ul>${audits.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
     ${warns.length ? `<h3>Peringatan</h3><ul>${warns.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
     ${logs ? `<details><summary>Log run (500 baris terakhir)</summary><pre>${esc(logs)}</pre></details>` : ''}`;
 }
 
-function runSection(run, results, rows, logs) {
+async function runSection(run, results, artifacts, logs) {
   const raw = run.tool === 'pw' ? 'playwright-report/index.html' : null;
   const files = raw ? [link(`/artifacts/${run.id}/${raw}`, 'report mentah Playwright')] : [];
+  const body = run.tool === 'pw'
+    ? playwrightSection(run, results, logs)
+    : await lighthouseSection(run, results, artifacts, logs);
   return `<section class="card">
     <h2>${run.tool === 'pw' ? 'Playwright' : 'Lighthouse'} · ${statusBadge(run.status)}</h2>
     <p class="mut">Mulai ${date(run.started_at)} · selesai ${date(run.finished_at)} · durasi ${dur(run.duration_ms)} · exit ${n(run.exit_code)}</p>
     ${run.error ? `<p class="b bad">${esc(run.error)}</p>` : ''}
-    ${run.tool === 'pw' ? playwrightSection(run, results, logs) : lighthouseSection(run, results, logs)}
-    ${files.length ? `<p>${files.join(' · ')}</p>` : ''}
+    ${body}
+    <p class="mut">${[files.length ? files.join(' · ') : '', link(`/api/runs/${run.id}/logs/download`, 'unduh log penuh')].filter(Boolean).join(' · ')}</p>
   </section>`;
 }
 
@@ -112,7 +143,7 @@ export async function buildSessionReport(store, reportId) {
       const results = run.tool === 'pw' ? store.listPlaywrightResults(run.id) : store.listLighthouseResults(run.id);
       const artifacts = store.listArtifacts(run.id);
       const logs = (await store.logsText(run.id)).split('\n').slice(-500).join('\n');
-      sections.push(runSection(run, results, artifacts, logs));
+      sections.push(await runSection(run, results, artifacts, logs));
     }
     const html = `<!doctype html><html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
