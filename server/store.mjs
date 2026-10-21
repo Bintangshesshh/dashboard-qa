@@ -184,6 +184,10 @@ export class Store {
     const placeholders = statuses.map(() => '?').join(',');
     return this.db.prepare(`SELECT COUNT(*) AS n FROM runs WHERE session_id=? AND status IN (${placeholders})`).get(sessionId, ...statuses).n;
   }
+  // Antrean global (bukan per sesi) untuk pagar max_queue_length → 429.
+  countActiveRuns() {
+    return this.db.prepare(`SELECT COUNT(*) AS n FROM runs WHERE status IN ('queued','running','uploading')`).get().n;
+  }
   patchRun(id, fields) {
     const allowed = ['status', 'started_at', 'finished_at', 'finalized_at', 'duration_ms', 'exit_code', 'error'];
     const set = []; const vals = [];

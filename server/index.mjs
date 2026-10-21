@@ -246,7 +246,7 @@ export function createApp({ store, runner, token, origins }) {
     // 409 bila ada run belum final di sesi ini (PRD §7)
     if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
     // max queue
-    if (store.countRunsByStatus('__global__', ['queued', 'running', 'uploading']) >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
+    if (store.countActiveRuns() >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
     const runId = randomUUID();
     store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
     runner.start(runId, tf);
@@ -415,6 +415,7 @@ function attachWebSocket(app, { store, runner }) {
     ws.on('close', () => { clearTimeout(timer); runner.off('log', onLog); runner.off('status', onStatus); });
     ws.on('error', () => ws.close());
   });
+  app.__wss = wss;
   return server;
 }
 
@@ -434,7 +435,7 @@ export async function main() {
   server.listen(Number(process.env.PORT ?? 3001), process.env.HOST ?? '127.0.0.1', () => console.log('QA backend listening', server.address()));
   const close = async () => {
     if (runner.active) { await runner.cancel(runner.active.run.id); await runner.active?.done; }
-    for (const client of (app.__wss ?? []) ) client.close();
+    for (const client of app.__wss?.clients ?? []) client.close();
     server.close();
     await store.close();
   };

@@ -30,7 +30,7 @@ export class Runner extends EventEmitter {
 
   async start(runId, testFile) {
     if (this.active) throw Object.assign(new Error('Another run is active'), { status: 409 });
-    const state = { runId, testFile, seq: 0, chain: Promise.resolve(), child: null, cancelled: false };
+    const state = { runId, testFile, seq: 0, chain: Promise.resolve(), child: null, cancelled: false, startTime: Date.now() };
     this.active = state;
     state.done = this.execute(state).finally(() => { this.active = null; });
     return state.done;
@@ -87,14 +87,14 @@ export class Runner extends EventEmitter {
     const dir = this.directory(runId);
     const targetUrl = null; // diisi oleh CLI/API pada fase selanjutnya; untuk saat ini hardcode dari test_file code
     await this.log(state, 'system', `[runner] Menjalankan Playwright ${testFile.path}\n`);
-    const specPath = join(root, testFile.path);
-    const env = { ...process.env };
+    const specPath = testFile.path.replaceAll('\\', '/'); // relatif: path absolut Windows dibaca Playwright sebagai regex
+    const env = { ...process.env, PLAYWRIGHT_JSON_OUTPUT_NAME: join(dir, 'artifacts', 'report.json') };
     const args = ['playwright', 'test', specPath, '--reporter=json', `--output=${join(dir, 'artifacts')}`];
-    const child = spawn('npx', args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('npx', args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
     state.child = child;
     child.stdout.on('data', d => this.log(state, 'stdout', d));
     child.stderr.on('data', d => this.log(state, 'stderr', d));
-    const code = await new Promise(res => child.on('close', res));
+    const code = await new Promise(res => { child.on('close', res); child.on('error', e => { this.log(state, 'stderr', e.message + '\n'); res(1); }); });
     state.child = null;
     await state.chain;
 
@@ -117,11 +117,11 @@ export class Runner extends EventEmitter {
     const dir = this.directory(runId);
     await this.log(state, 'system', `[runner] Menjalankan Lighthouse CI ${testFile.path}\n`);
     const configPath = join(root, testFile.path);
-    const child = spawn('npx', ['lhci', 'autorun', '--config=' + configPath, '--outputDir=' + join(dir, 'artifacts')], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('npx', ['lhci', 'autorun', '--config=' + configPath, '--outputDir=' + join(dir, 'artifacts')], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
     state.child = child;
     child.stdout.on('data', d => this.log(state, 'stdout', d));
     child.stderr.on('data', d => this.log(state, 'stderr', d));
-    const code = await new Promise(res => child.on('close', res));
+    const code = await new Promise(res => { child.on('close', res); child.on('error', e => { this.log(state, 'stderr', e.message + '\n'); res(1); }); });
     state.child = null;
     await state.chain;
 
@@ -145,24 +145,28 @@ export class Runner extends EventEmitter {
     const data = await readFile(join(dir, 'artifacts', jsonFile), 'utf8').then(JSON.parse).catch(() => null);
     if (!data?.suites) return [];
     const out = [];
-    for (const suite of data.suites) {
+    // Playwright menyimpan spec di suite bersarang: suites[].suites[].specs[]
+    const walk = (suite) => {
       for (const spec of suite.specs ?? []) {
-        const tests = spec.tests ?? (spec.ok !== undefined ? [spec] : []);
-        for (const t of tests) {
-          const s = t.status ?? (t.ok ? 'passed' : 'failed');
-          if (s === 'skipped') continue;
+        for (const t of spec.tests ?? []) {
+          const last = (t.results ?? []).at(-1);
+          const raw = last?.status ?? 'failed';
+          const status = raw === 'timedOut' ? 'failed' : raw === 'interrupted' ? 'failed' : raw;
+          if (status === 'skipped') continue;
           out.push({
-            file: spec.file ?? 'unknown',
-            title: t.title ?? '',
-            tcId: (t.title ?? '').match(/TC-[A-Z0-9-]+/)?.[0] ?? null,
-            status: s === 'passed' || s === 'failed' || s === 'skipped' ? s : (t.flaky ? 'flaky' : 'failed'),
-            durationMs: t.duration ?? null,
+            file: suite.file ?? spec.file ?? 'unknown',
+            title: spec.title ?? t.title ?? '',
+            tcId: (spec.title ?? t.title ?? '').match(/TC-[A-Z0-9-]+/)?.[0] ?? null,
+            status: ['passed', 'failed', 'skipped'].includes(status) ? status : (t.status === 'flaky' ? 'flaky' : 'failed'),
+            durationMs: last?.duration ?? null,
             retry: t.retry ?? 0,
-            error: t.error?.message ? String(t.error.message).slice(0, 3000) : null,
+            error: last?.error?.message ? String(last.error.message).slice(0, 3000) : null,
           });
         }
       }
-    }
+      for (const child of suite.suites ?? []) walk(child);
+    };
+    for (const suite of data.suites) walk(suite);
     return out;
   }
 
