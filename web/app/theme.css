@@ -1,0 +1,93 @@
+/* QA Dashboard — theme tokens taken from the Open Design reference
+   (QA Release Console · rilis-2026.10): Apple HIG palette, SF Pro/Segoe stack,
+   accent #0071e3, dark-first with a light override. */
+
+:root{
+  --bg:#f5f5f7;
+  --surface:#ffffff;
+  --surface-2:#f5f5f7;
+  --ink:#1d1d1f;
+  --fg:#1d1d1f;
+  --text-2:#3c4149;
+  --muted:#6e6e73;
+  --line:#d2d2d7;
+  --line-soft:#e6e6ea;
+  --hover:rgba(0,0,0,.04);
+  --fg-soft:rgba(0,0,0,.04);
+  --track:#e8e8ed;
+
+  --accent:#0071e3;
+  --accent-hover:#0077ed;
+  --accent-active:#0066cc;
+  --accent-soft:rgba(0,113,227,.14);
+  --link:#0066cc;
+
+  --ok:#248a3d;
+  --ok-ink:#1c7c34;
+  --ok-bg:#e6f6ec;
+  --warn:#9a6b00;
+  --warn-ink:#8a6000;
+  --warn-bg:#fff5e0;
+  --bad:#d70015;
+  --danger-bg:#ffe9ea;
+  --danger-line:#f7d2d5;
+  --danger-ink:#b00012;
+  --danger-tint:#fff7f8;
+
+  --elev:0 12px 32px rgba(0,0,0,.08);
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 1px 3px rgba(0,0,0,.06);
+  --radius:8px;
+  --radius-lg:12px;
+  --radius-pill:980px;
+
+  --font-display:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',system-ui,sans-serif;
+  --font-body:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',system-ui,sans-serif;
+  --font-mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace;
+
+  --fs-h1:clamp(30px,3.6vw,44px);
+  --fs-h2:clamp(18px,1.8vw,22px);
+  --fs-h3:15px;
+  --fs-body:14px;
+  --fs-meta:12px;
+  --gap-xs:6px; --gap-sm:10px; --gap-md:16px; --gap-lg:24px; --gap-xl:36px;
+
+  /* aliases kept so the existing view CSS keeps working */
+  --brand:var(--accent);
+  --brand-dark:var(--accent-active);
+  --brand-soft:var(--accent-soft);
+}
+
+html{color-scheme:light}
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#000000;
+  --surface:#1d1d1f;
+  --surface-2:#141416;
+  --ink:#f5f5f7;
+  --fg:#f5f5f7;
+  --text-2:#d2d2d7;
+  --muted:#86868b;
+  --line:#2a2a2c;
+  --line-soft:#232325;
+  --hover:rgba(255,255,255,.06);
+  --fg-soft:rgba(255,255,255,.05);
+  --track:#2a2a2c;
+
+  --accent-soft:rgba(0,113,227,.18);
+  --link:#2997ff;
+
+  --ok:#30d158;
+  --ok-ink:#5ce07a;
+  --ok-bg:rgba(48,209,88,.14);
+  --warn:#ffd60a;
+  --warn-ink:#ffd60a;
+  --warn-bg:rgba(255,214,10,.12);
+  --bad:#ff453a;
+  --danger-bg:rgba(255,69,58,.14);
+  --danger-line:rgba(255,69,58,.28);
+  --danger-ink:#ff8a80;
+  --danger-tint:rgba(255,69,58,.07);
+
+  --elev:0 12px 32px rgba(0,0,0,.45);
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.4);
+}

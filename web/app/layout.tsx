@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./shell.css";
+import "./qa-dashboard.css";
+import "./theme.css";
+import "./shell-skin.css";
 
 export const metadata: Metadata = {
   title: "QA Dashboard",
