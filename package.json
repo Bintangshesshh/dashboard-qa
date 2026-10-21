@@ -6,9 +6,9 @@
   "scripts": {
     "cek": "node scripts/cek.mjs all",
     "cek:pw": "node scripts/cek.mjs pw",
-    "cek:pw:jaja": "node scripts/cek.mjs pw eureka/co-jaja.spec.ts",
-    "cek:pw:ebh": "node scripts/cek.mjs pw eureka/co-ebh.spec.ts",
-    "cek:pw:masdis": "node scripts/cek.mjs pw eureka/co-masdis.spec.ts",
+    "cek:pw:jaja": "node scripts/cek.mjs pw eureka/cart-jaja.spec.ts",
+    "cek:pw:ebh": "node scripts/cek.mjs pw eureka/cart-ebh.spec.ts",
+    "cek:pw:masdis": "node scripts/cek.mjs pw eureka/demo-masdis.spec.ts",
     "cek:lh": "node scripts/cek.mjs lh",
     "cek:lh:jaja": "node scripts/cek.mjs lh --target=jaja",
     "cek:lh:ebh": "node scripts/cek.mjs lh --target=ebh",
@@ -20,7 +20,7 @@
     "test:integration": "node scripts/verify-dashboard.mjs",
     "fixture": "node scripts/local-fixture.mjs",
     "dev:web": "npm run dev --prefix web",
-    "dev:server": "node --env-file=.env server/index.mjs",
+    "dev:server": "node --experimental-sqlite --env-file=.env server/index.mjs",
     "build": "npm run build --prefix web"
   },
   "keywords": [],

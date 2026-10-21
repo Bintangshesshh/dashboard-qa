@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { realpath, lstat } from 'node:fs/promises';
 import { Store } from './store.mjs';
 import { Runner } from './runner.mjs';
-import { fail, id, authorized, cursor, suiteInput, caseInput, target, allowlist } from './validation.mjs';
+import { fail, id, authorized, cursor, suiteInput, caseInput, target, allowlist, categoryInput, pagination } from './validation.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const route=fn=>(req,res,next)=>Promise.resolve().then(()=>fn(req,res)).catch(next);
 export function createApp({store,runner,token,origins}) {
@@ -16,24 +16,82 @@ export function createApp({store,runner,token,origins}) {
   const bearer=req=>authorized(req.headers.authorization?.replace(/^Bearer /,''),token);
   const cookieLogout=req=>{if(req.method!=='DELETE'||req.path!=='/session'||req.headers['sec-fetch-site']==='cross-site')return false;try{return !req.headers.origin||new URL(req.headers.origin).host===req.get('host');}catch{return false;}};
   const auth=(req,res,next)=>{if(bearer(req)||((req.method==='GET'||cookieLogout(req))&&authorized(cookie(req),token))) return next();res.status(401).json({error:'Operator authentication required'});};
-  app.get('/api/health',route(async(req,res)=>{await store.pool.query('SELECT 1');res.json({ok:true,database:'postgresql'});}));
+  app.get('/api/health',route(async(req,res)=>{await store.ping();res.json({ok:true,database:'sqlite'});}));
   app.use('/api',auth);
   app.post('/api/session',(req,res)=>{res.cookie('qa_session',token,{httpOnly:true,sameSite:'lax',secure:process.env.COOKIE_SECURE!==undefined?process.env.COOKIE_SECURE==='true':process.env.NODE_ENV==='production',path:'/',maxAge:28800000});res.json({ok:true});});
   app.delete('/api/session',(req,res)=>{res.clearCookie('qa_session',{path:'/'});res.json({ok:true});});
   app.get('/api/auth',(req,res)=>res.sendStatus(204));
   app.get('/api/targets',(req,res)=>res.json({targets:origins}));
   const get=async(kind,value)=>{const result=await store.get(kind,id(value));if(!result)fail('Not found',404);return result;};
+
+  // ─── Categories ──────────────────────────────────────────────────────────
+  app.get('/api/categories',route(async(req,res)=>res.json(await store.list('categories'))));
+  app.post('/api/categories',route(async(req,res)=>{
+    const now=new Date().toISOString();
+    res.status(201).json(await store.put('categories',{id:randomUUID(),...categoryInput(req.body),createdAt:now,updatedAt:now}));
+  }));
+  app.get('/api/categories/:id',route(async(req,res)=>res.json(await get('categories',req.params.id))));
+  app.patch('/api/categories/:id',route(async(req,res)=>{
+    const updated=await store.patch('categories',id(req.params.id),old=>({...old,...categoryInput({...old,...req.body}),updatedAt:new Date().toISOString()}));
+    if(!updated)fail('Not found',404);res.json(updated);
+  }));
+  app.delete('/api/categories/:id',route(async(req,res)=>{
+    await get('categories',req.params.id);
+    await store.deleteCategory(req.params.id);
+    res.sendStatus(204);
+  }));
+
+  // ─── Suites ──────────────────────────────────────────────────────────────
   app.get('/api/suites',route(async(req,res)=>res.json(await store.list('suites'))));
-  app.post('/api/suites',route(async(req,res)=>{const now=new Date().toISOString();res.status(201).json(await store.put('suites',{id:randomUUID(),...suiteInput(req.body,origins),createdAt:now,updatedAt:now}));}));
+  app.post('/api/suites',route(async(req,res)=>{
+    const now=new Date().toISOString();
+    const input=suiteInput(req.body,origins);
+    // Validate categoryId if provided
+    if(req.body.categoryId){
+      const cat=await store.get('categories',id(req.body.categoryId));
+      if(!cat)fail('Category not found',400);
+      input.categoryId=req.body.categoryId;
+    }
+    res.status(201).json(await store.put('suites',{id:randomUUID(),...input,createdAt:now,updatedAt:now}));
+  }));
   app.get('/api/suites/:id',route(async(req,res)=>res.json(await get('suites',req.params.id))));
-  app.patch('/api/suites/:id',route(async(req,res)=>{const updated=await store.patch('suites',id(req.params.id),old=>({...old,...suiteInput({...old,...req.body},origins),updatedAt:new Date().toISOString()}));if(!updated)fail('Not found',404);res.json(updated);}));
+  app.patch('/api/suites/:id',route(async(req,res)=>{
+    const updated=await store.patch('suites',id(req.params.id),old=>{
+      const input=suiteInput({...old,...req.body},origins);
+      // Handle categoryId update
+      if('categoryId' in req.body){
+        input.categoryId=req.body.categoryId;
+      } else {
+        input.categoryId=old.categoryId??null;
+      }
+      return {...old,...input,updatedAt:new Date().toISOString()};
+    });
+    if(!updated)fail('Not found',404);
+    // Validate categoryId if set
+    if(updated.categoryId){
+      const cat=await store.get('categories',updated.categoryId);
+      if(!cat){
+        // Rollback: set categoryId to null
+        await store.patch('suites',updated.id,old=>({...old,categoryId:null}));
+        fail('Category not found',400);
+      }
+    }
+    res.json(updated);
+  }));
   app.delete('/api/suites/:id',route(async(req,res)=>{await get('suites',req.params.id);await store.delete('suites',req.params.id);res.sendStatus(204);}));
   app.get('/api/suites/:id/cases',route(async(req,res)=>{await get('suites',req.params.id);res.json(await store.list('cases',req.params.id));}));
   app.post('/api/suites/:id/cases',route(async(req,res)=>{await get('suites',req.params.id);const now=new Date().toISOString();res.status(201).json(await store.put('cases',{id:randomUUID(),suiteId:req.params.id,...caseInput(req.body),createdAt:now,updatedAt:now}));}));
   app.get('/api/cases/:id',route(async(req,res)=>res.json(await get('cases',req.params.id))));
   app.patch('/api/cases/:id',route(async(req,res)=>{const updated=await store.patch('cases',id(req.params.id),old=>({...old,...caseInput({...old,...req.body}),updatedAt:new Date().toISOString()}));if(!updated)fail('Not found',404);res.json(updated);}));
   app.delete('/api/cases/:id',route(async(req,res)=>{await get('cases',req.params.id);await store.delete('cases',req.params.id);res.sendStatus(204);}));
-  app.get('/api/runs',route(async(req,res)=>res.json(await store.list('runs'))));
+
+  // ─── Runs with pagination ────────────────────────────────────────────────
+  app.get('/api/runs',route(async(req,res)=>{
+    const p=pagination(req.query);
+    const [rows,total]=await Promise.all([store.list('runs',undefined,p),store.count('runs')]);
+    res.setHeader('X-Total-Count',String(total));
+    res.json(rows);
+  }));
   let starting=false;
   app.post('/api/runs',route(async(req,res)=>{
     if(starting||runner.active)fail('Another run is active',409);starting=true;
@@ -50,7 +108,21 @@ export function createApp({store,runner,token,origins}) {
     } finally {starting=false;}
   }));
   app.get('/api/runs/:id',route(async(req,res)=>res.json(await get('runs',req.params.id))));
-  app.get('/api/runs/:id/logs',route(async(req,res)=>{await get('runs',req.params.id);res.json({logs:await store.logs(req.params.id,cursor(req.query.after))});}));
+
+  // ─── Logs with limit and download ────────────────────────────────────────
+  app.get('/api/runs/:id/logs',route(async(req,res)=>{
+    await get('runs',req.params.id);
+    res.json(await store.logs(req.params.id,cursor(req.query.after)));
+  }));
+  app.get('/api/runs/:id/logs/download',route(async(req,res)=>{
+    await get('runs',req.params.id);
+    const text=await store.logsText(req.params.id);
+    res.setHeader('Content-Type','text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition','attachment; filename="logs.txt"');
+    res.setHeader('X-Content-Type-Options','nosniff');
+    res.send(text);
+  }));
+
   app.post('/api/runs/:id/cancel',route(async(req,res)=>{await get('runs',req.params.id);if(!await runner.cancel(req.params.id))fail('Run is not active',409);res.json(await get('runs',req.params.id));}));
   const sendFile=folder=>route(async(req,res)=>{
     await get('runs',req.params.id);
@@ -83,7 +155,11 @@ export function attachWebSocket(server,{store,runner,token}) {
         runId=id(input.runId);last=cursor(input.after);const run=await store.get('runs',runId);if(!run)return ws.close(1008,'Unknown run');
         if(ws.readyState!==1)return;
         clearTimeout(timer);runner.on('log',log);runner.on('status',status);
-        for(const entry of await store.logs(runId,last)){if(entry.seq>last){last=entry.seq;send({type:'log',runId,...entry});}}
+        // Replay with limit; if truncated, send replay-truncated event
+        const replay=await store.logs(runId,last,5000);
+        const truncated=replay.hasMore;
+        for(const entry of replay.logs){if(entry.seq>last){last=entry.seq;send({type:'log',runId,...entry});}}
+        if(truncated)send({type:'replay-truncated',runId,fromSeq:replay.nextAfter});
         ready=true;for(const entry of pending)log(entry);pending=[];
         send({type:'status',run:await store.get('runs',runId)});send({type:'replay-complete',runId});
       }catch{ws.close(1008,'Invalid subscription');}
@@ -93,7 +169,7 @@ export function attachWebSocket(server,{store,runner,token}) {
   });return wss;
 }
 export async function main() {
-  if(!process.env.DATABASE_URL)throw new Error('DATABASE_URL is required; PostgreSQL persistence cannot be disabled');
+  if(!process.env.DATABASE_URL)throw new Error('DATABASE_URL is required; SQLite persistence cannot be disabled');
   const token=process.env.OPERATOR_TOKEN;if(!token||token.length<24)throw new Error('OPERATOR_TOKEN must contain at least 24 characters');
   const origins=allowlist(process.env.TARGET_ALLOWLIST);if(!origins.length)throw new Error('TARGET_ALLOWLIST must contain at least one exact origin');
   const store=new Store(process.env.DATABASE_URL);await store.init();

@@ -8,3 +8,11 @@ export function authorized(value,token) { if(typeof value!=='string'||!token) re
 export function cursor(value=0) { const n=Number(value); if(!Number.isSafeInteger(n)||n<0) fail('Invalid log cursor'); return n; }
 export function suiteInput(body,origins) { return {name:text(body.name,'name'),description:typeof body.description==='string'?body.description.slice(0,10000):'',targetUrl:target(body.targetUrl,origins)}; }
 export function caseInput(body) { if(body.enabled!==undefined&&typeof body.enabled!=='boolean') fail('enabled must be boolean'); return {name:text(body.name,'name'),code:text(body.code,'code',200000),enabled:body.enabled??true}; }
+export function categoryInput(body) { return {name:text(body.name,'name'),description:typeof body.description==='string'?body.description.slice(0,10000):''}; }
+export function pagination(query={}) {
+  const limit=query.limit!==undefined?Number(query.limit):50;
+  const offset=query.offset!==undefined?Number(query.offset):0;
+  if(!Number.isSafeInteger(limit)||limit<0||limit>200) fail('limit must be 0–200');
+  if(!Number.isSafeInteger(offset)||offset<0) fail('offset must be non-negative');
+  return {limit,offset};
+}

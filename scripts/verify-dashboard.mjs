@@ -7,7 +7,7 @@ const token=process.env.OPERATOR_TOKEN;
 assert.ok(token,'Set OPERATOR_TOKEN');
 async function api(path,method='GET',body){const res=await fetch(base+'/api'+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=res.status===204?null:await res.json();assert.ok(res.ok,JSON.stringify(data));return data;}
 assert.equal((await fetch(base+'/api/suites')).status,401);
-assert.equal((await api('/health')).database,'postgresql');
+assert.equal((await api('/health')).database,'sqlite');
 const suite=await api('/suites','POST',{name:'Local verification',description:'Integration check against local fixture only',targetUrl:'http://127.0.0.1:4173'});
 await api('/suites/'+suite.id,'PATCH',{name:'Local verification updated',description:suite.description,targetUrl:suite.targetUrl});
 const test=await api('/suites/'+suite.id+'/cases','POST',{name:'Browser and API smoke',enabled:true,code:"import {test,expect} from '@playwright/test';\ntest('local action',async({page,request})=>{await page.goto('/');await expect(page.getByRole('heading')).toHaveText('QA verification fixture');await page.getByRole('button',{name:'Run action'}).click();await expect(page.getByRole('status')).toHaveText('Action completed');const res=await request.get('/api/health');expect(res.ok()).toBeTruthy();});"});
@@ -37,4 +37,4 @@ const persisted=await api('/runs/'+run.id+'/logs');assert.ok(persisted.logs.leng
 await api('/cases/'+test.id,'DELETE');
 assert.equal((await api('/suites/'+suite.id+'/cases')).length,0);
 await api('/suites/'+suite.id,'DELETE');
-console.log('PASS: authentication, suite/case CRUD, PostgreSQL, execution, live logs, persisted replay, Docusaurus report');
+console.log('PASS: authentication, suite/case CRUD, SQLite, execution, live logs, persisted replay, Docusaurus report');

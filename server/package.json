@@ -3,12 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node index.mjs",
-    "test": "node --test test/*.test.mjs"
+    "start": "node --experimental-sqlite index.mjs",
+    "test": "node --experimental-sqlite --test test/*.test.mjs"
   },
   "dependencies": {
     "express": "^4.21.2",
-    "pg": "^8.16.3",
     "ws": "^8.18.0"
   }
 }

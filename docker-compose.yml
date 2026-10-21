@@ -1,25 +1,11 @@
 services:
-  postgres:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: qa_dashboard
-      POSTGRES_USER: qa_dashboard
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U qa_dashboard -d qa_dashboard"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-    restart: unless-stopped
   backend:
     build:
       context: .
       target: runner
     init: true
     environment:
-      DATABASE_URL: postgresql://qa_dashboard:${POSTGRES_PASSWORD}@postgres:5432/qa_dashboard
+      DATABASE_URL: sqlite:/data/qa.db
       OPERATOR_TOKEN: ${OPERATOR_TOKEN:?Set OPERATOR_TOKEN}
       TARGET_ALLOWLIST: ${TARGET_ALLOWLIST:?Set TARGET_ALLOWLIST}
       RUNS_DIR: /data/runs
@@ -28,11 +14,9 @@ services:
       NODE_ENV: production
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
     volumes:
+      - database-data:/data
       - run-data:/data/runs
     shm_size: 1gb
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 30s
   web:
@@ -58,5 +42,5 @@ services:
     depends_on: [web, backend, docs]
     restart: unless-stopped
 volumes:
-  postgres-data:
+  database-data:
   run-data:
