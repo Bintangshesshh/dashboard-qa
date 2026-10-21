@@ -2,7 +2,7 @@
 
 ## Latest review supersedes earlier acceptance claims
 
-See [whole-system review](REVIEW.md). Backend now passes 11/11 tests with PostgreSQL. Draft-protection regression and static report rendering/download browser checks pass. Earlier forced-WebSocket-failure claim below was overbroad: test reloaded into read-only mode before inducing failure, so no authenticated socket was attempted. Strengthened full-workbench test now passes: BOTH f6b1876d-8313-4258-9079-070986deb240 and Lighthouse-only f9037d35-6521-4598-906f-12f2ca8d1296, attempted WebSocket forced closed, exact replay equality and actual cookie-only logout. Report HTTP 200 alone did not establish rendering; separate Chromium static rendering/download checks now cover that. Historical results below are retained as chronology, not current end-to-end acceptance.
+See [whole-system review](REVIEW.md). Backend now passes 11/11 tests with SQLite. Draft-protection regression and static report rendering/download browser checks pass. Earlier forced-WebSocket-failure claim below was overbroad: test reloaded into read-only mode before inducing failure, so no authenticated socket was attempted. Strengthened full-workbench test now passes: BOTH f6b1876d-8313-4258-9079-070986deb240 and Lighthouse-only f9037d35-6521-4598-906f-12f2ca8d1296, attempted WebSocket forced closed, exact replay equality and actual cookie-only logout. Report HTTP 200 alone did not establish rendering; separate Chromium static rendering/download checks now cover that. Historical results below are retained as chronology, not current end-to-end acceptance.
 
 ## User-reported defects reproduced in follow-up
 - Port 3000 WebSocket /ws did not upgrade; direct backend /ws replay worked. Earlier API integration did NOT cover production UI proxy.
@@ -16,9 +16,9 @@ See [whole-system review](REVIEW.md). Backend now passes 11/11 tests with Postgr
 
 
 ## Verified locally
-- Node 22.21.1; Next registry stable 16.4.2 installed.
-- PostgreSQL portable 18.4 UTF8 database used for actual integration.
-- Backend node:test: 7 passed, 0 failed, 0 skipped with TEST_DATABASE_URL. Includes real Playwright generated TypeScript execution, auth, CRUD, WebSocket replay/live, cancellation, redirect allowlist, database persistence.
+- Node 22.21.1 (verification host); Next registry stable 16.4.2 installed.
+- SQLite file database used for actual integration; no database server required.
+- Backend node:test: 11 passed, 0 failed, 0 skipped against SQLite. Includes real Playwright generated TypeScript execution, auth, CRUD, WebSocket replay/live, cancellation, redirect allowlist, startup recovery, database persistence.
 - Docusaurus actual production build regression passed, including escaped hostile input and artifact source exclusion.
 - Real combined run 00405d1d-c5b3-4343-a141-51c93d59247b: Playwright browser/API passed; LHCI completed; Docusaurus built and authenticated report fetched successfully. Test harness then failed parsing valid HTTP 204 DELETE; harness fixed and full rerun in progress.
 - Next production build and typecheck passed before mobile sidebar CSS fix; rebuild and browser smoke in progress.

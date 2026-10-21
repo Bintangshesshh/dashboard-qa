@@ -1,6 +1,6 @@
 # QA Automation Dashboard
 
-English, light-theme dashboard for a trusted development team. Next.js App Router + TypeScript + Tailwind, PostgreSQL, Playwright, Lighthouse CI, live WebSocket logs, and per-run Docusaurus reports.
+English, light-theme dashboard for a trusted development team. Next.js App Router + TypeScript + Tailwind, SQLite, Playwright, Lighthouse CI, live WebSocket logs, and per-run Docusaurus reports.
 
 ## Security boundary
 
@@ -13,7 +13,7 @@ The shared operator token is a deliberate first deployment boundary, not SSO or 
 - web/app/ — responsive dashboard, suite/case editor, run details, terminal
 - web/next.config.mjs — standalone deployment and local API rewrites
 - server/index.mjs — authenticated REST API, WebSocket subscriptions, report serving
-- server/store.mjs — PostgreSQL schema and persistence
+- server/store.mjs — SQLite schema and persistence
 - server/runner.mjs — process execution, cancellation, artifacts, documentation trigger
 - server/validation.mjs — request validation and target allowlist
 - scripts/build-run-docs.mjs — isolated per-run Docusaurus production build
@@ -28,7 +28,7 @@ The shared operator token is a deliberate first deployment boundary, not SSO or 
 
 ## Prerequisites
 
-Node.js 22 LTS, npm, PostgreSQL 17+ with UTF8 encoding. Linux servers need Playwright browser system dependencies. Docker deployment includes them. The existing root Playwright version and Docker Playwright image must remain aligned.
+Node.js 22.5+ (or 24+, where `node:sqlite` no longer needs the flag), npm. No database server is required: history is stored in one SQLite file. Linux servers need Playwright browser system dependencies. Docker deployment includes them. The existing root Playwright version and Docker Playwright image must remain aligned.
 
 Install from lockfiles:
 
@@ -46,13 +46,13 @@ Linux without Docker:
 npx playwright install --with-deps chromium
 ~~~
 
-Copy .env.example to .env only if you do not already have .env. Merge dashboard keys into an existing file without losing legacy credentials. Generate a strong token and a URL-safe database password separately:
+Copy .env.example to .env only if you do not already have .env. Merge dashboard keys into an existing file without losing legacy credentials. Generate a strong token:
 
 ~~~sh
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ~~~
 
-Set DATABASE_URL, OPERATOR_TOKEN (at least 24 characters), TARGET_ALLOWLIST (comma-separated exact origins), RUNS_DIR and COOKIE_SECURE. Create the database and grant the application user permission to create tables in its own schema. Startup creates required tables; it does not create the database. Use UTF8 so native Unicode logs can be stored.
+Set DATABASE_URL, OPERATOR_TOKEN (at least 24 characters), TARGET_ALLOWLIST (comma-separated exact origins), RUNS_DIR and COOKIE_SECURE. DATABASE_URL accepts `sqlite:./data/qa.db`, `file:/data/qa.db` or a plain path; the required directory is created automatically and startup creates the tables. Use an absolute path such as `sqlite:/data/qa.db` for services, and back up that single file (plus any `-wal`/`-shm` siblings) instead of running a database server.
 
 ## Run locally
 
@@ -105,20 +105,20 @@ The builder accepts node scripts/build-run-docs.mjs <run-directory>. REPORT_BASE
 
 Docker Engine + Compose plugin required on the destination server. Docker is not required for local Node development.
 
-1. Set POSTGRES_PASSWORD, OPERATOR_TOKEN and TARGET_ALLOWLIST in .env. Use a hex password to avoid URL-encoding problems in DATABASE_URL.
+1. Set OPERATOR_TOKEN and TARGET_ALLOWLIST in .env.
 2. For production set COOKIE_SECURE=true. Terminate HTTPS at the company reverse proxy.
 3. Run docker compose config to validate configuration.
 4. Run docker compose up -d --build.
 5. Check docker compose ps and docker compose logs -f backend.
-6. Proxy the dedicated subdomain to http://127.0.0.1:8080 with WebSocket upgrades enabled. Do not expose ports 3000, 3001, PostgreSQL, or the docs service publicly.
+6. Proxy the dedicated subdomain to http://127.0.0.1:8080 with WebSocket upgrades enabled. Do not expose ports 3000, 3001, or the docs service publicly.
 
-Compose runs web, backend, PostgreSQL, docs and gateway. Docusaurus is built by the runner after each run; the docs service serves the resulting static files read-only. PostgreSQL and run artifacts use separate named volumes. Gateway protects reports with an authentication subrequest. Browser security sandbox headers isolate executable native reports from dashboard credentials; some native report interactivity may require downloading artifacts and opening offline.
+Compose runs web, backend, docs and gateway. Docusaurus is built by the runner after each run; the docs service serves the resulting static files read-only. The SQLite database and run artifacts use separate named volumes. Gateway protects reports with an authentication subrequest. Browser security sandbox headers isolate executable native reports from dashboard credentials; some native report interactivity may require downloading artifacts and opening offline.
 
 For a localhost-only HTTP Docker preview, set COOKIE_SECURE=false and keep the gateway bound to 127.0.0.1. Production headed mode needs an explicitly managed display server; use headless by default.
 
 ## PM2 alternative
 
-Install dependencies, browser/system dependencies and PostgreSQL first. Configure .env, then:
+Install dependencies, browser/system dependencies first. Configure .env, then:
 
 ~~~sh
 npm run build --prefix web
@@ -146,7 +146,7 @@ With local fixture and backend running, set OPERATOR_TOKEN in the terminal and r
 node scripts/verify-dashboard.mjs
 ~~~
 
-The integration check creates temporary suite/case records, executes real Playwright, checks live logs, PostgreSQL history, authenticated Docusaurus serving and CRUD deletion. It preserves run history/artifacts as test evidence. VERIFY_MODE=both also executes Lighthouse. Do not aim this check at a company production target.
+The integration check creates temporary suite/case records, executes real Playwright, checks live logs, SQLite history, authenticated Docusaurus serving and CRUD deletion. It preserves run history/artifacts as test evidence. VERIFY_MODE=both also executes Lighthouse. Do not aim this check at a company production target.
 
 ## Operations and known boundaries
 
@@ -155,7 +155,7 @@ The integration check creates temporary suite/case records, executes real Playwr
 - Reports are static Docusaurus exports: CSS is embedded, JavaScript hydration is removed, and native details/download links remain usable under the report sandbox. Native Playwright/Lighthouse reports are for offline viewing. Older reports need rebuilding to receive this rendering fix.
 - See REVIEW.md for the whole-system review, tested fixes, and remaining verification gaps.
 
-- Back up PostgreSQL using pg_dump and back up the run volume. Restore both to recover history and artifacts.
+- Back up the SQLite database file (with any `-wal`/`-shm` siblings) and back up the run volume. Stop the backend or use `sqlite3 qa.db ".backup copy.db"` for a consistent copy. Restore both to recover history and artifacts.
 - No automatic artifact retention is enabled yet. Monitor disk growth and define a company retention policy before shared deployment; do not delete active run directories.
 - Use one backend process. Runs are serialized and conflicting starts return a clear error.
 - Keep target credentials in dedicated test accounts, never embedded in case code or screenshots.
