@@ -26,10 +26,6 @@ export const SITES = {
 };
 
 export const SPEC = {
-  "co-jaja.spec.ts": "jaja",
-  "co-ebh.spec.ts": "ebh",
-  "co-masdis.spec.ts": "masdis",
-  "galogin-masdis.spec.ts": "masdis",
   "demo-masdis.spec.ts": "masdis-demo",
   "cart-jaja.spec.ts": "jaja",
   "cart-ebh.spec.ts": "ebh",
