@@ -6,7 +6,7 @@ import "./theme.css";
 import "./shell-skin.css";
 
 export const metadata: Metadata = {
-  title: "QA Dashboard",
+  title: "Playbook",
   description: "QA workbench for Playwright, Lighthouse CI and test reports",
 };
 

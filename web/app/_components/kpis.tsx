@@ -71,8 +71,8 @@ export function LineChart({ rows, range, today, series = "runs", ariaLabel = "Ex
 
   return (
     <svg className="line-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={ariaLabel} preserveAspectRatio="none">
-      {ticks.map(t => (
-        <g key={t}>
+      {ticks.map((t, i) => (
+        <g key={`${i}-${t}`}>
           <line className="grid-line" x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} />
           <text className="axis-label" x={padL - 8} y={y(t) + 3} textAnchor="end">{series === "runs" ? t : `${t}%`}</text>
         </g>

@@ -1,6 +1,7 @@
 /* Restyle layer for shell.css using the reference tokens.
    Loaded after shell.css so it only overrides look, never layout structure. */
 
+html:root{background:var(--bg);font-family:var(--font-body)}
 body{
   background:var(--bg);
   color:var(--ink);
@@ -9,7 +10,7 @@ body{
   line-height:1.5;
   -webkit-font-smoothing:antialiased;
 }
-h1,h2,h3{font-family:var(--font-display);letter-spacing:-.01em}
+h1,h2,h3{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em}
 button,input,select,textarea{font-family:inherit;color:inherit}
 :focus-visible{outline:none;box-shadow:0 0 0 4px var(--accent-soft)}
 
@@ -57,7 +58,7 @@ button,input,select,textarea{font-family:inherit;color:inherit}
 /* kpi */
 .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:18px;gap:8px}
 .kpi h2,.kpi .kpi-label{font-size:var(--fs-meta);color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
-.kpi-value,.kpi-val{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:30px;font-weight:600;letter-spacing:-.02em;color:var(--fg)}
+.kpi-value,.kpi-val{font-family:var(--font-display);font-size:30px;font-weight:600;letter-spacing:-.02em;color:var(--fg)}
 .kpi-value.ok{color:var(--ok)}
 .kpi-value.bad{color:var(--bad)}
 .kpi-value.warn{color:var(--warn)}

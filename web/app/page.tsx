@@ -6,7 +6,7 @@ import { FailureCards, FailurePreview, ProjectGrid, RecentRuns, RunDrawer, RunsT
 
 const API = process.env.NEXT_PUBLIC_API || "";
 const WORKBENCH = ["workspace", "lighthouse", "history"];
-const QA_NAV: [string, string][] = [["overview", "Overview"], ["runs", "Runs"], ["failures", "Failures"], ["projects", "Projects"]];
+const QA_NAV: [string, string][] = [["overview", "Overview"]];
 const BENCH_NAV: [string, string][] = [["workspace", "Playwright"], ["lighthouse", "Lighthouse"], ["history", "Reports"]];
 const starter = `import { test, expect } from '@playwright/test';
 
@@ -32,7 +32,7 @@ export default function Page() {
   const [detail, setDetail] = useState<Run | null>(null), [stream, setStream] = useState(""), [logs, setLogs] = useState<Log[]>([]), [connection, setConnection] = useState("standby"), [retry, setRetry] = useState(0);
   const [project, setProject] = useState("all"), [range] = useState(14), [statusFilter, setStatusFilter] = useState("all"), [selected, setSelected] = useState<string | null>(null);
   const followLogs = useRef(true), terminal = useRef<HTMLDivElement>(null), socket = useRef<WebSocket | null>(null), seq = useRef(0);
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(true);
   const suite = suites.find(s => s.id === sid), selectedCase = suite?.cases.find(c => c.id === cid), dirty = !!selectedCase && selectedCase.code !== code;
 
   const request = useCallback(async (path: string, init: RequestInit = {}, auth = token) => {
@@ -62,7 +62,7 @@ export default function Page() {
   useEffect(() => {
     let saved: string | null = null;
     try { saved = localStorage.getItem("qa-theme") } catch {}
-    setDark(saved ? saved === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches);
+    if (saved) setDark(saved === "dark");
   }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
@@ -193,7 +193,7 @@ export default function Page() {
   const visible = useMemo(() => within(rows, range, project, now), [rows, range, project, now]);
   const summary = useMemo(() => stats(visible), [visible]);
   const detailRow = detail ? rows.find(r => r.id === detail.id) ?? null : null;
-  const failureCount = visible.filter(r => r.status === "failed").length;
+  const navView = ["runs", "failures", "projects"].includes(view) ? "overview" : view;
   const title = WORKBENCH.includes(view) ? (view === "lighthouse" ? "Lighthouse" : view === "history" ? "Reports" : "Playwright") : TITLES[view][0];
   const sub = WORKBENCH.includes(view) ? (suite ? suite.name + " · " + suite.targetUrl : "Select or create a suite.") : TITLES[view][1];
   function openRun(id: string) { const r = runs.find(x => x.id === id); if (!r) return; setDetail(r); setSelected(id); setStream(id) }
@@ -201,16 +201,15 @@ export default function Page() {
   return (
     <div className={"shell " + (collapsed ? "nav-off" : "")}>
       <aside className="sidebar" id="sidebar">
-        <div className="brand"><span className="brand-text"><strong>QA Dashboard</strong><small>Eureka Group</small></span></div>
+        <div className="brand"><span className="brand-text"><strong>Playbook</strong><small>Eureka Group</small></span></div>
         <nav aria-label="Main navigation" className="nav">
           {QA_NAV.map(([id, label]) => (
-            <button key={id} className="nav-item" aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>
+            <button key={id} className="nav-item" aria-current={navView === id ? "page" : undefined} onClick={() => setView(id)}>
               <span className="dot" />{label}
-              {id === "failures" && <span className="pill-count">{failureCount}</span>}
             </button>
           ))}
           {BENCH_NAV.map(([id, label]) => (
-            <button key={id} className="nav-item" aria-current={view === id ? "page" : undefined} onClick={() => setView(id)}>
+            <button key={id} className="nav-item" aria-current={navView === id ? "page" : undefined} onClick={() => setView(id)}>
               <span className="dot" />{label}
             </button>
           ))}

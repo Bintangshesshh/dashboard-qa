@@ -11,46 +11,47 @@ try {
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
   await page.goto(base + '/', { waitUntil: 'domcontentloaded' });
 
-  // Sidebar: 4 QA views + 3 workbench views.
-  const nav = await page.locator('.nav-item').allTextContents();
+  // Sidebar: only the four Playbook views.
+  const nav = (await page.locator('.nav-item').allTextContents()).map(t => t.trim());
   console.log('nav:', nav);
-  for (const label of ['Overview', 'Runs', 'Failures', 'Projects', 'Playwright', 'Lighthouse', 'Reports']) {
-    if (!nav.some(n => n.includes(label))) problems.push('missing nav item ' + label);
+  assert.deepEqual(nav, ['Overview', 'Playwright', 'Lighthouse', 'Reports']);
+  for (const hidden of ['Runs', 'Failures', 'Projects']) {
+    assert.ok(!nav.includes(hidden), 'unexpected nav item ' + hidden);
   }
   await page.screenshot({ path: 'qa-overview.png', fullPage: true });
 
-  // Overview structure: 6 KPIs, 14 bars, donut.
+  // Overview structure: 6 KPIs, 14 chart hits, donut.
   assert.equal(await page.locator('.kpis .kpi').count(), 6, 'kpi count');
-  assert.equal(await page.locator('.chart .bar').count(), 14, 'chart bars');
+  assert.equal(await page.locator('.line-chart .hit').count(), 14, 'chart points');
   assert.equal(await page.locator('.donut-value').count(), 1, 'donut');
 
-  // Runs view + status chip filter.
-  await page.locator('.nav-item', { hasText: 'Runs' }).click();
-  await page.locator('h1', { hasText: 'Runs' }).waitFor();
-  await page.locator('.chip', { hasText: 'Failed' }).click();
-  assert.equal(await page.locator('.chip.active').textContent(), 'Failed');
-  await page.screenshot({ path: 'qa-runs.png', fullPage: true });
+  // Reference theme: dark by default, SF/Segoe body, Apple blue accent.
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(0, 0, 0)');
+  assert.match(await page.evaluate(() => getComputedStyle(document.body).fontFamily), /SF Pro Text|Segoe UI|system-ui/i);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.btn-primary')).backgroundColor), 'rgb(0, 113, 227)');
 
-  // Failures + Projects.
-  await page.locator('.nav-item', { hasText: 'Failures' }).click();
-  await page.locator('h1', { hasText: 'Failures' }).waitFor();
-  await page.screenshot({ path: 'qa-failures.png', fullPage: true });
-  await page.locator('.nav-item', { hasText: 'Projects' }).click();
-  await page.locator('h1', { hasText: 'Projects' }).waitFor();
-  await page.screenshot({ path: 'qa-projects.png', fullPage: true });
+  // Hidden views stay reachable from Overview and keep Overview highlighted.
+  await page.locator('#view-overview button.link', { hasText: 'Open runs' }).click();
+  await page.getByRole('banner').locator('h1', { hasText: 'Runs' }).waitFor();
+  assert.equal((await page.locator('.nav-item[aria-current="page"]').textContent()).trim(), 'Overview');
 
   // Workbench views still reachable.
-  await page.locator('.nav-item', { hasText: 'Playwright' }).click();
-  await page.getByRole('banner').locator('h1', { hasText: 'Playwright' }).waitFor();
+  for (const label of ['Playwright', 'Lighthouse', 'Reports']) {
+    await page.locator('.nav-item', { hasText: label }).click();
+    await page.getByRole('banner').locator('h1', { hasText: label }).waitFor();
+  }
   assert.equal(await page.locator('[aria-label="Toggle sidebar"]').count(), 1);
 
-  // Dark mode toggle.
+  // Theme toggle: dark -> light -> dark.
   await page.locator('.nav-item', { hasText: 'Overview' }).click();
+  await page.getByRole('button', { name: 'Switch to light mode' }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(245, 245, 247)');
+  await page.screenshot({ path: 'qa-light.png', fullPage: true });
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark');
   await page.screenshot({ path: 'qa-dark.png', fullPage: true });
-  await page.getByRole('button', { name: 'Switch to light mode' }).click();
-  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
 
   // Mobile: no horizontal overflow.
   await page.setViewportSize({ width: 390, height: 844 });
@@ -59,7 +60,7 @@ try {
 
   if (errors.length) problems.push('browser errors: ' + errors.join(' | '));
   if (problems.length) throw new Error(problems.join('; '));
-  console.log('QA dashboard check passed: nav, 4 views, chips, KPIs, 14 bars, donut, dark mode, mobile.');
+  console.log('Playbook check passed: 4 nav items, hidden views reachable, dark-first reference theme, toggle, mobile.');
 } finally {
   await browser.close();
 }
