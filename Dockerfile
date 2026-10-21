@@ -35,7 +35,7 @@ COPY --from=runner-build --chown=pwuser:pwuser /app ./
 RUN mkdir -p /data/runs && chown -R pwuser:pwuser /data
 USER pwuser
 EXPOSE 3001
-CMD ["node", "server/index.mjs"]
+CMD ["node", "--experimental-sqlite", "server/index.mjs"]
 
 FROM nginxinc/nginx-unprivileged:1.28-alpine AS docs
 COPY deploy/docs.conf /etc/nginx/conf.d/default.conf
