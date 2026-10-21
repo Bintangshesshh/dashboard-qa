@@ -4,127 +4,204 @@ import { mkdir, writeFile, appendFile, readdir, readFile } from 'node:fs/promise
 import { join, resolve, relative } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { target } from './validation.mjs';
-const root = fileURLToPath(new URL('../',import.meta.url));
-const require = createRequire(join(root,'package.json'));
 
-export async function filesBelow(dir,base=dir) {
-  const files=[];
-  for(const entry of await readdir(dir,{withFileTypes:true}).catch(()=>[])) {
-    const path=join(dir,entry.name);
-    if(entry.isSymbolicLink()) continue;
-    if(entry.isDirectory()) files.push(...await filesBelow(path,base));
-    else if(entry.isFile()) files.push(relative(base,path).replaceAll('\\','/'));
+const root = fileURLToPath(new URL('../', import.meta.url));
+const require = createRequire(join(root, 'package.json'));
+
+export async function filesBelow(dir, base = dir) {
+  const files = [];
+  for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    const p = join(dir, entry.name);
+    if (entry.isSymbolicLink()) continue;
+    if (entry.isDirectory()) files.push(...await filesBelow(p, base));
+    else if (entry.isFile()) files.push(relative(base, p).replaceAll('\\', '/'));
   }
   return files;
 }
-export async function checkTarget(url,origins) {
-  let current=target(url,origins);
-  for(let i=0;i<6;i++) {
-    const response=await fetch(current,{method:'HEAD',redirect:'manual',signal:AbortSignal.timeout(10000)});
-    if(response.status>=300&&response.status<400&&response.headers.get('location')) { current=target(new URL(response.headers.get('location'),current).href,origins); continue; }
-    return current;
-  }
-  throw new Error('Too many target redirects');
-}
+
 export class Runner extends EventEmitter {
-  constructor(store,{runsDir=resolve(root,'.runs'),origins=[],timeout=300000,docs=true}={}) {
-    super(); Object.assign(this,{store,runsDir,origins,timeout,docs}); this.active=null;
+  constructor(store, { runsDir = resolve(root, '.runs'), origins = [], timeout = 300000 } = {}) {
+    super();
+    Object.assign(this, { store, runsDir, origins, timeout });
+    this.active = null;
   }
-  directory(id) { return join(this.runsDir,id); }
-  start(run,cases) {
-    if(this.active) throw Object.assign(new Error('Another run is active'),{status:409});
-    const state={run,cases,seq:0,chain:Promise.resolve(),child:null,cancelled:false}; this.active=state;
-    state.done=this.execute(state).finally(()=>{this.active=null;});
+
+  directory(runId) { return join(this.runsDir, runId); }
+
+  async start(runId, testFile) {
+    if (this.active) throw Object.assign(new Error('Another run is active'), { status: 409 });
+    const state = { runId, testFile, seq: 0, chain: Promise.resolve(), child: null, cancelled: false };
+    this.active = state;
+    state.done = this.execute(state).finally(() => { this.active = null; });
     return state.done;
   }
-  async log(state,stream,text) {
-    const entry={seq:++state.seq,stream,text:String(text),at:new Date().toISOString()};
-    state.chain=state.chain.then(async()=>{await this.store.log(state.run.id,entry); await appendFile(join(this.directory(state.run.id),'logs.txt'),entry.text); this.emit('log',{type:'log',runId:state.run.id,...entry});});
+
+  async cancel(runId) {
+    if (!this.active || this.active.runId !== runId) return false;
+    this.active.cancelled = true;
+    if (this.active.child) this.active.child.kill('SIGTERM');
+    return true;
+  }
+
+  async log(state, stream, text) {
+    const entry = { seq: ++state.seq, stream, text: String(text), at: new Date().toISOString() };
+    state.chain = state.chain.then(async () => {
+      await this.store.log(state.runId, entry);
+      await appendFile(join(this.directory(state.runId), 'logs.txt'), entry.text);
+      this.emit('log', { type: 'log', runId: state.runId, ...entry });
+    });
     return state.chain;
   }
-  async status(state,patch) {
-    Object.assign(state.run,patch); await this.store.put('runs',state.run);
-    await writeFile(join(this.directory(state.run.id),'run.json'),JSON.stringify(state.run,null,2));
-    this.emit('status',{type:'status',run:state.run});
+
+  async status(patch) {
+    this.emit('status', { type: 'status', runId: this.active?.runId, run: await this.store.patchRun(this.active?.runId, patch) });
   }
-  kill(child) {
-    if(!child?.pid) return;
-    if(process.platform==='win32') { const killer=spawn('taskkill',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore',windowsHide:true}); killer.on('error',()=>child.kill()); }
-    else { try { process.kill(-child.pid,'SIGKILL'); } catch { child.kill('SIGKILL'); } }
-  }
-  async cancel(id) {
-    const state=this.active;
-    if(!state||state.run.id!==id) return false;
-    state.cancelled=true; this.kill(state.child); await this.status(state,{status:'cancelling'}); return true;
-  }
-  command(state,args,env={}) {
-    return new Promise((resolvePromise,reject)=>{
-      if(state.cancelled) return reject(new Error('Run cancelled'));
-      const child=spawn(process.execPath,args,{cwd:this.directory(state.run.id),shell:false,detached:process.platform!=='win32',windowsHide:!state.run.headed,env:{...process.env,OPERATOR_TOKEN:'',DATABASE_URL:'',...env}});
-      state.child=child;
-      let timedOut=false;
-      const timer=setTimeout(()=>{timedOut=true;this.kill(child);},this.timeout);
-      child.stdout.on('data',data=>this.log(state,'stdout',data.toString()).catch(()=>this.kill(child)));
-      child.stderr.on('data',data=>this.log(state,'stderr',data.toString()).catch(()=>this.kill(child)));
-      child.on('error',err=>{clearTimeout(timer);reject(err);});
-      child.on('close',code=>{clearTimeout(timer);state.child=null; if(timedOut) reject(new Error('Execution timed out')); else resolvePromise(code??1);});
-    });
-  }
+
   async execute(state) {
-    const {run,cases}=state,dir=this.directory(run.id),artifacts=join(dir,'artifacts');
+    const { runId, testFile } = state;
+    const dir = this.directory(runId);
+    await mkdir(dir, { recursive: true });
+    await this.store.patchRun(runId, { status: 'running', started_at: new Date().toISOString() });
+    this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
+
+    const started = Date.now();
     try {
-      await mkdir(artifacts,{recursive:true}); await writeFile(join(dir,'logs.txt'),'');
-      await this.status(state,{status:'running',startedAt:new Date().toISOString()});
-      await this.log(state,'system','Trusted operator execution. Submitted code has host privileges; target allowlist is not a code sandbox.\n');
-      await this.log(state,'system','[target] Checking '+run.targetUrl+'\n');
-      await checkTarget(run.targetUrl,this.origins);
-      let exitCode=0;
-      if(run.mode==='pw'||run.mode==='both') {
-        await this.log(state,'system','[playwright] Starting '+cases.length+' case(s), '+(run.headed?'headed':'headless')+'\n');
-        const specDir=join(dir,'specs'); await mkdir(specDir,{recursive:true});
-        const playwright=require.resolve('@playwright/test');
-        const fixture=`const {test:base,expect}=require(${JSON.stringify(playwright)});
-const origins=${JSON.stringify(this.origins)};
-exports.test=base.extend({context:async({context},use)=>{await context.route('**/*',route=>{const url=new URL(route.request().url());return ['data:','blob:','about:'].includes(url.protocol)||origins.includes(url.origin)?route.continue():route.abort('blockedbyclient');});await use(context);}});
-exports.expect=expect;`;
-        await writeFile(join(specDir,'fixture.cjs'),fixture);
-        for(const test of cases) await writeFile(join(specDir,test.id+'.spec.ts'),test.code.replace(/(['"])@playwright\/test\1/g,"'./fixture.cjs'"));
-        const config={testDir:specDir,timeout:30000,workers:1,retries:0,use:{baseURL:run.targetUrl,headless:!run.headed,trace:'retain-on-failure',screenshot:'only-on-failure',video:'retain-on-failure',serviceWorkers:'block'},outputDir:join(artifacts,'playwright'),reporter:[['list'],['json',{outputFile:join(artifacts,'playwright.json')}],['html',{outputFolder:join(artifacts,'playwright-report'),open:'never'}],[join(root,'scripts/pw-reporter.mjs'),{outputFile:join(artifacts,'pw','langkah.json')}]]};
-        await writeFile(join(dir,'playwright.config.mjs'),'export default '+JSON.stringify(config));
-        exitCode=await this.command(state,[require.resolve('@playwright/test/cli'),'test','--config',join(dir,'playwright.config.mjs')],{QA_TARGET_URL:run.targetUrl});
+      if (testFile.tool === 'pw') {
+        await this.runPlaywright(state);
+      } else {
+        await this.runLighthouse(state);
       }
-      if(!state.cancelled&&(run.mode==='lh'||run.mode==='both')) {
-        await this.log(state,'system','[lighthouse] Starting Chromium audit. Native LHCI output follows.\n');
-        const config={ci:{collect:{url:[run.targetUrl],numberOfRuns:1,settings:{chromeFlags:run.headed?'--disable-dev-shm-usage':'--headless --disable-dev-shm-usage'}},upload:{target:'filesystem',outputDir:join(artifacts,'lighthouse')}}};
-        await writeFile(join(dir,'lighthouserc.json'),JSON.stringify(config));
-        const cli=require.resolve('@lhci/cli/src/cli.js');
-        const code=await this.command(state,[cli,'autorun','--config='+join(dir,'lighthouserc.json')],{CHROME_PATH:process.env.CHROME_PATH||require('playwright').chromium.executablePath()}); exitCode=exitCode||code;
+      if (state.cancelled) {
+        await this.store.patchRun(runId, { status: 'cancelled', finished_at: new Date().toISOString(), duration_ms: Date.now() - started });
       }
-      await state.chain;
-      await this.status(state,{status:state.cancelled?'cancelled':exitCode===0?'passed':'failed',docsStatus:this.docs&&!state.cancelled?'building':'skipped',exitCode,finishedAt:new Date().toISOString()});
-    } catch(error) {
-      await state.chain.catch(()=>{});
-      await this.status(state,{status:state.cancelled?'cancelled':'failed',docsStatus:this.docs&&!state.cancelled?'building':'skipped',error:error.message,exitCode:1,finishedAt:new Date().toISOString()}).catch(err=>console.error('Run persistence failed',err));
+    } catch (error) {
+      await this.log(state, 'stderr', `${error.message}\n`);
+      await this.store.patchRun(runId, { status: 'failed', error: error.message, finished_at: new Date().toISOString(), duration_ms: Date.now() - started });
     }
-    try {
-      const artifactFiles=await filesBelow(artifacts);
-      const report=await readFile(join(artifacts,'playwright.json'),'utf8').then(JSON.parse).catch(()=>null);
-      const stats=report?.stats;
-      const summary=stats?{passed:stats.expected??0,failed:stats.unexpected??0,skipped:stats.skipped??0,total:(stats.expected??0)+(stats.unexpected??0)+(stats.skipped??0)+(stats.flaky??0),durationMs:stats.duration??0}:null;
-      let lighthouseScores=null;
-      for(const file of artifactFiles.filter(name=>name.startsWith('lighthouse/')&&name.endsWith('.json'))) {
-        const data=await readFile(join(artifacts,file),'utf8').then(JSON.parse).catch(()=>null);
-        if(data?.categories){lighthouseScores=Object.fromEntries(Object.entries(data.categories).map(([name,category])=>[name,category.score]));break;}
+    this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
+  }
+
+  // Jalankan satu spec Playwright langsung (fase 1: CLI lokal menjalankan).
+  async runPlaywright(state) {
+    const { runId, testFile } = state;
+    const dir = this.directory(runId);
+    const targetUrl = null; // diisi oleh CLI/API pada fase selanjutnya; untuk saat ini hardcode dari test_file code
+    await this.log(state, 'system', `[runner] Menjalankan Playwright ${testFile.path}\n`);
+    const specPath = join(root, testFile.path);
+    const env = { ...process.env };
+    const args = ['playwright', 'test', specPath, '--reporter=json', `--output=${join(dir, 'artifacts')}`];
+    const child = spawn('npx', args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    state.child = child;
+    child.stdout.on('data', d => this.log(state, 'stdout', d));
+    child.stderr.on('data', d => this.log(state, 'stderr', d));
+    const code = await new Promise(res => child.on('close', res));
+    state.child = null;
+    await state.chain;
+
+    // Parse hasil JSON Playwright → playwright_results
+    const results = await this.parsePlaywright(dir);
+    const status = state.cancelled ? 'cancelled' : code === 0 && results.every(r => r.status === 'passed') ? 'passed' : 'failed';
+    await this.store.patchRun(runId, {
+      status,
+      finished_at: new Date().toISOString(),
+      exit_code: code,
+      duration_ms: Date.now() - state.startTime,
+    });
+    if (results.length) await this.store.addPlaywrightResults(runId, results);
+    await this.collectArtifacts(runId, dir);
+    await this.store.patchRun(runId, { finalized_at: new Date().toISOString() });
+  }
+
+  async runLighthouse(state) {
+    const { runId, testFile } = state;
+    const dir = this.directory(runId);
+    await this.log(state, 'system', `[runner] Menjalankan Lighthouse CI ${testFile.path}\n`);
+    const configPath = join(root, testFile.path);
+    const child = spawn('npx', ['lhci', 'autorun', '--config=' + configPath, '--outputDir=' + join(dir, 'artifacts')], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    state.child = child;
+    child.stdout.on('data', d => this.log(state, 'stdout', d));
+    child.stderr.on('data', d => this.log(state, 'stderr', d));
+    const code = await new Promise(res => child.on('close', res));
+    state.child = null;
+    await state.chain;
+
+    const results = await this.parseLighthouse(dir);
+    const status = state.cancelled ? 'cancelled' : code === 0 ? 'passed' : 'failed';
+    await this.store.patchRun(runId, {
+      status,
+      finished_at: new Date().toISOString(),
+      exit_code: code,
+      duration_ms: Date.now() - state.startTime,
+    });
+    if (results.length) await this.store.addLighthouseResults(runId, results);
+    await this.collectArtifacts(runId, dir);
+    await this.store.patchRun(runId, { finalized_at: new Date().toISOString() });
+  }
+
+  async parsePlaywright(dir) {
+    const files = await filesBelow(join(dir, 'artifacts')).catch(() => []);
+    const jsonFile = files.find(f => f.endsWith('.json') && f.includes('report'));
+    if (!jsonFile) return [];
+    const data = await readFile(join(dir, 'artifacts', jsonFile), 'utf8').then(JSON.parse).catch(() => null);
+    if (!data?.suites) return [];
+    const out = [];
+    for (const suite of data.suites) {
+      for (const spec of suite.specs ?? []) {
+        const tests = spec.tests ?? (spec.ok !== undefined ? [spec] : []);
+        for (const t of tests) {
+          const s = t.status ?? (t.ok ? 'passed' : 'failed');
+          if (s === 'skipped') continue;
+          out.push({
+            file: spec.file ?? 'unknown',
+            title: t.title ?? '',
+            tcId: (t.title ?? '').match(/TC-[A-Z0-9-]+/)?.[0] ?? null,
+            status: s === 'passed' || s === 'failed' || s === 'skipped' ? s : (t.flaky ? 'flaky' : 'failed'),
+            durationMs: t.duration ?? null,
+            retry: t.retry ?? 0,
+            error: t.error?.message ? String(t.error.message).slice(0, 3000) : null,
+          });
+        }
       }
-      await this.status(state,{artifacts:artifactFiles,summary,lighthouseScores});
-      if(this.docs&&!state.cancelled) {
-        await this.log(state,'system','[docs] Building Docusaurus report; test outcome already recorded.\n');
-        const code=await this.command(state,[join(root,'scripts/build-run-docs.mjs'),dir],{REPORT_BASE_URL:'/reports/'+run.id+'/docs/'});
-        await state.chain;
-        await this.status(state,{docsStatus:code===0?'ready':'failed',docsUrl:code===0?'/reports/'+run.id+'/docs/':null,reportUrl:code===0?'/reports/'+run.id+'/docs/':null});
-      }
-    } catch(error) { await this.status(state,{docsStatus:'failed',docsError:error.message}).catch(console.error); }
-    if(state.cancelled)await this.status(state,{status:'cancelled',docsStatus:'cancelled',finishedAt:new Date().toISOString(),reportUrl:null,docsUrl:null});
+    }
+    return out;
+  }
+
+  async parseLighthouse(dir) {
+    const files = await filesBelow(join(dir, 'artifacts')).catch(() => []);
+    const out = [];
+    for (const f of files.filter(f => f.includes('report') && f.endsWith('.json'))) {
+      const data = await readFile(join(dir, 'artifacts', f), 'utf8').then(JSON.parse).catch(() => null);
+      if (!data?.categories) continue;
+      const cat = (k) => data.categories[k]?.score ?? null;
+      out.push({
+        url: data.finalUrl ?? data.requestedUrl ?? f,
+        performance: cat('performance'),
+        accessibility: cat('accessibility'),
+        bestPractices: cat('best-practices'),
+        seo: cat('seo'),
+        lcpMs: data.audits?.['largest-contentful-paint']?.numericValue ?? null,
+        cls: data.audits?.['cumulative-layout-shift']?.numericValue ?? null,
+        tbtMs: data.audits?.['total-blocking-time']?.numericValue ?? null,
+        budgetFailed: null,
+        warnings: data.runWarnings?.length ? JSON.stringify(data.runWarnings) : null,
+      });
+    }
+    return out;
+  }
+
+  async collectArtifacts(runId, dir) {
+    const artifactsDir = join(dir, 'artifacts');
+    const files = await filesBelow(artifactsDir).catch(() => []);
+    for (const f of files) {
+      const kind = f.includes('lighthouse') || f.includes('lhci') ? 'lh-html'
+        : f.endsWith('.json') ? 'pw-json'
+        : f.endsWith('.html') ? 'pw-html'
+        : f.includes('trace') ? 'trace'
+        : f.includes('video') ? 'video'
+        : f.includes('.png') || f.includes('.jpg') ? 'screenshot'
+        : 'log';
+      const bytes = await readFile(join(artifactsDir, f)).then(b => b.length).catch(() => null);
+      this.store.addArtifact({ runId, kind, path: f, bytes });
+    }
   }
 }
