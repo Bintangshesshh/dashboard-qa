@@ -38,6 +38,11 @@ test.describe.serial("masdis — sampai keranjang", () => {
     throw err;
   };
 
+  // Masdis suka munculin dialog SweetAlert ("Informasi") yang nutupin layar dan
+  // makan klik. Tutup kalau ada, abaikan kalau nggak.
+  const tutupDialog = () =>
+    page.getByRole("button", { name: "OK" }).first().click({ timeout: 5000 }).catch(() => {});
+
   test("TC-MD-C1 homepage terbuka", async () => {
     await buka("https://masterdiskon.com/id-id");
     await expect(page).toHaveURL(/masterdiskon\.com/);
@@ -54,25 +59,45 @@ test.describe.serial("masdis — sampai keranjang", () => {
     await expect(page).not.toHaveURL(/\/login/i, { timeout: 30000 });
   });
 
-  test("TC-MD-C3 cari produk", async () => {
-    await buka("https://masterdiskon.com/id-id/search?keyword=hotel");
-    await expect(page).not.toHaveURL(/\/login/i, { timeout: 15000 });
-    expect(page.url(), "pencarian tidak kebuka").toMatch(/masterdiskon\.com/);
+  test("TC-MD-C3 cari hotel", async () => {
+    const cari = page.getByRole("textbox", { name: "Pencarian kota, hotel, tempat" });
+    await cari.click();
+    await cari.fill("bandung");
+    // Tombol submit dicari di form yang sama dengan textbox-nya — masdis punya
+    // beberapa <form> di satu halaman.
+    await cari.locator("xpath=ancestor::form").getByRole("button").first().click();
+    await tutupDialog();
+
+    // Kartu hasil pencarian ngarah ke detail hotel. Locator-nya jangan pakai nama
+    // kartu — namanya memuat harga yang berubah tiap hari.
+    const kartu = page.locator('a[href*="/product/hotel/detail"]').first();
+    await expect(kartu, "hasil pencarian hotel kosong").toBeVisible({ timeout: 60000 });
+
+    await tutupDialog();
+    await kartu.click();
+    await expect(page.getByRole("link", { name: "Pilih Kamar" }).first()).toBeVisible({
+      timeout: 60000,
+    });
   });
 
   test("TC-MD-C4 masuk keranjang", async () => {
-    // Keranjang kebuka kalau ikon/tombol keranjang muncul.
+    await tutupDialog();
+    await page.getByRole("link", { name: "Pilih Kamar" }).first().click();
+    await tutupDialog();
+    await page.getByRole("button", { name: "Pesan Sekarang" }).first().click();
+
+    // "Pemesanan Akomodasi" = halaman pesanan. Titik terakhir: sesudah ini bayar.
     await expect(
-      page
-        .getByRole("link", { name: /keranjang|cart/i })
-        .or(page.getByRole("button", { name: /keranjang|cart/i }))
-        .first(),
-    ).toBeVisible({ timeout: 30000 });
+      page.getByRole("heading", { name: "Pemesanan Akomodasi" }),
+      "tidak masuk halaman pemesanan",
+    ).toBeVisible({ timeout: 60000 });
   });
 
   test("TC-MD-C5 isi keranjang", async () => {
-    const badge = page.locator('[class*="cart" i] [class*="badge" i], [class*="badge" i]').first();
-    const isi = (await badge.textContent().catch(() => "0")) ?? "0";
-    expect(Number(/\d+/.exec(isi)?.[0] ?? 0), "keranjang kosong").toBeGreaterThanOrEqual(0);
+    // Pesanan kebawa kalau harganya ikut ke-render. Nggak ada klik lanjut.
+    await expect(
+      page.getByText(/Rp\s?[\d.]+/).first(),
+      "halaman pemesanan kosong",
+    ).toBeVisible({ timeout: 30000 });
   });
 });
