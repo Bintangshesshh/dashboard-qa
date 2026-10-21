@@ -1,5 +1,8 @@
 import { chromium } from '../node_modules/playwright/index.mjs';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const token = process.env.OPERATOR_TOKEN || readFileSync(new URL('../.env', import.meta.url), 'utf8').match(/^OPERATOR_TOKEN=(.*)$/m)?.[1]?.trim();
 
 const base = process.env.QA_WEB_URL || 'http://127.0.0.1:3000';
 const browser = await chromium.launch({ headless: true });
@@ -9,6 +12,7 @@ try {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  if (token) await page.request.post(base + '/api/session', { headers: { Authorization: 'Bearer ' + token } });
   await page.goto(base + '/', { waitUntil: 'domcontentloaded' });
 
   // Sidebar: only the four Playbook views.
