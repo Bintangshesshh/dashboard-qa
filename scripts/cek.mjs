@@ -3,7 +3,7 @@
 //   npm run cek                              -> semua: Playwright + Lighthouse + gabung
 //   npm run cek:pw                           -> Playwright aja
 //   npm run cek:lh                           -> Lighthouse aja
-//   npm run cek:pw -- eureka/cart-jaja.spec.ts -> spec tertentu (default: demo-masdis.spec.ts)
+//   npm run cek:pw -- eureka/cart-jaja.spec.ts -> spec tertentu (default: cart-masdis.spec.ts)
 //   npm run cek:pw -- --all                  -> semua spec di eureka/
 //   npm run cek:docs                         -> build docusaurus dulu, baru Lighthouse
 //
@@ -56,7 +56,7 @@ if (mode === 'all' || mode === 'pw') {
     'playwright',
     'test',
     `--output=${outDir}`,
-    ...(semuaSpec ? [] : specs.length ? specs : ['eureka/demo-masdis.spec.ts']),
+    ...(semuaSpec ? [] : specs.length ? specs : ['eureka/cart-masdis.spec.ts']),
     ...(grep ? [grep] : []),
   ]);
   if (pw === 127) console.log('npx/playwright nggak ketemu - npm i -D @playwright/test');

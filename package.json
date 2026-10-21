@@ -8,7 +8,7 @@
     "cek:pw": "node scripts/cek.mjs pw",
     "cek:pw:jaja": "node scripts/cek.mjs pw eureka/cart-jaja.spec.ts",
     "cek:pw:ebh": "node scripts/cek.mjs pw eureka/cart-ebh.spec.ts",
-    "cek:pw:masdis": "node scripts/cek.mjs pw eureka/demo-masdis.spec.ts",
+    "cek:pw:masdis": "node scripts/cek.mjs pw eureka/cart-masdis.spec.ts",
     "cek:lh": "node scripts/cek.mjs lh",
     "cek:lh:jaja": "node scripts/cek.mjs lh --target=jaja",
     "cek:lh:ebh": "node scripts/cek.mjs lh --target=ebh",

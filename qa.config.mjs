@@ -12,21 +12,15 @@ export const SITES = {
     host: "eurekabookhouse.com",
     akun: true,
   },
-  // Akun masterdiskon kena blokir (403). Semua tes login di-skip.
   masdis: {
     site: "Masterdiskon",
     host: "masterdiskon.com",
-    akun: false,
-  },
-  "masdis-demo": {
-    site: "Masterdiskon (tanpa akun)",
-    host: "masterdiskon.com",
-    akun: false,
+    akun: true,
   },
 };
 
 export const SPEC = {
-  "demo-masdis.spec.ts": "masdis-demo",
+  "cart-masdis.spec.ts": "masdis",
   "cart-jaja.spec.ts": "jaja",
   "cart-ebh.spec.ts": "ebh",
 };
