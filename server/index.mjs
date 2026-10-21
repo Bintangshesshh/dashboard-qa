@@ -8,13 +8,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { realpath, lstat } from 'node:fs/promises';
 import { Store } from './store.mjs';
 import { Runner } from './runner.mjs';
-import { fail, id, text, env as envValue, tool as toolValue, allowlist, target, authorized, cursor, bool } from './validation.mjs';
+import { buildSessionReport } from '../scripts/build-session-report.mjs';
+import { fail, id, text, env as envValue, tool as toolValue, allowlist, target, authorized, cursor, bool, rangeDays } from './validation.mjs';
 
 const scrypt = promisify(_scrypt);
 const root = fileURLToPath(new URL('../', import.meta.url));
 const route = fn => (req, res, next) => Promise.resolve().then(() => fn(req, res)).catch(next);
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
+
+// ?range=N → ISO timestamp N hari lalu; tanpa range → undefined (tanpa batas).
+const rangeStart = value => value === undefined ? undefined
+  : new Date(Date.now() - rangeDays({ range: value }) * 86400000).toISOString();
 
 async function verifyPassword(password, hash) {
   // format hash: scrypt$N$r$p$salt_b64$hash_b64
@@ -211,12 +216,16 @@ export function createApp({ store, runner, token, origins }) {
     }
   }));
 
+  app.get('/api/stats', requireAuth, route(async (req, res) => {
+    res.json(store.stats({ projectId: req.query.project ?? undefined, from: rangeStart(req.query.range) }));
+  }));
+
   app.get('/api/sessions', requireAuth, route(async (req, res) => {
     const { project, status, from, to } = req.query;
     res.json(store.listSessions({
       projectId: project ?? undefined,
       status: status ?? undefined,
-      from: from ?? undefined,
+      from: from ?? rangeStart(req.query.range),
       to: to ?? undefined,
     }));
   }));
@@ -249,7 +258,7 @@ export function createApp({ store, runner, token, origins }) {
     if (store.countActiveRuns() >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
     const runId = randomUUID();
     store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
-    runner.start(runId, tf);
+    runner.start(runId, tf, session.id);
     res.status(202).json({ runId });
   }));
 
@@ -258,6 +267,14 @@ export function createApp({ store, runner, token, origins }) {
     const tf = store.getTestFile(id(req.body?.testFileId));
     if (!tf) fail('Test file tidak ditemukan', 400);
     res.status(201).json({ testFile: tf });
+  }));
+
+  app.get('/api/runs', requireAuth, route(async (req, res) => {
+    res.json(store.listRuns({ projectId: req.query.project ?? undefined, tool: req.query.tool ?? undefined, limit: req.query.limit }));
+  }));
+
+  app.get('/api/lighthouse', requireAuth, route(async (req, res) => {
+    res.json(store.listLighthouseByProject({ projectId: req.query.project ?? undefined, limit: req.query.limit }));
   }));
 
   app.get('/api/runs/:id', requireAuth, route(async (req, res) => {
@@ -317,14 +334,21 @@ export function createApp({ store, runner, token, origins }) {
     const scope = req.body?.scope;
     if (!['pw', 'lh', 'both'].includes(scope)) fail("scope must be 'pw'|'lh'|'both'", 400);
     const runs = store.listRunsBySession(session.id);
+    // Hanya run yang belum final yang memblokir (PRD §7). cancelled/interrupted dianggap selesai.
+    if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Ada run yang belum final', 409);
     const finals = runs.filter(r => ['passed', 'failed'].includes(r.status));
-    if (finals.length !== runs.length) fail('Ada run yang belum final', 409);
     const tools = new Set(finals.map(r => r.tool));
     if (scope === 'both' && (!tools.has('pw') || !tools.has('lh'))) fail("'both' butuh minimal satu run pw dan satu run lh", 409);
     if (scope === 'pw' && !tools.has('pw')) fail("Tidak ada run Playwright final", 409);
     if (scope === 'lh' && !tools.has('lh')) fail("Tidak ada run Lighthouse final", 409);
-    const runIds = finals.filter(r => scope === 'both' || r.tool === scope).map(r => r.id);
+    // Rerun membuat baris baru; laporan memakai run final terbaru per tool (PRD §9).
+    const latest = tool => finals.filter(r => r.tool === tool).at(-1)?.id;
+    const runIds = (scope === 'both' ? ['pw', 'lh'] : [scope]).map(latest).filter(Boolean);
     const report = store.createReport({ id: randomUUID(), sessionId: session.id, scope, runIds, builtBy: req.user.id });
+    // Satu worker build: antre berurutan, jangan blok request.
+    app.__buildChain = (app.__buildChain ?? Promise.resolve())
+      .then(() => buildSessionReport(store, report.id))
+      .catch(err => console.error('[report]', report.id, err.message));
     res.status(202).json({ reportId: report.id, runIds });
   }));
 
@@ -339,15 +363,32 @@ export function createApp({ store, runner, token, origins }) {
     res.json(store.listAudit({ limit: req.query.limit, entity: req.query.entity }));
   }));
 
-  // ─── Artifacts (raw files) ───────────────────────────────────────────────
+  app.get('/artifacts/reports/:reportId/*', requireAuth, route(async (req, res) => {
+    const report = store.getReport(id(req.params.reportId));
+    if (!report) fail('Not found', 404);
+    const rel = req.params[0];
+    if (rel.includes('..')) fail('Invalid path', 400);
+    const base = join(root, '.reports', report.id);
+    const file = await realpath(join(base, rel));
+    if (!file.startsWith(await realpath(base))) fail('Invalid path', 400);
+    const stat = await lstat(file);
+    if (!stat.isFile()) fail('Not found', 404);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+    res.setHeader('X-Robots-Tag', 'noindex');
+    res.sendFile(file);
+  }));
+
   app.get('/artifacts/:runId/*', requireAuth, route(async (req, res) => {
     const runId = id(req.params.runId);
     const run = store.getRun(runId);
     if (!run) fail('Not found', 404);
     const rel = req.params[0];
     if (rel.includes('..')) fail('Invalid path', 400);
-    const base = join(root, '.runs', runId);
-    const file = realpath(join(base, rel));
+    const base = join(root, '.runs', runId, 'artifacts');
+    const file = await realpath(join(base, rel));
+    if (!file.startsWith(await realpath(base))) fail('Invalid path', 400);
     const stat = await lstat(file);
     if (!stat.isFile()) fail('Not found', 404);
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -356,19 +397,6 @@ export function createApp({ store, runner, token, origins }) {
     res.setHeader('X-Robots-Tag', 'noindex');
     const isDownload = /\.(zip|trace)$/i.test(rel);
     if (isDownload) res.setHeader('Content-Disposition', 'attachment');
-    res.sendFile(file);
-  }));
-
-  app.get('/artifacts/reports/:reportId/*', requireAuth, route(async (req, res) => {
-    const report = store.getReport(id(req.params.reportId));
-    if (!report) fail('Not found', 404);
-    const rel = req.params[0];
-    if (rel.includes('..')) fail('Invalid path', 400);
-    const base = join(root, '.reports', report.id);
-    const file = realpath(join(base, rel));
-    const stat = await lstat(file);
-    if (!stat.isFile()) fail('Not found', 404);
-    res.setHeader('X-Robots-Tag', 'noindex');
     res.sendFile(file);
   }));
 
@@ -434,7 +462,7 @@ export async function main() {
   const server = app.__wssServer ?? createServer(app);
   server.listen(Number(process.env.PORT ?? 3001), process.env.HOST ?? '127.0.0.1', () => console.log('QA backend listening', server.address()));
   const close = async () => {
-    if (runner.active) { await runner.cancel(runner.active.run.id); await runner.active?.done; }
+    if (runner.active) { await runner.cancel(runner.active.runId); await runner.active?.done; }
     for (const client of app.__wss?.clients ?? []) client.close();
     server.close();
     await store.close();

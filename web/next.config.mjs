@@ -8,6 +8,6 @@ export default {
   output: "standalone",
   outputFileTracingRoot: import.meta.dirname,
   async rewrites() {
-    return ["/api/:path*", "/reports/:path*", "/ws"].map(source => ({ source, destination: backend + source }));
+    return ["/api/:path*", "/artifacts/:path*", "/ws"].map(source => ({ source, destination: backend + source }));
   },
 };

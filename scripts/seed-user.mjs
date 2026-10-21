@@ -51,17 +51,19 @@ if (version < 1) {
 }
 
 async function askPassword() {
-  const rl = readline.createInterface({ input: stdin, output: stdout });
+  const rl = readline.createInterface({ input: stdin, output: stdout, terminal: true });
+  // Sembunyikan ketikan: readline tidak menulis apa pun selama prompt.
+  rl._writeToOutput = () => {};
   console.error('Ketik password (min 8 karakter; ketikan tidak tampil):');
   const first = await rl.question('');
-  if (first.length < 8) {
-    rl.close();
-    console.error('error: password terlalu pendek');
-    process.exit(1);
-  }
   console.error('Ulangi password:');
   const again = await rl.question('');
   rl.close();
+  console.error('');
+  if (first.length < 8) {
+    console.error('error: password terlalu pendek');
+    process.exit(1);
+  }
   if (first !== again) {
     console.error('error: password tidak cocok');
     process.exit(1);

@@ -180,6 +180,17 @@ export class Store {
   }
   getRun(id) { return this.db.prepare('SELECT * FROM runs WHERE id=?').get(id); }
   listRunsBySession(sessionId) { return this.db.prepare('SELECT * FROM runs WHERE session_id=? ORDER BY queued_at').all(sessionId); }
+  listRuns({ projectId, tool, limit = 10 } = {}) {
+    let sql = `SELECT r.*, s.label AS session_label, s.env AS env,
+      EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.kind=(CASE r.tool WHEN 'lh' THEN 'lh-html' ELSE 'pw-html' END)) AS has_html
+      FROM runs r JOIN sessions s ON s.id=r.session_id WHERE 1=1`;
+    const vals = [];
+    if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
+    if (tool) { sql += ' AND r.tool=?'; vals.push(tool); }
+    sql += ' ORDER BY r.queued_at DESC LIMIT ?';
+    vals.push(Math.min(Math.max(Number(limit) || 10, 1), 50));
+    return this.db.prepare(sql).all(...vals);
+  }
   countRunsByStatus(sessionId, statuses) {
     const placeholders = statuses.map(() => '?').join(',');
     return this.db.prepare(`SELECT COUNT(*) AS n FROM runs WHERE session_id=? AND status IN (${placeholders})`).get(sessionId, ...statuses).n;
@@ -225,14 +236,26 @@ export class Store {
 
   // ─── Lighthouse results ──────────────────────────────────────────────────
   addLighthouseResults(runId, rows) {
-    const ins = this.db.prepare(`INSERT INTO lighthouse_results (id, run_id, url, performance, accessibility, best_practices, seo, lcp_ms, cls, tbt_ms, budget_failed, warnings) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+    const ins = this.db.prepare(`INSERT INTO lighthouse_results (id, run_id, url, performance, accessibility, best_practices, seo, lcp_ms, cls, tbt_ms, budget_failed, warnings, report_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     this.db.exec('BEGIN');
     try {
-      for (const r of rows) ins.run(randomUUID(), runId, r.url, r.performance ?? null, r.accessibility ?? null, r.bestPractices ?? null, r.seo ?? null, r.lcpMs ?? null, r.cls ?? null, r.tbtMs ?? null, r.budgetFailed ?? null, r.warnings ?? null);
+      for (const r of rows) ins.run(randomUUID(), runId, r.url, r.performance ?? null, r.accessibility ?? null, r.bestPractices ?? null, r.seo ?? null, r.lcpMs ?? null, r.cls ?? null, r.tbtMs ?? null, r.budgetFailed ?? null, r.warnings ?? null, r.reportPath ?? null);
       this.db.exec('COMMIT');
     } catch (e) { this.db.exec('ROLLBACK'); throw e; }
   }
   listLighthouseResults(runId) { return this.db.prepare('SELECT * FROM lighthouse_results WHERE run_id=? ORDER BY url').all(runId); }
+  listLighthouseByProject({ projectId, limit = 20 } = {}) {
+    let sql = `SELECT l.*, r.status AS run_status, r.queued_at, r.session_id, s.label AS session_label, s.env
+      FROM lighthouse_results l
+      JOIN runs r ON r.id=l.run_id
+      JOIN sessions s ON s.id=r.session_id
+      WHERE 1=1`;
+    const vals = [];
+    if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
+    sql += ' ORDER BY r.queued_at DESC, l.url LIMIT ?';
+    vals.push(Math.min(Math.max(Number(limit) || 20, 1), 200));
+    return this.db.prepare(sql).all(...vals);
+  }
 
   // ─── Artifacts ───────────────────────────────────────────────────────────
   addArtifact({ id, runId, kind, path, bytes }) {
@@ -242,9 +265,13 @@ export class Store {
 
   // ─── Reports ─────────────────────────────────────────────────────────────
   createReport({ id, sessionId, scope, runIds, builtBy }) {
-    this.db.prepare('INSERT INTO reports (id, session_id, scope, status, run_ids, built_by, created_at) VALUES (?,?,?,?,?,?,?)')
+    this.db.prepare(`INSERT INTO reports (id, session_id, scope, status, run_ids, built_by, created_at)
+      VALUES (?,?,?,?,?,?,?)
+      ON CONFLICT(session_id, scope) DO UPDATE SET
+        status='queued', run_ids=excluded.run_ids, path=NULL, error=NULL, built_by=excluded.built_by,
+        created_at=excluded.created_at, built_at=NULL`)
       .run(id, sessionId, scope, 'queued', JSON.stringify(runIds ?? []), builtBy ?? null, new Date().toISOString());
-    return this.getReport(id);
+    return this.getReportByScope(sessionId, scope);
   }
   getReport(id) { return this.db.prepare('SELECT * FROM reports WHERE id=?').get(id); }
   listReportsBySession(sessionId) { return this.db.prepare('SELECT * FROM reports WHERE session_id=? ORDER BY created_at DESC').all(sessionId); }
@@ -258,6 +285,42 @@ export class Store {
     return this.getReport(id);
   }
   getReportByScope(sessionId, scope) { return this.db.prepare('SELECT * FROM reports WHERE session_id=? AND scope=?').get(sessionId, scope); }
+  markReportsStale(sessionId) {
+    this.db.prepare("UPDATE reports SET status='stale' WHERE session_id=? AND status='ready'").run(sessionId);
+  }
+
+  // ─── Stats (PRD §10.2) ───────────────────────────────────────────────────
+  stats({ projectId, from } = {}) {
+    const where = ['1=1']; const vals = [];
+    if (projectId) { where.push('s.project_id=?'); vals.push(projectId); }
+    if (from) { where.push('r.queued_at>=?'); vals.push(from); }
+    const w = where.join(' AND ');
+    const tc = this.db.prepare(`
+      SELECT
+        sum(CASE WHEN pr.status IN ('passed','flaky') THEN 1 ELSE 0 END) AS passed,
+        sum(CASE WHEN pr.status='failed' THEN 1 ELSE 0 END) AS failed
+      FROM playwright_results pr
+      JOIN runs r ON r.id = pr.run_id
+      JOIN sessions s ON s.id = r.session_id
+      WHERE r.tool='pw' AND r.finalized_at IS NOT NULL AND ${w}`).get(...vals);
+    const sessions = this.db.prepare(`
+      SELECT count(*) AS total FROM sessions s WHERE ${projectId ? 's.project_id=?' : '1=1'}
+        ${from ? ' AND s.created_at>=?' : ''}`).get(...(projectId ? [projectId] : []), ...(from ? [from] : []));
+    const runs = this.db.prepare(`
+      SELECT count(*) AS total, avg(r.duration_ms) AS avg_ms,
+        sum(CASE WHEN r.status IN ('failed','cancelled','interrupted') THEN 1 ELSE 0 END) AS failed
+      FROM runs r JOIN sessions s ON s.id = r.session_id
+      WHERE r.finalized_at IS NOT NULL AND ${w}`).get(...vals);
+    return {
+      tcPassed: tc.passed ?? 0,
+      tcFailed: tc.failed ?? 0,
+      passRate: (tc.passed ?? 0) + (tc.failed ?? 0) > 0 ? (tc.passed ?? 0) / ((tc.passed ?? 0) + (tc.failed ?? 0)) : null,
+      sessions: sessions.total,
+      runs: runs.total,
+      failedRuns: runs.failed ?? 0,
+      avgDurationMs: runs.avg_ms == null ? null : Math.round(runs.avg_ms),
+    };
+  }
 
   // ─── Settings ────────────────────────────────────────────────────────────
   getSetting(key) { const r = this.db.prepare('SELECT value FROM settings WHERE key=?').get(key); return r?.value; }

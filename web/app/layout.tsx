@@ -1,18 +1,14 @@
 import type { Metadata } from "next";
-import "./globals.css";
-import "./shell.css";
-import "./qa-dashboard.css";
-import "./theme.css";
-import "./shell-skin.css";
+import "./pb.css";
 
 export const metadata: Metadata = {
   title: "Playbook",
-  description: "QA workbench for Playwright, Lighthouse CI and test reports",
+  description: "QA dashboard — Playwright, Lighthouse CI, laporan sesi",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="id">
       <body>{children}</body>
     </html>
   );
