@@ -14,6 +14,7 @@ import { allowlist, target, id, cursor, authorized, rangeDays, isoTimestamp, boo
 import { createApp } from '../index.mjs';
 import { Store, databasePath } from '../store.mjs';
 import { Runner } from '../runner.mjs';
+import { runRetention } from '../retention.mjs';
 
 const scrypt = promisify(_scrypt);
 const PASSWORD = 'rahasia-test-123';
@@ -738,4 +739,52 @@ test('B8: tutup sesi tidak menghapus, hapus sesi/run menghapus datanya', async t
   r = await f.call(`/api/sessions/${session}`, { method: 'DELETE', cookie });
   assert.equal(r.status, 204);
   assert.equal(f.store.getSession(session), undefined);
+});
+
+test('retensi: folder → artifacts → reports stale → run_logs, baris hasil tetap', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-ret', projectId: 'p1', tool: 'pw', path: 'r.spec.ts', label: 'R', code: 'x' });
+
+  const old = new Date(Date.now() - 10 * 86400000).toISOString();
+  const fresh = new Date().toISOString();
+
+  for (const [id, finished] of [['r-old', old], ['r-new', fresh]]) {
+    f.store.createRun({ id, sessionId: session, testFileId: 'tf-ret', tool: 'pw' });
+    f.store.patchRun(id, { status: 'passed', finished_at: finished });
+    await mkdir(join(f.runner.runsDir, id, 'artifacts'), { recursive: true });
+    await writeFile(join(f.runner.runsDir, id, 'artifacts', 'index.html'), '<html></html>');
+    f.store.addArtifact({ runId: id, kind: 'pw-html', path: 'index.html', bytes: 13 });
+  }
+  f.store.createRun({ id: 'r-queued', sessionId: session, testFileId: 'tf-ret', tool: 'pw' });
+  f.store.db.prepare('UPDATE runs SET queued_at=? WHERE id=?').run(new Date(Date.now() - 90 * 60000).toISOString(), 'r-queued');
+
+  // log_retention_days = 30, jadi log basi harus lebih tua dari itu.
+  const oldLog = new Date(Date.now() - 40 * 86400000).toISOString();
+  f.store.log('r-old', { seq: 1, stream: 'stdout', text: 'lama\n', at: oldLog });
+  f.store.log('r-new', { seq: 1, stream: 'stdout', text: 'baru\n', at: fresh });
+
+  const reportsDir = await mkdtemp(join(tmpdir(), 'pb-reports-'));
+  t.after(() => rm(reportsDir, { recursive: true, force: true }));
+  const report = f.store.createReport({ id: randomUUID(), sessionId: session, scope: 'pw', runIds: ['r-old'] });
+  f.store.patchReport(report.id, { status: 'ready', path: 'index.html', built_at: old });
+
+  const result = await runRetention({ store: f.store, runsDir: f.runner.runsDir, reportsDir });
+
+  assert.equal(result.runs, 1, 'hanya run final > 7 hari');
+  assert.equal(existsSync(join(f.runner.runsDir, 'r-old')), false, 'folder run lama dibuang');
+  assert.equal(existsSync(join(f.runner.runsDir, 'r-new')), true, 'folder run baru tetap');
+  assert.equal(f.store.listArtifacts('r-old').length, 0, 'baris artifact run lama ikut hilang');
+  assert.equal(f.store.listArtifacts('r-new').length, 1, 'artifact run baru utuh');
+
+  assert.equal(f.store.getReport(report.id).status, 'stale', 'laporan jadi stale, bukan failed');
+  assert.equal(f.store.getReport(report.id).path, null);
+
+  assert.equal(f.store.logsRaw('r-old').length, 0, 'log lama dibuang');
+  assert.equal(f.store.logsRaw('r-new').length, 1, 'log baru tetap');
+
+  assert.equal(f.store.getRun('r-queued').status, 'interrupted', 'antre > 30 menit jadi interrupted');
+  assert.equal(f.store.getRun('r-old').status, 'passed', 'baris run tetap ada sebagai riwayat');
+  assert.ok(f.store.getRun('r-new'), 'baris run baru tetap');
 });

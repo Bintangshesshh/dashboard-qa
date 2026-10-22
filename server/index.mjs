@@ -10,6 +10,7 @@ import { Store } from './store.mjs';
 import { Runner } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
 import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check.mjs';
+import { runRetention } from './retention.mjs';
 import { fail, id, text, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp } from './validation.mjs';
 
 const scrypt = promisify(_scrypt);
@@ -735,6 +736,17 @@ export async function main() {
   }
   const origins = allowlist(process.env.TARGET_ALLOWLIST);
   if (!origins.length) throw new Error('TARGET_ALLOWLIST must contain at least one exact origin');
+  // PRD §8.6: retensi harian. Opt-in lewat env supaya deployment bisa pakai cron
+  // eksternal (scripts/retention.mjs) tanpa dua job jalan bersamaan.
+  const retentionMs = Number(process.env.RETENTION_INTERVAL_MS ?? 0);
+  if (retentionMs > 0) {
+    const reportsDirEnv = resolve(process.env.REPORTS_DIR ?? join(root, '.reports'));
+    const job = () => runRetention({ store, runsDir: runsDirEnv, reportsDir: reportsDirEnv })
+      .then(r => console.log('retensi:', JSON.stringify(r)))
+      .catch(err => console.error('[retensi]', err.message));
+    setTimeout(job, 60_000).unref();
+    setInterval(job, retentionMs).unref();
+  }
   const runner = new Runner(store, {
     origins,
     runsDir: runsDirEnv,

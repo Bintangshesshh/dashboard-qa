@@ -21,6 +21,7 @@
     "fixture": "node scripts/local-fixture.mjs",
     "dev:web": "npm run dev --prefix web",
     "dev:server": "node --experimental-sqlite --env-file=.env server/index.mjs",
+    "retention": "node --experimental-sqlite --env-file=.env scripts/retention.mjs",
     "build": "npm run build --prefix web"
   },
   "keywords": [],
