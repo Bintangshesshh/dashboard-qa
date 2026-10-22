@@ -15,6 +15,12 @@ export default function SessionDetail() {
   const [notice, setNotice] = useState("");
   const [openRun, setOpenRun] = useState<Run | null>(null);
   const [busy, setBusy] = useState("");
+  // B9/A58: label tombol report memakai jendela retensi; viewer 403 → fallback 7.
+  const [retention, setRetention] = useState(7);
+
+  useEffect(() => {
+    api.settings().then(s => setRetention(Number(s.artifact_retention_days) || 7)).catch(() => {});
+  }, []);
 
   const load = useCallback(() => {
     api.session(sessionId).then(setSession).catch(e => setError(e.message));
@@ -182,12 +188,12 @@ export default function SessionDetail() {
         </section>
       )}
 
-      {openRun && <RunPanel run={openRun} onClose={() => setOpenRun(null)} />}
+      {openRun && <RunPanel run={openRun} retention={retention} onClose={() => setOpenRun(null)} />}
     </>
   );
 }
 
-function RunPanel({ run, onClose }: { run: Run; onClose: () => void }) {
+function RunPanel({ run, retention, onClose }: { run: Run; retention: number; onClose: () => void }) {
   const results = run.results ?? [];
   const isPw = run.tool === "pw";
   const report = run.artifacts?.find(a => a.path.endsWith("report.json"));
@@ -253,6 +259,12 @@ function RunPanel({ run, onClose }: { run: Run; onClose: () => void }) {
           <iframe title="report mentah" src={artifactUrl(run.id, html.path)}
             style={{ width: "100%", height: 520, border: "1px solid var(--line)", borderRadius: 10, background: "#fff" }} />
         </div>
+      )}
+      {!html && !(run.artifacts?.length) && ["passed", "failed", "cancelled", "interrupted"].includes(run.status) && (
+        <p className="pb-muted" style={{ marginTop: 12, fontSize: 12 }}>
+          <button className="pb-btn sm" disabled>Report mentah</button>{" "}
+          artifact dihapus (retensi {retention} hari)
+        </p>
       )}
     </section>
   );
