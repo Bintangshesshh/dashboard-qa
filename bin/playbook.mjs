@@ -321,6 +321,7 @@ async function status() {
     return;
   }
   const runs = (await api('/api/runs?limit=10', { token: cred.token, baseUrl: cred.baseUrl })).json;
+  if (!runs.length) return console.log('Belum ada run.');
   for (const r of runs) console.log(`${r.id.slice(0, 8)} ${r.tool.padEnd(2)} ${r.status.padEnd(11)} ${r.session_label ?? ''}`);
 }
 
