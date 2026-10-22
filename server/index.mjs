@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { createServer } from 'node:http';
 import { resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { realpath, lstat } from 'node:fs/promises';
+import { realpath, lstat, rm } from 'node:fs/promises';
 import { Store } from './store.mjs';
 import { Runner } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
@@ -35,6 +35,11 @@ export function createApp({ store, runner, token, origins }) {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '256kb' }));
 
+  // PRD §7: hapus sesi/run ikut hapus artifact di disk.
+  const runsDir = runner?.runsDir ?? resolve(root, '.runs');
+  const reportsDir = resolve(root, process.env.REPORTS_DIR ?? '.reports');
+  const dropDirs = (...dirs) => Promise.all(dirs.map(d => rm(d, { recursive: true, force: true }).catch(() => {})));
+
   // Browser session cookie (PRD §7: cookie pb_session + same-origin check).
   const sessionCookie = req => {
     const cookies = (req.headers.cookie ?? '').split(';').map(s => s.trim());
@@ -43,10 +48,15 @@ export function createApp({ store, runner, token, origins }) {
     try { return decodeURIComponent(pair.slice('pb_session='.length)); } catch { return null; }
   };
 
+  // PRD §7: cookie hanya boleh dipakai dari origin sendiri.
+  // Tanpa Origin DAN tanpa Sec-Fetch-Site dianggap CLI/curl (bukan browser) → tolak untuk cookie.
   const sameOrigin = req => {
-    if (req.headers['sec-fetch-site'] === 'cross-site') return false;
-    if (!req.headers.origin) return true; // CLI / curl tanpa Origin
-    try { return new URL(req.headers.origin).host === req.get('host'); } catch { return false; }
+    const site = req.headers['sec-fetch-site'];
+    if (site && site !== 'same-origin' && site !== 'same-site') return false;
+    if (req.headers.origin) {
+      try { return new URL(req.headers.origin).host === req.get('host'); } catch { return false; }
+    }
+    return !site;
   };
 
   // Resolve authenticated user. Returns { user, via: 'cookie' | 'bearer' } or null.
@@ -74,9 +84,15 @@ export function createApp({ store, runner, token, origins }) {
     return null;
   };
 
+  const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
   const requireAuth = (req, res, next) => {
     const auth = resolveUser(req);
     if (!auth) return res.status(401).json({ error: 'Sesi tidak valid' });
+    // PRD §7: cookie + cek same-origin. Bearer CLI dikecualikan (tidak punya Origin).
+    if (auth.via === 'cookie' && !SAFE_METHODS.has(req.method) && !sameOrigin(req)) {
+      return res.status(403).json({ error: 'Permintaan lintas origin ditolak' });
+    }
     req.user = auth.user;
     req.via = auth.via;
     req.tokenRow = auth.tokenRow;
@@ -93,6 +109,7 @@ export function createApp({ store, runner, token, origins }) {
 
   // ─── Auth ────────────────────────────────────────────────────────────────
   app.post('/api/auth/login', route(async (req, res) => {
+    if (!sameOrigin(req)) fail('Permintaan lintas origin ditolak', 403);
     const username = text(req.body?.username, 'username', 64);
     const password = req.body?.password;
     if (typeof password !== 'string' || !password) fail('Username atau password salah', 401);
@@ -217,7 +234,13 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   app.get('/api/stats', requireAuth, route(async (req, res) => {
-    res.json(store.stats({ projectId: req.query.project ?? undefined, from: rangeStart(req.query.range) }));
+    const projectId = req.query.project ?? undefined;
+    const from = rangeStart(req.query.range);
+    res.json({
+      ...store.stats({ projectId, from }),
+      failures: store.listRecentFailures({ projectId, from, limit: req.query.failures }),
+      daily: store.runsPerDay({ projectId, from }),
+    });
   }));
 
   app.get('/api/sessions', requireAuth, route(async (req, res) => {
@@ -238,9 +261,18 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   app.delete('/api/sessions/:id', requireAuth, requireAdmin, route(async (req, res) => {
-    if (!store.getSession(id(req.params.id))) fail('Not found', 404);
+    const session = store.getSession(id(req.params.id), true);
+    if (!session) fail('Not found', 404);
+    // Jangan hapus folder di bawah proses yang masih jalan.
+    if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
+    const runIds = (session.runs ?? []).map(r => r.id);
+    const reportIds = store.listReportsBySession(session.id).map(r => r.id);
     store.deleteSession(req.params.id);
-    store.audit({ userId: req.user.id, action: 'delete_session', entity: 'sessions', entityId: req.params.id });
+    await dropDirs(
+      ...runIds.map(r => join(runsDir, r)),
+      ...reportIds.map(r => join(reportsDir, r)),
+    );
+    store.audit({ userId: req.user.id, action: 'delete_session', entity: 'sessions', entityId: req.params.id, detail: JSON.stringify({ runs: runIds.length, reports: reportIds.length }) });
     res.sendStatus(204);
   }));
 
@@ -323,8 +355,10 @@ export function createApp({ store, runner, token, origins }) {
   app.delete('/api/runs/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
     if (!run) fail('Not found', 404);
+    if (['queued', 'running', 'uploading'].includes(run.status)) fail('Run masih berjalan, batalkan dulu', 409);
     store.deleteRun(req.params.id);
     store.markReportsStale(run.session_id);
+    await dropDirs(join(runsDir, run.id));
     store.audit({ userId: req.user.id, action: 'delete_run', entity: 'runs', entityId: req.params.id });
     res.sendStatus(204);
   }));
@@ -370,7 +404,7 @@ export function createApp({ store, runner, token, origins }) {
     if (!report) fail('Not found', 404);
     const rel = req.params[0];
     if (rel.includes('..')) fail('Invalid path', 400);
-    const base = join(root, '.reports', report.id);
+    const base = join(reportsDir, report.id);
     const file = await realpath(join(base, rel));
     if (!file.startsWith(await realpath(base))) fail('Invalid path', 400);
     const stat = await lstat(file);
@@ -388,7 +422,7 @@ export function createApp({ store, runner, token, origins }) {
     if (!run) fail('Not found', 404);
     const rel = req.params[0];
     if (rel.includes('..')) fail('Invalid path', 400);
-    const base = join(root, '.runs', runId, 'artifacts');
+    const base = join(runsDir, runId, 'artifacts');
     const file = await realpath(join(base, rel));
     if (!file.startsWith(await realpath(base))) fail('Invalid path', 400);
     const stat = await lstat(file);

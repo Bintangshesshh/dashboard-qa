@@ -2,7 +2,7 @@
 // ponytail: HTML statis satu file + CSS inline, bukan `docusaurus build`.
 // Kalau nanti butuh navigasi antar halaman/navbar, ganti ke pipeline Docusaurus.
 import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Store } from '../server/store.mjs';
 
@@ -126,7 +126,7 @@ function verdict(runs) {
 }
 
 export async function buildSessionReport(store, reportId) {
-  const outDir = join(root, '.reports', reportId);
+  const outDir = join(resolve(root, process.env.REPORTS_DIR ?? '.reports'), reportId);
   try {
     const report = store.getReport(reportId);
     if (!report) throw new Error('Report tidak ditemukan');
