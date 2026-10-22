@@ -88,6 +88,8 @@ export class Runner extends EventEmitter {
   }
 
   async _start(runId, testFile, sessionId, targetUrl) {
+    // Run bisa dibatalkan saat masih antre; jangan dijalankan sama sekali.
+    if (this.store.getRun(runId)?.status === 'cancelled') return;
     // Baris `system` bisa sudah ditulis route sebelum runner jalan (jejak production),
     // jadi seq dimulai dari yang sudah ada supaya tidak bentrok primary key.
     const state = { runId, sessionId, testFile, targetUrl, seq: this.store.lastLogSeq(runId), chain: Promise.resolve(), child: null, cancelled: false, startTime: Date.now() };

@@ -681,3 +681,29 @@ test('CLI: batch log setelah baris system tidak hilang', async t => {
   assert.ok(texts.some(t => t.includes('production run by')));
   assert.ok(texts.includes('mulai\n'), 'log klien tidak dibuang');
 });
+
+test('B7: run queued bisa dibatalkan dan tidak dijalankan runner', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-b7', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  f.store.createRun({ id: 'r-b7', sessionId: session, testFileId: 'tf-b7', tool: 'pw' });
+
+  let r = await f.call('/api/runs/r-b7/cancel', { method: 'POST', cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.status, 'cancelled');
+  assert.ok(r.body.finished_at);
+
+  // runner melewati run yang sudah cancelled
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-b7-'));
+  t.after(() => rm(runsDir, { recursive: true, force: true }));
+  const runner = new Runner(f.store, { runsDir, origins: [ORIGIN] });
+  await runner.start('r-b7', f.store.getTestFile('tf-b7'), session, ORIGIN);
+  assert.equal(f.store.getRun('r-b7').status, 'cancelled');
+  assert.equal(existsSync(join(runsDir, 'r-b7')), false, 'tidak ada proses/folder');
+
+  // run final ditolak
+  f.store.patchRun('r-b7', { status: 'passed' });
+  r = await f.call('/api/runs/r-b7/cancel', { method: 'POST', cookie });
+  assert.equal(r.status, 409);
+});

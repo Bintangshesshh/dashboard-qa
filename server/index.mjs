@@ -539,8 +539,15 @@ export function createApp({ store, runner, token, origins }) {
   app.post('/api/runs/:id/cancel', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
     if (!run) fail('Not found', 404);
-    if (!await runner.cancel(req.params.id)) fail('Run is not active', 409);
-    res.json(store.getRun(req.params.id));
+    if (['passed', 'failed', 'cancelled', 'interrupted'].includes(run.status)) fail('Run sudah final', 409);
+    // Run yang masih antre belum dipegang runner; tandai langsung.
+    if (run.status === 'queued') {
+      store.patchRun(run.id, { status: 'cancelled', finished_at: new Date().toISOString() });
+      store.markReportsStale(run.session_id);
+      return res.json(store.getRun(run.id));
+    }
+    if (!await runner.cancel(run.id)) fail('Run is not active', 409);
+    res.json(store.getRun(run.id));
   }));
 
   app.delete('/api/runs/:id', requireAuth, requireAdmin, route(async (req, res) => {

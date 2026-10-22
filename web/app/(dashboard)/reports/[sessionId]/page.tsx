@@ -56,6 +56,16 @@ export default function SessionDetail() {
     } finally { setBusy(""); }
   };
 
+  const cancelRun = async (run: Run) => {
+    if (!confirm("Batalkan run ini? Proses tool akan dimatikan.")) return;
+    setBusy(run.id); setError(""); setNotice("");
+    try {
+      await api.cancelRun(run.id);
+      setNotice("Run dibatalkan.");
+      load();
+    } catch (e) { setError((e as Error).message); } finally { setBusy(""); }
+  };
+
   const closeSession = async () => {
     if (!confirm("Tutup sesi ini? Sesi tertutup tidak bisa dipakai ulang.")) return;
     try { await api.deleteSession(sessionId); location.href = "/reports"; }
@@ -102,7 +112,14 @@ export default function SessionDetail() {
                   <td className="mono">{r.exit_code ?? "—"}</td>
                   <td className="mono">{fmtDate(r.finalized_at)}</td>
                   <td style={{ textAlign: "right" }}>
-                    <button className="pb-btn sm" onClick={() => openRunDetail(r)}>Hasil</button>
+                    <span className="pb-row" style={{ justifyContent: "flex-end" }}>
+                      {!["passed", "failed", "cancelled", "interrupted"].includes(r.status) && (
+                        <button className="pb-btn sm" onClick={() => cancelRun(r)} disabled={busy === r.id}>
+                          {busy === r.id ? "Membatalkan…" : "Cancel"}
+                        </button>
+                      )}
+                      <button className="pb-btn sm" onClick={() => openRunDetail(r)}>Hasil</button>
+                    </span>
                   </td>
                 </tr>
               ))}
