@@ -1,7 +1,7 @@
 "use client";
 /** Suite create/edit form inside Dialog */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Category } from '../lib/types';
 import Dialog from './Dialog';
 
@@ -17,20 +17,33 @@ interface SuiteDialogProps {
 }
 
 export default function SuiteDialog({ open, onClose, editing, categories, initial, onSave, busy, error }: SuiteDialogProps) {
-  const [name, setName] = useState(initial?.name || '');
-  const [targetUrl, setTargetUrl] = useState(initial?.targetUrl || '');
-  const [description, setDescription] = useState(initial?.description || '');
-  const [categoryId, setCategoryId] = useState(initial?.categoryId || '');
+  const initialName = initial?.name ?? '';
+  const initialTargetUrl = initial?.targetUrl ?? '';
+  const initialDescription = initial?.description ?? '';
+  const initialCategoryId = initial?.categoryId ?? '';
 
-  // Reset form when dialog opens with new initial values
-  const [lastInitial, setLastInitial] = useState(initial);
-  if (initial !== lastInitial) {
-    setLastInitial(initial);
-    setName(initial?.name || '');
-    setTargetUrl(initial?.targetUrl || '');
-    setDescription(initial?.description || '');
-    setCategoryId(initial?.categoryId || '');
-  }
+  const [name, setName] = useState(initialName);
+  const [targetUrl, setTargetUrl] = useState(initialTargetUrl);
+  const [description, setDescription] = useState(initialDescription);
+  const [categoryId, setCategoryId] = useState(initialCategoryId);
+
+  // Reset only when the dialog opens or its actual initial values change.
+  // The parent re-renders every few seconds to poll runs; comparing object
+  // identity here would wipe out whatever the user is typing.
+  const initialKey = JSON.stringify([initialName, initialTargetUrl, initialDescription, initialCategoryId]);
+  const lastInitialKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      lastInitialKey.current = null;
+      return;
+    }
+    if (lastInitialKey.current === initialKey) return;
+    lastInitialKey.current = initialKey;
+    setName(initialName);
+    setTargetUrl(initialTargetUrl);
+    setDescription(initialDescription);
+    setCategoryId(initialCategoryId);
+  }, [open, initialKey, initialName, initialTargetUrl, initialDescription, initialCategoryId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +60,7 @@ export default function SuiteDialog({ open, onClose, editing, categories, initia
       <form onSubmit={handleSubmit}>
         <label>
           Name
-          <input autoFocus required maxLength={200} value={name} onChange={e => setName(e.target.value)} />
+          <input required maxLength={200} value={name} onChange={e => setName(e.target.value)} />
         </label>
         <label>
           Target URL

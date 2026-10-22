@@ -1,7 +1,7 @@
 "use client";
 /** Category create/edit form inside Dialog */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Dialog from './Dialog';
 
 interface CategoryDialogProps {
@@ -15,15 +15,24 @@ interface CategoryDialogProps {
 }
 
 export default function CategoryDialog({ open, onClose, editing, initial, onSave, busy, error }: CategoryDialogProps) {
-  const [name, setName] = useState(initial?.name || '');
-  const [description, setDescription] = useState(initial?.description || '');
+  const initialName = initial?.name ?? '';
+  const initialDescription = initial?.description ?? '';
 
-  const [lastInitial, setLastInitial] = useState(initial);
-  if (initial !== lastInitial) {
-    setLastInitial(initial);
-    setName(initial?.name || '');
-    setDescription(initial?.description || '');
-  }
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(initialDescription);
+
+  const initialKey = JSON.stringify([initialName, initialDescription]);
+  const lastInitialKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      lastInitialKey.current = null;
+      return;
+    }
+    if (lastInitialKey.current === initialKey) return;
+    lastInitialKey.current = initialKey;
+    setName(initialName);
+    setDescription(initialDescription);
+  }, [open, initialKey, initialName, initialDescription]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +44,7 @@ export default function CategoryDialog({ open, onClose, editing, initial, onSave
       <form onSubmit={handleSubmit}>
         <label>
           Name
-          <input autoFocus required maxLength={200} value={name} onChange={e => setName(e.target.value)} />
+          <input required maxLength={200} value={name} onChange={e => setName(e.target.value)} />
         </label>
         <label>
           Description (optional)

@@ -1,7 +1,7 @@
 "use client";
 /** Case create/edit form inside Dialog */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Dialog from './Dialog';
 
 interface CaseDialogProps {
@@ -15,13 +15,20 @@ interface CaseDialogProps {
 }
 
 export default function CaseDialog({ open, onClose, editing, initial, onSave, busy, error }: CaseDialogProps) {
-  const [name, setName] = useState(initial?.name || '');
+  const initialName = initial?.name ?? '';
+  const [name, setName] = useState(initialName);
 
-  const [lastInitial, setLastInitial] = useState(initial);
-  if (initial !== lastInitial) {
-    setLastInitial(initial);
-    setName(initial?.name || '');
-  }
+  // Do not reset on every parent render; the workspace polls runs every 4s.
+  const lastInitialName = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      lastInitialName.current = null;
+      return;
+    }
+    if (lastInitialName.current === initialName) return;
+    lastInitialName.current = initialName;
+    setName(initialName);
+  }, [open, initialName]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +40,7 @@ export default function CaseDialog({ open, onClose, editing, initial, onSave, bu
       <form onSubmit={handleSubmit}>
         <label>
           Name
-          <input autoFocus required maxLength={200} value={name} onChange={e => setName(e.target.value)} />
+          <input required maxLength={200} value={name} onChange={e => setName(e.target.value)} />
         </label>
         {error && <p role="alert">{error}</p>}
         <div className="modal-actions">
