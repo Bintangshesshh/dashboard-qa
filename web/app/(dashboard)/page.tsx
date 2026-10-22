@@ -32,6 +32,10 @@ export default function OverviewPage() {
 
   useEffect(() => {
     api.projects().then(setProjects).catch(e => setError(e.message));
+    // B11: range awal ikut settings `range_default_days`; viewer 403 → tetap 14.
+    api.settings()
+      .then(s => { const d = Number(s.range_default_days); if (d > 0) setRange(d); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
