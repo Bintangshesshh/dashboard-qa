@@ -44,6 +44,20 @@ export function lhConfig(cfg, targetUrl, outDir) {
   }, null, 2)};\n`;
 }
 
+// PRD §8.8: runWarnings LH ikut ke run_logs (`system`). Tahan nilai yang bukan
+// JSON valid (lhci kadang menulis string mentah).
+export function warningLines(results) {
+  const out = [];
+  for (const r of results ?? []) {
+    if (!r?.warnings) continue;
+    const list = (() => { try { return JSON.parse(r.warnings); } catch { return [r.warnings]; } })();
+    for (const w of Array.isArray(list) ? list : [list]) {
+      out.push(`[lh] ${r.url ?? '?'}: ${typeof w === 'string' ? w : JSON.stringify(w)}\n`);
+    }
+  }
+  return out;
+}
+
 export async function filesBelow(dir, base = dir) {
   const files = [];
   for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
@@ -254,6 +268,8 @@ export class Runner extends EventEmitter {
       duration_ms: Date.now() - state.startTime,
     });
     if (results.length) await this.store.addLighthouseResults(runId, results);
+    // PRD §8.8: runWarnings LH juga tampil di terminal, bukan cuma kolom warnings.
+    for (const line of warningLines(results)) await this.log(state, 'system', line);
     await this.collectArtifacts(runId, dir, 'lh');
     await this.store.patchRun(runId, { finalized_at: new Date().toISOString() });
     this.store.markReportsStale(state.sessionId);

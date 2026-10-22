@@ -38,7 +38,7 @@ export class Store {
     this.db.exec('PRAGMA foreign_keys = ON');
     if (this.path !== ':memory:') this.db.exec('PRAGMA journal_mode = WAL');
     this.migrate();
-    this.recover();
+    return this.recover();
   }
 
   migrate() {
@@ -67,9 +67,23 @@ export class Store {
     }
   }
 
-  recover() {
-    this.db.prepare(`UPDATE runs SET status='interrupted', error=COALESCE(error,'Server restarted during execution'), finished_at=COALESCE(finished_at, ?) WHERE status IN ('queued','running','uploading')`).run(new Date().toISOString());
+  // PRD §8.6: run `uploading` tanpa finalisasi > 24 jam dibersihkan saat startup.
+  // store tidak tahu path folder, jadi id-nya dikembalikan untuk dihapus pemanggil.
+  recover({ staleUploadMs = 24 * 60 * 60 * 1000 } = {}) {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - staleUploadMs).toISOString();
+    const stale = this.db.prepare(
+      `SELECT id FROM runs WHERE status='uploading' AND COALESCE(started_at, queued_at) < ?`,
+    ).all(cutoff).map(r => r.id);
+    for (const id of stale) {
+      this.db.prepare(`UPDATE runs SET status='interrupted', error=COALESCE(error,'Upload artifact tidak difinalisasi > 24 jam'), finished_at=COALESCE(finished_at, ?) WHERE id=?`)
+        .run(now.toISOString(), id);
+      // Baris artifact ikut hilang supaya UI tidak menaut ke file yang sudah dibuang.
+      this.db.prepare('DELETE FROM artifacts WHERE run_id=?').run(id);
+    }
+    this.db.prepare(`UPDATE runs SET status='interrupted', error=COALESCE(error,'Server restarted during execution'), finished_at=COALESCE(finished_at, ?) WHERE status IN ('queued','running','uploading')`).run(now.toISOString());
     this.db.prepare(`UPDATE reports SET status='failed', error=COALESCE(error,'Server restarted during report build') WHERE status IN ('queued','building')`).run();
+    return stale;
   }
 
   // ─── Auth: users ─────────────────────────────────────────────────────────
@@ -158,7 +172,15 @@ export class Store {
   }
   closeSession(id) { this.db.prepare('UPDATE sessions SET closed_at=? WHERE id=? AND closed_at IS NULL').run(new Date().toISOString(), id); }
   listSessions({ projectId, status, from, to } = {}) {
-    let sql = `SELECT s.*, ${SESSION_STATUS_SQL} AS status FROM sessions s WHERE 1=1`; const vals = [];
+    // Ringkasan run dihitung di SQL (PRD §10.5: jumlah run per tool + gagal),
+    // bukan dengan memuat semua baris run ke klien.
+    let sql = `SELECT s.*, ${SESSION_STATUS_SQL} AS status,
+      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id) AS run_count,
+      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.tool='pw') AS pw_count,
+      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.tool='lh') AS lh_count,
+      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.status IN ('failed','cancelled','interrupted')) AS failed_count,
+      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.status IN ('queued','running','uploading')) AS active_count
+      FROM sessions s WHERE 1=1`; const vals = [];
     if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
     if (from) { sql += ' AND s.created_at>=?'; vals.push(from); }
     if (to) { sql += ' AND s.created_at<=?'; vals.push(to); }

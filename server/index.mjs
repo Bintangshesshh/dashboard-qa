@@ -690,12 +690,18 @@ function attachWebSocket(app, { store, runner }) {
 export async function main() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required; SQLite persistence cannot be disabled');
   const store = new Store(process.env.DATABASE_URL);
-  await store.init();
+  const staleUploads = await store.init();
+  const runsDirEnv = resolve(process.env.RUNS_DIR ?? join(root, '.runs'));
+  // PRD §8.6/A32: run `uploading` > 24 jam dibersihkan folder + baris artifact-nya.
+  if (staleUploads.length) {
+    await Promise.all(staleUploads.map(id => rm(join(runsDirEnv, id), { recursive: true, force: true }).catch(() => {})));
+    console.log(`membersihkan ${staleUploads.length} run upload basi`);
+  }
   const origins = allowlist(process.env.TARGET_ALLOWLIST);
   if (!origins.length) throw new Error('TARGET_ALLOWLIST must contain at least one exact origin');
   const runner = new Runner(store, {
     origins,
-    runsDir: resolve(process.env.RUNS_DIR ?? join(root, '.runs')),
+    runsDir: runsDirEnv,
     timeout: Number(process.env.RUN_TIMEOUT_MS ?? 300000),
   });
   const app = createApp({ store, runner, token: null, origins });

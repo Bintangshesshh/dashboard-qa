@@ -441,6 +441,22 @@ test('parseLighthouse: banyak LHR URL sama → satu baris per URL', async () => 
   await rm(runsDir, { recursive: true, force: true });
 });
 
+test('warningLines: runWarnings LH jadi baris log system', async () => {
+  const { warningLines } = await import('../runner.mjs');
+  const rows = [
+    { url: 'https://a.test/', warnings: JSON.stringify(['warn satu', { code: 'X' }]) },
+    { url: 'https://b.test/', warnings: 'bukan json' },
+    { url: 'https://c.test/', warnings: null },
+  ];
+  const lines = warningLines(rows);
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0], '[lh] https://a.test/: warn satu\n');
+  assert.equal(lines[1], '[lh] https://a.test/: {"code":"X"}\n');
+  assert.equal(lines[2], '[lh] https://b.test/: bukan json\n');
+  assert.deepEqual(warningLines([]), []);
+  assert.deepEqual(warningLines(null), []);
+});
+
 test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async () => {
   const { lhConfig } = await import('../runner.mjs');
   const cfg = {
@@ -459,6 +475,52 @@ test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async
   assert.throws(() => lhConfig({ urls: [] }, null, 'x'), /Tidak ada URL/);
   const minimal = lhConfig(null, 'https://a.test/', 'out');
   assert.equal(JSON.parse(minimal.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.numberOfRuns, 1);
+});
+
+test('recover: run uploading > 24 jam dibersihkan, yang baru hanya interrupted', async t => {
+  const f = await fixture(t);
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie: await f.login(), body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  const fresh = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  for (const [id, started] of [['r-old', old], ['r-new', fresh]]) {
+    f.store.createRun({ id, sessionId: session, testFileId: 'tf1', tool: 'pw' });
+    f.store.patchRun(id, { status: 'uploading', started_at: started });
+    f.store.addArtifact({ runId: id, kind: 'pw-json', path: 'report.json', bytes: 10 });
+  }
+
+  const stale = f.store.recover();
+
+  assert.deepEqual(stale, ['r-old'], 'hanya run > 24 jam yang dilaporkan untuk hapus folder');
+  assert.equal(f.store.getRun('r-old').status, 'interrupted');
+  assert.match(f.store.getRun('r-old').error, /24 jam/);
+  assert.equal(f.store.getRun('r-new').status, 'interrupted', 'run baru tetap interrupted karena restart');
+  assert.match(f.store.getRun('r-new').error, /Server restarted/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM artifacts WHERE run_id=?').get('r-old').n, 0);
+});
+
+test('GET /api/sessions: ringkasan run per tool, gagal, dan aktif', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-pw', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  f.store.createTestFile({ id: 'tf-lh', projectId: 'p1', tool: 'lh', path: 'lh.js', label: 'L', code: 'x' });
+
+  f.store.createRun({ id: 'r1', sessionId: session, testFileId: 'tf-pw', tool: 'pw' });
+  f.store.createRun({ id: 'r2', sessionId: session, testFileId: 'tf-pw', tool: 'pw' });
+  f.store.createRun({ id: 'r3', sessionId: session, testFileId: 'tf-lh', tool: 'lh' });
+  f.store.patchRun('r1', { status: 'passed' });
+  f.store.patchRun('r2', { status: 'failed' });
+
+  const rows = (await f.call('/api/sessions', { cookie })).body;
+  const row = rows.find(s => s.id === session);
+  assert.equal(row.run_count, 3);
+  assert.equal(row.pw_count, 2);
+  assert.equal(row.lh_count, 1);
+  assert.equal(row.failed_count, 1, 'r2 gagal + r3 masih queued');
+  assert.equal(row.active_count, 1, 'r3 queued dihitung aktif');
+  assert.ok(!('runs' in row), 'daftar sesi tidak memuat baris run penuh');
 });
 
 test('settings: GET daftar, PATCH whitelist + rentang, audit tercatat', async t => {

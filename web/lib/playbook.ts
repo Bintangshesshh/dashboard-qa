@@ -44,6 +44,9 @@ export type Session = {
   created_at: string; closed_at: string | null;
   status: "open" | "running" | "failed" | "passed" | "closed";
   runs?: Run[]; reports?: Report[];
+  // Ringkasan dari GET /api/sessions (PRD §10.5).
+  run_count?: number; pw_count?: number; lh_count?: number;
+  failed_count?: number; active_count?: number;
 };
 export type Stats = {
   tcPassed: number; tcFailed: number; passRate: number | null;

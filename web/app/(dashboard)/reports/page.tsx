@@ -63,7 +63,7 @@ function ReportsInner() {
         ) : (
           <table className="pb-table">
             <thead>
-              <tr><th>Sesi</th><th>Env</th><th>Target</th><th>Status</th><th>Laporan</th><th>Dibuat</th><th /></tr>
+              <tr><th>Sesi</th><th>Env</th><th>Target</th><th>Status</th><th>Run</th><th>Laporan</th><th>Dibuat</th><th /></tr>
             </thead>
             <tbody>
               {sessions.map(s => (
@@ -72,6 +72,17 @@ function ReportsInner() {
                   <td className="pb-muted">{s.env}</td>
                   <td className="mono">{s.target_url}</td>
                   <td><span className={`pb-badge ${s.status}`}>{s.status}</span></td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {s.run_count ? (
+                      <span title={`${s.pw_count ?? 0} Playwright, ${s.lh_count ?? 0} Lighthouse`}>
+                        {s.run_count} run
+                        {(s.pw_count ?? 0) > 0 && <span className="pb-muted"> · pw {s.pw_count}</span>}
+                        {(s.lh_count ?? 0) > 0 && <span className="pb-muted"> · lh {s.lh_count}</span>}
+                        {(s.failed_count ?? 0) > 0 && <span className="pb-badge failed" style={{ marginLeft: 6 }}>{s.failed_count}</span>}
+                        {(s.active_count ?? 0) > 0 && <span className="pb-badge running" style={{ marginLeft: 6 }}>jalan</span>}
+                      </span>
+                    ) : <span className="pb-muted">—</span>}
+                  </td>
                   <td>
                     {(s.reports?.length ?? 0) === 0
                       ? <span className="pb-muted">—</span>
