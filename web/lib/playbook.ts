@@ -46,6 +46,17 @@ export type Session = {
 export type Stats = {
   tcPassed: number; tcFailed: number; passRate: number | null;
   sessions: number; runs: number; failedRuns: number; avgDurationMs: number | null;
+  lighthouse: {
+    urls: number; performance: number | null; accessibility: number | null;
+    bestPractices: number | null; seo: number | null;
+  } | null;
+  failures: FailureRow[];
+  daily: { day: string; total: number; passed: number }[];
+};
+export type FailureRow = {
+  id: string; session_id: string; tool: "pw" | "lh"; status: Run["status"];
+  error: string | null; finished_at: string | null;
+  session_label: string; env: string; project_name: string;
 };
 
 export type Report = {
@@ -98,10 +109,11 @@ export const api = {
     const s = p.toString();
     return request<Session[]>("/api/sessions" + (s ? "?" + s : ""));
   },
-  stats: (q: { project?: string; range?: number } = {}) => {
+  stats: (q: { project?: string; range?: number; failures?: number } = {}) => {
     const p = new URLSearchParams();
     if (q.project) p.set("project", q.project);
     if (q.range) p.set("range", String(q.range));
+    if (q.failures) p.set("failures", String(q.failures));
     const s = p.toString();
     return request<Stats>("/api/stats" + (s ? "?" + s : ""));
   },

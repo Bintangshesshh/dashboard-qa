@@ -314,6 +314,13 @@ export class Store {
         sum(CASE WHEN r.status IN ('failed','cancelled','interrupted') THEN 1 ELSE 0 END) AS failed
       FROM runs r JOIN sessions s ON s.id = r.session_id
       WHERE r.finalized_at IS NOT NULL AND ${w}`).get(...vals);
+    const lh = this.db.prepare(`
+      SELECT avg(l.performance) AS perf, avg(l.accessibility) AS a11y,
+        avg(l.best_practices) AS bp, avg(l.seo) AS seo, count(*) AS urls
+      FROM lighthouse_results l
+      JOIN runs r ON r.id = l.run_id
+      JOIN sessions s ON s.id = r.session_id
+      WHERE r.tool='lh' AND r.finalized_at IS NOT NULL AND ${w}`).get(...vals);
     return {
       tcPassed: tc.passed ?? 0,
       tcFailed: tc.failed ?? 0,
@@ -322,7 +329,39 @@ export class Store {
       runs: runs.total,
       failedRuns: runs.failed ?? 0,
       avgDurationMs: runs.avg_ms == null ? null : Math.round(runs.avg_ms),
+      lighthouse: lh.urls ? {
+        urls: lh.urls,
+        performance: lh.perf, accessibility: lh.a11y, bestPractices: lh.bp, seo: lh.seo,
+      } : null,
     };
+  }
+
+  // PRD 10.2: "Kegagalan terbaru → klik ke /reports/<sessionId>".
+  listRecentFailures({ projectId, from, limit = 5 } = {}) {
+    let sql = `SELECT r.id, r.session_id, r.tool, r.status, r.error, r.finished_at,
+      s.label AS session_label, s.env, p.name AS project_name
+      FROM runs r
+      JOIN sessions s ON s.id = r.session_id
+      JOIN projects p ON p.id = s.project_id
+      WHERE r.status IN ('failed','cancelled','interrupted')`;
+    const vals = [];
+    if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
+    if (from) { sql += ' AND r.queued_at>=?'; vals.push(from); }
+    sql += ' ORDER BY r.queued_at DESC LIMIT ?';
+    vals.push(Math.min(Math.max(Number(limit) || 5, 1), 50));
+    return this.db.prepare(sql).all(...vals);
+  }
+
+  // PRD 10.2: grafik run per hari, tanggal Jakarta.
+  runsPerDay({ projectId, from } = {}) {
+    let sql = `SELECT date(r.queued_at, '+7 hours') AS day, count(*) AS total,
+      sum(CASE WHEN r.status='passed' THEN 1 ELSE 0 END) AS passed
+      FROM runs r JOIN sessions s ON s.id = r.session_id WHERE r.finalized_at IS NOT NULL`;
+    const vals = [];
+    if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
+    if (from) { sql += ' AND r.queued_at>=?'; vals.push(from); }
+    sql += ' GROUP BY day ORDER BY day';
+    return this.db.prepare(sql).all(...vals);
   }
 
   // ─── Settings ────────────────────────────────────────────────────────────
