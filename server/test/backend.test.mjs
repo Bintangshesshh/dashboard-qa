@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { allowlist, target, id, cursor, authorized, rangeDays, isoTimestamp, bool } from '../validation.mjs';
 import { createApp } from '../index.mjs';
 import { Store, databasePath } from '../store.mjs';
+import { Runner } from '../runner.mjs';
 
 const scrypt = promisify(_scrypt);
 const PASSWORD = 'rahasia-test-123';
@@ -576,4 +577,23 @@ test('A6: session_reuse_minutes membatasi sesi yang dipakai ulang', async t => {
   f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(new Date(Date.now() - 5 * 60e3).toISOString(), r.body.sessionId);
   const third = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(third.status, 201, '5 menit > 1 menit → sesi baru');
+});
+
+test('A2: runner menolak target di luar allowlist-nya sendiri', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-a2', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  f.store.createRun({ id: 'r-a2', sessionId: session, testFileId: 'tf-a2', tool: 'pw' });
+
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-runner-a2-'));
+  t.after(() => rm(runsDir, { recursive: true, force: true }));
+  const runner = new Runner(f.store, { runsDir, origins: [ORIGIN] });
+
+  await runner.start('r-a2', f.store.getTestFile('tf-a2'), session, 'https://evil.test/');
+
+  const run = f.store.getRun('r-a2');
+  assert.equal(run.status, 'failed');
+  assert.match(run.error, /not allowlisted/);
+  assert.equal(existsSync(join(runsDir, 'r-a2')), false, 'tidak ada folder/spawn untuk target terlarang');
 });

@@ -4,6 +4,7 @@ import { mkdir, writeFile, appendFile, readdir, readFile, rm } from 'node:fs/pro
 import { join, resolve, relative, isAbsolute, basename, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { target as validateTarget } from './validation.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(join(root, 'package.json'));
@@ -134,6 +135,15 @@ export class Runner extends EventEmitter {
 
   async execute(state) {
     const { runId, testFile } = state;
+    // PRD §7/G11: runner tidak percaya pemanggil — target harus tetap di allowlist.
+    if (state.targetUrl) {
+      try { state.targetUrl = validateTarget(state.targetUrl, this.origins); }
+      catch (error) {
+        await this.store.patchRun(runId, { status: 'failed', error: error.message, finished_at: new Date().toISOString() });
+        this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
+        return;
+      }
+    }
     const dir = this.directory(runId);
     await mkdir(dir, { recursive: true });
     await this.store.patchRun(runId, { status: 'running', started_at: new Date().toISOString() });
