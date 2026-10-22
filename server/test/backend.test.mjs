@@ -550,3 +550,30 @@ test('settings: GET daftar, PATCH whitelist + rentang, audit tercatat', async t 
   const audit = f.store.listAudit({ limit: 10 });
   assert.ok(audit.some(a => a.action === 'update_settings'), 'perubahan settings masuk audit');
 });
+
+test('A6: session_reuse_minutes membatasi sesi yang dipakai ulang', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  const first = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(first.status, 201);
+  const oldId = first.body.sessionId;
+
+  // masih di dalam jendela (default 240 menit) → dipakai ulang
+  let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(r.status, 409);
+  assert.equal(r.body.sessionId, oldId);
+
+  // dimundurkan 5 jam → lewat jendela, sesi baru dibuat
+  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(new Date(Date.now() - 5 * 3600e3).toISOString(), oldId);
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(r.status, 201, 'sesi kedaluwarsa tidak dipakai ulang');
+  assert.notEqual(r.body.sessionId, oldId);
+  assert.ok(f.store.getSession(oldId).closed_at, 'sesi lama ditutup agar index unik bebas');
+
+  // jendela diubah lewat settings → ikut dipakai
+  f.store.setSetting('session_reuse_minutes', '1');
+  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(new Date(Date.now() - 5 * 60e3).toISOString(), r.body.sessionId);
+  const third = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(third.status, 201, '5 menit > 1 menit → sesi baru');
+});
