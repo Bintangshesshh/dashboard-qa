@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "QA dashboard - Playwright + Lighthouse CI (Eureka Group: jaja, masdis, ebh)",
   "main": "index.js",
+  "bin": { "playbook": "bin/playbook.mjs" },
   "scripts": {
     "cek": "node scripts/cek.mjs all",
     "cek:pw": "node scripts/cek.mjs pw",
@@ -23,6 +24,7 @@
     "dev:server": "node --experimental-sqlite --env-file=.env server/index.mjs",
     "retention": "node --experimental-sqlite --env-file=.env scripts/retention.mjs",
     "backup": "node --experimental-sqlite --env-file=.env scripts/backup.mjs",
+    "playbook": "node bin/playbook.mjs",
     "build": "npm run build --prefix web"
   },
   "keywords": [],

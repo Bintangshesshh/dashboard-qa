@@ -817,3 +817,20 @@ test('backup: VACUUM INTO menyalin DB, backup lama dibuang', async t => {
 
   await assert.rejects(() => backupDatabase({ store: new Store(':memory:'), backupDir }), /in-memory/);
 });
+
+test('CLI playbook: tanpa argumen cetak bantuan, tanpa kredensial keluar 1', async () => {
+  const { execFile } = await import('node:child_process');
+  const bin = resolve(import.meta.dirname, '..', '..', 'bin', 'playbook.mjs');
+  const runCli = args => new Promise(res => {
+    execFile(process.execPath, [bin, ...args], { env: { ...process.env, HOME: tmpdir(), USERPROFILE: tmpdir() } },
+      (err, stdout, stderr) => res({ code: err?.code ?? 0, out: stdout + stderr }));
+  });
+
+  const help = await runCli([]);
+  assert.equal(help.code, 0);
+  for (const c of ['login', 'run', 'upload', 'status']) assert.match(help.out, new RegExp(c));
+
+  const whoami = await runCli(['whoami']);
+  assert.equal(whoami.code, 1);
+  assert.match(whoami.out, /Belum login/);
+});
