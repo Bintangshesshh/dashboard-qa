@@ -282,6 +282,35 @@ test('quick-check: 400 tanpa projectId/env, 202 dengan 2 run, production dibloki
   assert.deepEqual(started.map(s => s.tool), ['pw', 'lh']);
 });
 
+test('CLI token: dibuat, terdaftar tanpa nilai plain, lalu dicabut', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  let r = await f.call('/api/auth/cli-token', { method: 'POST', cookie, body: { label: 'laptop-kerja' } });
+  assert.equal(r.status, 201);
+  const { id, token } = r.body;
+  assert.ok(token && token.length === 64, 'token plain hanya sekali');
+
+  r = await f.call('/api/auth/cli-token', { cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.length, 1);
+  assert.equal(r.body[0].id, id);
+  assert.equal(r.body[0].label, 'laptop-kerja');
+  assert.equal(r.body[0].revoked_at, null);
+  assert.equal(JSON.stringify(r.body).includes(token), false, 'token plain tidak boleh ikut terdaftar');
+
+  // token bisa dipakai sebagai bearer
+  r = await f.call('/api/me', { headers: { authorization: 'Bearer ' + token } });
+  assert.equal(r.status, 200);
+  r = await f.call('/api/auth/cli-token', { cookie });
+  assert.ok(r.body[0].last_used_at, 'last_used_at harus terisi setelah dipakai');
+
+  r = await f.call(`/api/auth/cli-token/${id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  r = await f.call('/api/me', { headers: { authorization: 'Bearer ' + token } });
+  assert.equal(r.status, 401, 'token yang dicabut harus ditolak');
+});
+
 test('artifact: traversal ditolak, file sah disajikan dengan header aman', async t => {
   const f = await fixture(t);
   const cookie = await f.login();

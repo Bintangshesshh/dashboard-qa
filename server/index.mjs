@@ -146,6 +146,10 @@ export function createApp({ store, runner, token, origins }) {
     res.status(201).json({ id: row.id, token: rawToken, label: row.label });
   }));
 
+  app.get('/api/auth/cli-token', requireAuth, requireAdmin, route(async (req, res) => {
+    res.json(store.listCliTokens(req.user.id));
+  }));
+
   app.delete('/api/auth/cli-token/:id', requireAuth, requireAdmin, route(async (req, res) => {
     if (!store.revokeCliToken(id(req.params.id))) fail('Token tidak ditemukan atau sudah dicabut', 404);
     res.sendStatus(204);
@@ -338,11 +342,85 @@ export function createApp({ store, runner, token, origins }) {
     res.status(202).json({ runId });
   }));
 
-  // CLI-local run endpoint (PRD §7: POST /api/runs/local)
+  // ─── CLI lokal (PRD §7): laptop developer yang menjalankan tool ──────────
+  // Alur: POST /api/runs/local → start → logs (batch) → artifacts → PATCH (finalisasi).
   app.post('/api/runs/local', requireAuth, requireAdmin, route(async (req, res) => {
     const tf = store.getTestFile(id(req.body?.testFileId));
     if (!tf) fail('Test file tidak ditemukan', 400);
-    res.status(201).json({ testFile: tf });
+    const project = store.getProject(tf.project_id);
+    if (!project) fail('Project tidak ditemukan', 400);
+    const e = envValue(req.body?.env);
+    const targetUrl = resolveTarget(project, e);
+    if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
+    if (e === 'production') {
+      if (!project.allow_production) fail('Run production diblokir untuk project ini', 403);
+      if (req.body?.confirm !== project.name) fail('Ketik ulang nama project untuk konfirmasi production', 400);
+    }
+    if (store.countActiveRuns() >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
+
+    let sessionId = req.body?.sessionId ? id(req.body.sessionId) : null;
+    if (sessionId) {
+      const s = store.getSession(sessionId);
+      if (!s) fail('Sesi tidak ditemukan', 404);
+      if (s.project_id !== project.id || s.env !== e) fail('Sesi milik project/env lain', 400);
+      if (s.closed_at) fail('Sesi sudah ditutup', 409);
+      if (store.countRunsByStatus(sessionId, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
+    } else {
+      const open = store.findOpenSession(project.id, e, req.user.id);
+      if (open) sessionId = open.id;
+      else {
+        sessionId = randomUUID();
+        const label = `${project.name} — ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+        store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
+      }
+    }
+
+    const runId = randomUUID();
+    store.createRun({ id: runId, sessionId, testFileId: tf.id, tool: tf.tool });
+    store.audit({ userId: req.user.id, action: 'run_local', entity: 'runs', entityId: runId, detail: JSON.stringify({ testFile: tf.path, env: e }) });
+    res.status(201).json({ runId, sessionId, code: tf.code, targetUrl, tool: tf.tool, config: tf.config });
+  }));
+
+  app.post('/api/runs/:id/start', requireAuth, requireAdmin, route(async (req, res) => {
+    const run = store.getRun(id(req.params.id));
+    if (!run) fail('Not found', 404);
+    if (['passed', 'failed', 'cancelled', 'interrupted'].includes(run.status)) fail('Run sudah final', 409);
+    res.json(store.patchRun(run.id, { status: 'running', started_at: run.started_at ?? new Date().toISOString() }));
+  }));
+
+  app.post('/api/runs/:id/logs', requireAuth, requireAdmin, route(async (req, res) => {
+    const run = store.getRun(id(req.params.id));
+    if (!run) fail('Not found', 404);
+    const entries = req.body?.entries;
+    if (!Array.isArray(entries)) fail('entries must be an array');
+    if (entries.length > 5000) fail('entries maksimal 5000 per batch');
+    const clean = entries.map(e => {
+      if (!Number.isSafeInteger(Number(e?.seq)) || Number(e.seq) < 0) fail('seq must be a non-negative integer');
+      if (typeof e?.text !== 'string') fail('text must be a string');
+      return { seq: Number(e.seq), stream: String(e.stream ?? 'stdout').slice(0, 20), text: e.text, at: isoTimestamp(e.at ?? new Date().toISOString()) };
+    });
+    store.logsBatch(run.id, clean);
+    res.json({ inserted: clean.length });
+  }));
+
+  // Upload artifact mentah: body biner, query ?kind=&path=
+  app.put('/api/runs/:id/artifacts', requireAuth, requireAdmin, route(async (req, res) => {
+    const run = store.getRun(id(req.params.id));
+    if (!run) fail('Not found', 404);
+    const kind = String(req.query.kind ?? 'log');
+    if (!['pw-html', 'lh-html', 'pw-json', 'lh-json', 'trace', 'screenshot', 'video', 'log'].includes(kind)) fail('kind tidak dikenal');
+    const rel = String(req.query.path ?? '');
+    if (!rel || rel.includes('..') || rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) fail('Invalid path', 400);
+    const maxMb = Number(store.getSetting('max_upload_mb') ?? 100);
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || !body.length) fail('Body harus biner (application/octet-stream)');
+    if (body.length > maxMb * 1024 * 1024) fail(`File melebihi ${maxMb} MB`, 413);
+
+    const dest = join(runsDir, run.id, rel);
+    await mkdir(dirname(dest), { recursive: true });
+    await writeFile(dest, body);
+    store.addArtifact({ runId: run.id, kind, path: rel, bytes: body.length });
+    res.status(201).json({ path: rel, bytes: body.length });
   }));
 
   app.get('/api/runs', requireAuth, route(async (req, res) => {
