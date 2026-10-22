@@ -87,7 +87,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   transition: background .16s, color .16s, transform .16s;
 }
 .pb-nav a:hover { background: var(--card); color: var(--text); transform: translateX(2px); }
-.pb-nav a[data-active="true"] { background: var(--accent-soft); color: #cfe0ff; }
+.pb-nav a[aria-current="page"] { background: var(--accent-soft); color: #cfe0ff; }
 
 .pb-side-foot { margin-top: auto; display: grid; gap: 8px; }
 .pb-user { color: var(--muted); font-size: 12px; padding: 0 8px; }
@@ -184,6 +184,14 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-err {
   background: rgba(255, 93, 108, .1); border: 1px solid rgba(255, 93, 108, .3);
   color: #ffb3ba; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;
+}
+/* PRD §10.8: loading pakai skeleton, bukan layar kosong. */
+@keyframes pb-shimmer { from { background-position: -400px 0; } to { background-position: 400px 0; } }
+.pb-skel {
+  border-radius: 12px;
+  background: linear-gradient(90deg, #171c26 25%, #1f2632 50%, #171c26 75%);
+  background-size: 800px 100%;
+  animation: pb-shimmer 1.4s linear infinite;
 }
 .pb-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .pb-spacer { flex: 1; }

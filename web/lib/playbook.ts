@@ -93,6 +93,14 @@ export class ApiError extends Error {
   constructor(message: string, status: number) { super(message); this.status = status; }
 }
 
+// PRD §10.8: sesi kedaluwarsa → redirect sekali, tanpa loop.
+let redirecting = false;
+function toLogin() {
+  if (redirecting || typeof window === "undefined" || location.pathname === "/login") return;
+  redirecting = true;
+  location.replace("/login?next=" + encodeURIComponent(location.pathname + location.search));
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -102,6 +110,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     let msg = `Request gagal (${res.status})`;
     try { const body = await res.json(); if (body?.error) msg = body.error; } catch { /* teks mentah */ }
+    if (res.status === 401) toLogin();
     throw new ApiError(msg, res.status);
   }
   if (res.status === 204) return null as T;
@@ -164,6 +173,7 @@ export const api = {
       body: JSON.stringify({ projectId, env, confirm }),
     });
     const body = await res.json().catch(() => ({}));
+    if (res.status === 401) toLogin();
     // 409 = sesi terbuka sudah ada → pakai itu, bukan error.
     if (res.status === 409 && body?.sessionId) {
       const session = await request<Session>(`/api/sessions/${body.sessionId}`);
