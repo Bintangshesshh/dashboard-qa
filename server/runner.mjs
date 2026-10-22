@@ -88,7 +88,9 @@ export class Runner extends EventEmitter {
   }
 
   async _start(runId, testFile, sessionId, targetUrl) {
-    const state = { runId, sessionId, testFile, targetUrl, seq: 0, chain: Promise.resolve(), child: null, cancelled: false, startTime: Date.now() };
+    // Baris `system` bisa sudah ditulis route sebelum runner jalan (jejak production),
+    // jadi seq dimulai dari yang sudah ada supaya tidak bentrok primary key.
+    const state = { runId, sessionId, testFile, targetUrl, seq: this.store.lastLogSeq(runId), chain: Promise.resolve(), child: null, cancelled: false, startTime: Date.now() };
     this.active = state;
     state.done = this.execute(state).finally(() => { this.active = null; });
     return state.done;

@@ -648,4 +648,14 @@ test('A5: run production menulis satu baris log system', async t => {
   const lines = f.store.logsRaw(runId).filter(l => l.stream === 'system' && /production run by/.test(l.text));
   assert.equal(lines.length, 1);
   assert.match(lines[0].text, /production run by tester at \d{4}-\d{2}-\d{2}T/);
+
+  // runner tidak boleh mulai dari seq 0 — baris system tadi sudah pakai seq 1.
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-runner-a5-'));
+  t.after(() => rm(runsDir, { recursive: true, force: true }));
+  const runner = new Runner(f.store, { runsDir, origins: [ORIGIN] });
+  runner.execute = async state => { await mkdir(runner.directory(runId), { recursive: true }); await runner.log(state, 'system', 'mulai\n'); };
+  await runner.start(runId, f.store.getTestFile('tf-a5'), null, null);
+
+  const seqs = f.store.logsRaw(runId).map(l => l.seq);
+  assert.deepEqual(seqs, [1, 2], 'seq lanjut, tidak bentrok primary key');
 });
