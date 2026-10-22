@@ -17,7 +17,9 @@ function LoginForm() {
     setBusy(true); setError("");
     try {
       await api.login(username, password);
-      router.replace(params.get("next") || "/");
+      const next = params.get("next") ?? "";
+      // Tolak redirect keluar: hanya path internal.
+      router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login gagal");
       setBusy(false);
