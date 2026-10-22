@@ -441,6 +441,26 @@ test('parseLighthouse: banyak LHR URL sama → satu baris per URL', async () => 
   await rm(runsDir, { recursive: true, force: true });
 });
 
+test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async () => {
+  const { lhConfig } = await import('../runner.mjs');
+  const cfg = {
+    urls: ['https://prod.test/', 'https://staging.test/'],
+    numberOfRuns: 2,
+    budgets: { 'categories:performance': { minScore: 0.8 } },
+  };
+  const text = lhConfig(cfg, 'https://staging.test/', 'D:\\runs\\abc\\artifacts');
+  assert.match(text, /^module\.exports = /);
+  const parsed = JSON.parse(text.replace(/^module\.exports = /, '').replace(/;\n$/, ''));
+  assert.deepEqual(parsed.ci.collect.url, ['https://staging.test/', 'https://prod.test/'], 'URL sesi dulu, duplikat dibuang');
+  assert.equal(parsed.ci.collect.numberOfRuns, 2);
+  assert.deepEqual(parsed.ci.assert.assertions['categories:performance'], ['warn', { minScore: 0.8 }]);
+  assert.equal(parsed.ci.upload.outputDir, 'D:/runs/abc/artifacts', 'backslash dinormalisasi');
+
+  assert.throws(() => lhConfig({ urls: [] }, null, 'x'), /Tidak ada URL/);
+  const minimal = lhConfig(null, 'https://a.test/', 'out');
+  assert.equal(JSON.parse(minimal.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.numberOfRuns, 1);
+});
+
 test('settings: GET daftar, PATCH whitelist + rentang, audit tercatat', async t => {
   const f = await fixture(t);
   const cookie = await f.login();

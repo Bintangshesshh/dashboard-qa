@@ -1,12 +1,48 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { mkdir, writeFile, appendFile, readdir, readFile, rm } from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { join, resolve, relative, isAbsolute, basename, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(join(root, 'package.json'));
+
+// Config Playwright untuk spec yang datang dari database. testDir = folder spec
+// asli supaya import relatif (`./creds`) tetap jalan.
+const runConfig = (testDir, specFile) => `import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: ${JSON.stringify(testDir)},
+  testMatch: ${JSON.stringify(specFile)},
+  fullyParallel: false,
+  workers: 1,
+  timeout: 120000,
+  retries: 0,
+  reporter: [
+    ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME }],
+    ['html', { outputDir: process.env.PLAYWRIGHT_HTML_OUTPUT_DIR, open: 'never' }],
+  ],
+  use: { ...devices['Desktop Chrome'], navigationTimeout: 90000 },
+});
+`;
+
+// Config LH dari test_files.config (PRD §8.3): URL sesi + urls tambahan, budget, numberOfRuns.
+// Dipisah dari runLighthouse supaya bisa diuji tanpa menjalankan lhci.
+export function lhConfig(cfg, targetUrl, outDir) {
+  const urls = [...new Set([...(targetUrl ? [targetUrl] : []), ...(cfg?.urls ?? [])])];
+  if (!urls.length) throw new Error('Tidak ada URL untuk diaudit: sesi tanpa targetUrl dan config tanpa urls');
+  const assertions = Object.fromEntries(
+    Object.entries(cfg?.budgets ?? {}).map(([k, v]) => [k, ['warn', { minScore: v?.minScore ?? 0.6 }]]),
+  );
+  return `module.exports = ${JSON.stringify({
+    ci: {
+      collect: { numberOfRuns: cfg?.numberOfRuns ?? 1, url: urls },
+      assert: { assertions },
+      upload: { target: 'filesystem', outputDir: String(outDir).replaceAll('\\', '/') },
+    },
+  }, null, 2)};\n`;
+}
 
 export async function filesBelow(dir, base = dir) {
   const files = [];
@@ -120,7 +156,7 @@ export class Runner extends EventEmitter {
     const { runId, testFile, targetUrl } = state;
     const dir = this.directory(runId);
     await this.log(state, 'system', `[runner] Menjalankan Playwright ${testFile.path}\n`);
-    const specPath = testFile.path.replaceAll('\\', '/'); // relatif: path absolut Windows dibaca Playwright sebagai regex
+    let specPath = testFile.path.replaceAll('\\', '/'); // relatif: path absolut Windows dibaca Playwright sebagai regex
     const captureFile = join(dir, 'capture.jsonl');
     const env = {
       ...process.env,
@@ -131,7 +167,23 @@ export class Runner extends EventEmitter {
       PLAYWRIGHT_HTML_OUTPUT_DIR: join(dir, 'artifacts', 'playwright-report'),
     };
     // `config` opsional: { configPath } untuk config Playwright khusus (quick check).
-    const cfgPath = (() => { try { return JSON.parse(testFile.config ?? '{}')?.configPath ?? null; } catch { return null; } })();
+    let cfgPath = (() => { try { return JSON.parse(testFile.config ?? '{}')?.configPath ?? null; } catch { return null; } })();
+    // Kode dari DB (editor dashboard) menang atas file di disk. Ditulis di sebelah
+    // spec aslinya karena spec eureka mengimpor `./creds` — memindahkan file ke
+    // folder run akan memutus import relatif. Config ditaruh di root repo supaya
+    // `@playwright/test` bisa di-resolve. Keduanya dihapus setelah run.
+    let generated = null;
+    let generatedCfg = null;
+    if (testFile.code?.trim()) {
+      const original = join(root, testFile.path);
+      generated = join(dirname(original), `.playbook-${runId.slice(0, 8)}.spec.ts`);
+      await writeFile(generated, testFile.code);
+      generatedCfg = join(root, `.playbook-${runId.slice(0, 8)}.config.mjs`);
+      await writeFile(generatedCfg, runConfig(dirname(original), basename(generated)));
+      cfgPath = generatedCfg;
+      specPath = basename(generated);
+      await this.log(state, 'system', `[runner] Spec dari database → ${basename(generated)}\n`);
+    }
     const args = ['playwright', 'test', specPath, `--output=${join(dir, 'artifacts')}`];
     if (cfgPath) args.push('--config=' + cfgPath);
     else args.push('--reporter=json,html');
@@ -141,6 +193,8 @@ export class Runner extends EventEmitter {
     child.stderr.on('data', d => this.log(state, 'stderr', d));
     const code = await new Promise(res => { child.on('close', res); child.on('error', e => { this.log(state, 'stderr', e.message + '\n'); res(1); }); });
     state.child = null;
+    if (generated) await rm(generated, { force: true }).catch(() => {});
+    if (generatedCfg) await rm(generatedCfg, { force: true }).catch(() => {});
     await state.chain;
 
     // Parse hasil JSON Playwright → playwright_results
@@ -166,12 +220,20 @@ export class Runner extends EventEmitter {
   }
 
   async runLighthouse(state) {
-    const { runId, testFile } = state;
+    const { runId, testFile, targetUrl } = state;
     const dir = this.directory(runId);
     await this.log(state, 'system', `[runner] Menjalankan Lighthouse CI ${testFile.path}\n`);
-    const configPath = isAbsolute(testFile.path) ? testFile.path : join(root, testFile.path);
     const outDir = join(dir, 'artifacts');
     await mkdir(outDir, { recursive: true });
+    // Config digenerate dari test_files.config (PRD §8.3): URL sesi + urls tambahan.
+    // Tanpa ini, memilih env local/staging tetap menembak URL produksi di file repo.
+    const cfg = (() => { try { return JSON.parse(testFile.config ?? 'null'); } catch { return null; } })();
+    let configPath = isAbsolute(testFile.path) ? testFile.path : join(root, testFile.path);
+    if (cfg) {
+      configPath = join(dir, 'lighthouserc.cjs');
+      await writeFile(configPath, lhConfig(cfg, targetUrl, outDir));
+      await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${(cfg.urls ?? []).length + (targetUrl ? 1 : 0)} URL)\n`);
+    }
     // cwd = dir: lhci menulis .lighthouseci/ relatif cwd, jadi tiap run terisolasi.
     const child = spawn('npx', ['lhci', 'autorun', '--config=' + configPath, '--upload.target=filesystem', '--upload.outputDir=' + outDir], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
     state.child = child;

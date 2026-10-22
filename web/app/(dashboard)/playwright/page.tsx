@@ -32,17 +32,43 @@ export default function PlaywrightPage() {
   }, [projectId]);
 
   const selected = useMemo(() => files.find(f => f.id === fileId), [files, fileId]);
+  const project = projects.find(p => p.id === projectId);
+  const target = !project ? "" : env === "local" ? project.local_url ?? "" : env === "staging" ? project.staging_url ?? "" : project.base_url;
+
+  // Draft editor; disinkronkan saat spec berganti, bukan saat mengetik.
+  const [draft, setDraft] = useState("");
+  const [confirmName, setConfirmName] = useState("");
+  useEffect(() => { setDraft(selected?.code ?? ""); setConfirmName(""); }, [selected]);
+
+  // PRD §10.3: editor memperingatkan URL hardcoded (bikin spec tidak bisa pindah env).
+  const hardcoded = (draft.match(/https?:\/\/[^\s'"`)]+/g) ?? []).filter(u => !u.includes("process.env"));
+  const dirty = !!selected && draft !== selected.code;
+
+  const save = async () => {
+    if (!selected) return;
+    setBusy(true); setError("");
+    try {
+      const updated = await api.patchTestFile(selected.id, { code: draft });
+      setFiles(prev => prev.map(f => (f.id === updated.id ? updated : f)));
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
 
   const start = async () => {
     setBusy(true); setError("");
     try {
+      if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
+      if (!fileId) throw new Error("Pilih spec dulu.");
+      if (dirty) throw new Error("Ada perubahan belum disimpan. Klik Simpan dulu.");
+      // PRD §10.3/§11: production wajib ketik ulang nama project.
+      if (env === "production" && confirmName.trim() !== project?.name) {
+        throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
+      }
       let s = session;
       if (!s || s.project_id !== projectId || s.env !== env) {
-        const created = await api.createSession(projectId, env);
+        const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
         s = created.session;
         setSession(s);
       }
-      if (!fileId) throw new Error("Pilih spec dulu.");
       await api.createRun(s.id, fileId);
       location.href = `/reports/${s.id}`;
     } catch (e) {
@@ -81,8 +107,17 @@ export default function PlaywrightPage() {
                 {files.map(f => <option key={f.id} value={f.id}>{f.label} — {f.path}</option>)}
               </select>
             </label>
+            <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
+              Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
+            </p>
+            {env === "production" && (
+              <label className="pb-field">
+                Ketik <strong>{project?.name}</strong> untuk konfirmasi production
+                <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
+              </label>
+            )}
             <div className="pb-row">
-              <button className="pb-btn primary" onClick={start} disabled={busy || !fileId}>
+              <button className="pb-btn primary" onClick={start} disabled={busy || !fileId || !target || dirty}>
                 {busy ? "Menjalankan…" : "Run"}
               </button>
               {session && <Link className="pb-btn sm" href={`/reports/${session.id}`}>Sesi aktif</Link>}
@@ -97,8 +132,22 @@ export default function PlaywrightPage() {
           <h2 style={{ margin: "0 0 12px", fontSize: 15 }}>Isi spec</h2>
           {selected ? (
             <>
-              <p className="pb-muted pb-mono" style={{ marginTop: 0 }}>{selected.path} · {fmtDur(null)}</p>
-              <pre className="pb-term" style={{ maxHeight: 460 }}>{selected.code}</pre>
+              <div className="pb-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+                <span className="pb-muted pb-mono" style={{ fontSize: 12 }}>{selected.path}</span>
+                <span className="pb-row" style={{ gap: 8 }}>
+                  {dirty && <span className="pb-muted" style={{ fontSize: 12 }}>belum disimpan</span>}
+                  <button className="pb-btn sm primary" onClick={save} disabled={busy || !dirty}>Simpan</button>
+                  <button className="pb-btn sm" onClick={() => setDraft(selected.code)} disabled={busy || !dirty}>Reset</button>
+                </span>
+              </div>
+              {hardcoded.length > 0 && (
+                <div className="pb-err" style={{ marginBottom: 8 }}>
+                  URL hardcoded terdeteksi ({hardcoded.length}): spec tidak akan mengikuti env.
+                  Pakai <code className="pb-mono">process.env.BASE_URL</code>. Contoh: <span className="pb-mono">{hardcoded[0]}</span>
+                </div>
+              )}
+              <textarea className="pb-input pb-mono" style={{ minHeight: 380, lineHeight: 1.5, resize: "vertical" }}
+                value={draft} spellCheck={false} onChange={e => setDraft(e.target.value)} />
             </>
           ) : <p className="pb-empty">Pilih project yang punya spec Playwright.</p>}
         </section>
