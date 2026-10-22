@@ -10,57 +10,78 @@ type NetworkLine = { seq: number; at: string; url: string; status: number | null
 
 const MAX_LINES = 2000;
 
-export function RunTerminal({ runId, status }: { runId: string; status: string }) {
+export function RunTerminal({ runId }: { runId: string }) {
   const [lines, setLines] = useState<LogEntry[]>([]);
   const [consoleLines, setConsoleLines] = useState<ConsoleLine[]>([]);
   const [networkLines, setNetworkLines] = useState<NetworkLine[]>([]);
-  const [live, setLive] = useState(status === "queued" || status === "running" || status === "uploading");
+  const [live, setLive] = useState(true);
   const [tab, setTab] = useState<"log" | "console" | "network">("log");
   const box = useRef<HTMLPreElement>(null);
 
-  // Log awal (paginasi) + panel console/network dari endpoint detail.
+  // Log awal (paginasi) → panel console/network → baru WS dari seq terakhir.
+  // Urutan ini penting: WS subscribe `after: 0` akan memutar ulang semua log dan
+  // menduplikasi baris kalau dijalankan paralel dengan fetch awal.
   useEffect(() => {
     let alive = true;
-    api.runLogs(runId, 0).then(r => {
-      if (!alive) return;
-      setLines(r.logs);
-      if (r.hasMore) return api.runLogs(runId, r.nextAfter).then(r2 => { if (alive) setLines(prev => [...prev, ...r2.logs]); });
-    }).catch(() => {});
-    api.run(runId).then((run: any) => {
-      if (!alive) return;
-      setConsoleLines(run.console ?? []);
-      setNetworkLines(run.network ?? []);
-    }).catch(() => {});
-    return () => { alive = false; };
-  }, [runId]);
-
-  // Stream live.
-  useEffect(() => {
-    if (!live) return;
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${proto}//${location.host}/ws`);
+    let ws: WebSocket | null = null;
     let closed = false;
-    ws.onopen = () => ws.send(JSON.stringify({ type: "subscribe", runId, after: 0 }));
-    ws.onmessage = ev => {
-      let msg: any;
-      try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.type === "log") {
-        const entry: LogEntry = { seq: msg.seq, stream: msg.stream, text: msg.text, at: msg.at };
-        if (entry.stream === "console") {
-          try { const v = JSON.parse(entry.text); setConsoleLines(p => [...p, { seq: entry.seq, at: entry.at, type: v.type ?? "log", text: String(v.text ?? ""), location: v.location ?? null }]); } catch { /* abaikan */ }
-        } else if (entry.stream === "network") {
-          try { const v = JSON.parse(entry.text); setNetworkLines(p => [...p, { seq: entry.seq, at: entry.at, url: v.url ?? "", status: v.status ?? null, method: v.method ?? null, failure: v.failure ?? null, ms: v.ms ?? null }]); } catch { /* abaikan */ }
-        }
-        setLines(prev => [...prev, entry].slice(-MAX_LINES));
-      } else if (msg.type === "status" && msg.run) {
-        const s = msg.run.status;
-        if (["passed", "failed", "cancelled", "interrupted"].includes(s)) { setLive(false); closed = true; ws.close(); }
+
+    const pushLog = (entry: LogEntry) => {
+      if (entry.stream === "console") {
+        try {
+          const v = JSON.parse(entry.text);
+          setConsoleLines(p => [...p, { seq: entry.seq, at: entry.at, type: v.type ?? "log", text: String(v.text ?? ""), location: v.location ?? null }]);
+        } catch { /* abaikan */ }
+      } else if (entry.stream === "network") {
+        try {
+          const v = JSON.parse(entry.text);
+          setNetworkLines(p => [...p, { seq: entry.seq, at: entry.at, url: v.url ?? "", status: v.status ?? null, method: v.method ?? null, failure: v.failure ?? null, ms: v.ms ?? null }]);
+        } catch { /* abaikan */ }
       }
+      setLines(prev => [...prev, entry].slice(-MAX_LINES));
     };
-    ws.onerror = () => { setLive(false); };
-    ws.onclose = () => { if (!closed) setLive(false); };
-    return () => { closed = true; ws.close(); };
-  }, [runId, live]);
+
+    (async () => {
+      let after = 0;
+      try {
+        const first = await api.runLogs(runId, 0);
+        if (!alive) return;
+        let all = first.logs;
+        if (first.hasMore) {
+          const more = await api.runLogs(runId, first.nextAfter);
+          all = [...all, ...more.logs];
+        }
+        setLines(all);
+        // Console/network lengkap (log bisa terpotong log_max_bytes).
+        const run: any = await api.run(runId);
+        if (!alive) return;
+        setConsoleLines(run.console ?? []);
+        setNetworkLines(run.network ?? []);
+        after = all.length ? all[all.length - 1].seq : 0;
+      } catch { /* biarkan WS yang mengisi */ }
+      if (!alive) return;
+
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(`${proto}//${location.host}/ws`);
+      ws.onopen = () => ws!.send(JSON.stringify({ type: "subscribe", runId, after }));
+      ws.onmessage = ev => {
+        let msg: any;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        if (msg.type === "log") {
+          pushLog({ seq: msg.seq, stream: msg.stream, text: msg.text, at: msg.at });
+        } else if (msg.type === "status" && msg.run) {
+          // WS yang menentukan kapan berhenti, bukan snapshot props.
+          if (["passed", "failed", "cancelled", "interrupted"].includes(msg.run.status)) {
+            closed = true; setLive(false); ws!.close();
+          }
+        }
+      };
+      ws.onerror = () => setLive(false);
+      ws.onclose = () => { if (!closed) setLive(false); };
+    })();
+
+    return () => { alive = false; closed = true; ws?.close(); };
+  }, [runId]);
 
   // Auto-scroll ke bawah selama live.
   useEffect(() => {

@@ -11,6 +11,7 @@ const NAV = [
   { href: "/lighthouse", label: "Lighthouse" },
   { href: "/reports", label: "Reports" },
 ];
+const ADMIN_NAV = [{ href: "/settings", label: "Pengaturan" }];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
@@ -34,7 +35,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <span>Eureka Group</span>
         </div>
         <nav className="pb-nav">
-          {NAV.map(item => (
+          {[...NAV, ...(user?.role === "admin" ? ADMIN_NAV : [])].map(item => (
             <Link key={item.href} href={item.href} data-active={path === item.href}>
               {item.label}
             </Link>

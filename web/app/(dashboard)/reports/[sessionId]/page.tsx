@@ -35,6 +35,16 @@ export default function SessionDetail() {
     try { setOpenRun(await api.run(run.id)); } catch (e) { setError((e as Error).message); }
   };
 
+  // Snapshot run terbuka ikut diperbarui selama belum final.
+  useEffect(() => {
+    if (!openRun) return;
+    if (!["queued", "running", "uploading"].includes(openRun.status)) return;
+    const t = setTimeout(() => {
+      api.run(openRun.id).then(setOpenRun).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [openRun]);
+
   const publish = async (scope: "pw" | "lh" | "both") => {
     setBusy(scope); setError(""); setNotice("");
     try {
@@ -197,7 +207,7 @@ function RunPanel({ run, onClose }: { run: Run; onClose: () => void }) {
         </table>
       )}
 
-      <RunTerminal runId={run.id} status={run.status} />
+      <RunTerminal runId={run.id} />
 
       {html && (
         <div style={{ marginTop: 14 }}>

@@ -567,6 +567,37 @@ export function createApp({ store, runner, token, origins }) {
     res.json(report);
   }));
 
+  // ─── Settings (PRD §10.7) ────────────────────────────────────────────────
+  // Whitelist key + rentang: key tak dikenal ditolak supaya salah ketik tidak
+  // diam-diam jadi baris baru di tabel settings.
+  const SETTING_LIMITS = {
+    session_reuse_minutes: [1, 10080],
+    log_max_bytes: [1024, 104857600],
+    artifact_retention_days: [1, 365],
+    report_retention_days: [1, 365],
+    log_retention_days: [1, 365],
+    max_queue_length: [1, 100],
+    max_upload_mb: [1, 1024],
+    range_default_days: [1, 365],
+  };
+  app.get('/api/settings', requireAuth, requireAdmin, route(async (req, res) => {
+    res.json(store.getSettings());
+  }));
+  app.patch('/api/settings', requireAuth, requireAdmin, route(async (req, res) => {
+    const body = req.body ?? {};
+    const updates = {};
+    for (const [key, [min, max]] of Object.entries(SETTING_LIMITS)) {
+      if (body[key] === undefined) continue;
+      const n = Number(body[key]);
+      if (!Number.isSafeInteger(n) || n < min || n > max) fail(`${key} harus bilangan bulat ${min}–${max}`);
+      updates[key] = n;
+    }
+    if (!Object.keys(updates).length) fail('Tidak ada setting yang diubah');
+    for (const [key, value] of Object.entries(updates)) store.setSetting(key, value);
+    store.audit({ userId: req.user.id, action: 'update_settings', entity: 'settings', detail: JSON.stringify(updates) });
+    res.json(store.getSettings());
+  }));
+
   // ─── Audit ───────────────────────────────────────────────────────────────
   app.get('/api/audit', requireAuth, requireAdmin, route(async (req, res) => {
     res.json(store.listAudit({ limit: req.query.limit, entity: req.query.entity }));

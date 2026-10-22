@@ -1,7 +1,7 @@
 module.exports = {
   ci: {
     collect: {
-      numberOfRuns: 3,
+      numberOfRuns: 1,
       url: [
         "https://eurekabookhouse.com/",
         "https://eurekabookhouse.com/auth/login",

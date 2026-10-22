@@ -91,6 +91,11 @@ export class Runner extends EventEmitter {
     this.arm(state);
 
     const started = Date.now();
+    // lhci/playwright senyap saat stdout bukan TTY → terminal tampak mati.
+    // ponytail: heartbeat 15 s cukup; kalau perlu progres nyata, parse output tool.
+    const beat = setInterval(() => {
+      this.log(state, 'system', `… masih berjalan ${Math.round((Date.now() - started) / 1000)}s\n`);
+    }, 15000);
     try {
       if (testFile.tool === 'pw') {
         await this.runPlaywright(state);
@@ -104,6 +109,7 @@ export class Runner extends EventEmitter {
       await this.log(state, 'stderr', `${error.message}\n`);
       await this.store.patchRun(runId, { status: 'failed', error: error.message, finished_at: new Date().toISOString(), duration_ms: Date.now() - started });
     } finally {
+      clearInterval(beat);
       clearTimeout(state.timer);
     }
     this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
@@ -239,7 +245,7 @@ export class Runner extends EventEmitter {
 
   async parseLighthouse(dir) {
     const files = await filesBelow(join(dir, 'artifacts')).catch(() => []);
-    const out = [];
+    const out = new Map();
     // Assertion yang gagal → budget_failed per URL. lhci menaruhnya di .lighthouseci/ (cwd),
     // bukan di upload dir; cek keduanya.
     const assertFile = files.find(f => f.includes('assertion-results'));
@@ -268,7 +274,9 @@ export class Runner extends EventEmitter {
       if (!data?.categories) continue;
       const cat = (k) => data.categories[k]?.score ?? null;
       const url = data.finalUrl ?? data.requestedUrl ?? f;
-      out.push({
+      // lhci menulis satu LHR per run (numberOfRuns) → UNIQUE(run_id,url).
+      // Ambil run terakhir per URL; run lebih awal ditimpa.
+      out.set(url, {
         url,
         performance: cat('performance'),
         accessibility: cat('accessibility'),
@@ -282,7 +290,7 @@ export class Runner extends EventEmitter {
         reportPath: htmlByUrl.get(url) ?? null,
       });
     }
-    return out;
+    return [...out.values()];
   }
 
   async collectArtifacts(runId, dir, tool = 'pw') {

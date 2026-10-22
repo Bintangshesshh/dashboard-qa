@@ -408,3 +408,63 @@ test('artifact: traversal ditolak, file sah disajikan dengan header aman', async
   r = await f.call(`/artifacts/${runId}/report.json`);
   assert.equal(r.status, 401);
 });
+
+test('parseLighthouse: banyak LHR URL sama → satu baris per URL', async () => {
+  const { Runner } = await import('../runner.mjs');
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-lh-'));
+  const dir = join(runsDir, 'run1');
+  const artifacts = join(dir, 'artifacts');
+  await mkdir(artifacts, { recursive: true });
+  const lhr = (perf, url) => JSON.stringify({
+    finalUrl: url,
+    categories: { performance: { score: perf }, accessibility: { score: 0.9 }, 'best-practices': { score: 0.8 }, seo: { score: 1 } },
+    audits: { 'largest-contentful-paint': { numericValue: 1200 } },
+  });
+  // numberOfRuns: 3 → tiga LHR untuk URL yang sama.
+  await writeFile(join(artifacts, 'lhr-1.json'), lhr(0.5, 'https://a.test/'));
+  await writeFile(join(artifacts, 'lhr-2.json'), lhr(0.7, 'https://a.test/'));
+  await writeFile(join(artifacts, 'lhr-3.json'), lhr(0.9, 'https://a.test/'));
+  await writeFile(join(artifacts, 'lhr-4.json'), lhr(0.4, 'https://a.test/login'));
+  await writeFile(join(artifacts, 'manifest.json'), JSON.stringify([
+    { url: 'https://a.test/', htmlPath: join(artifacts, 'lhr-1.html') },
+    { url: 'https://a.test/', htmlPath: join(artifacts, 'lhr-3.html') },
+  ]));
+
+  const runner = new Runner({}, { runsDir });
+  const rows = await runner.parseLighthouse(dir);
+
+  assert.equal(rows.length, 2, 'satu baris per URL unik');
+  const home = rows.find(r => r.url === 'https://a.test/');
+  assert.equal(home.performance, 0.9, 'run terakhir yang menang');
+  assert.equal(home.reportPath, 'lhr-3.html');
+  assert.equal(rows.find(r => r.url === 'https://a.test/login').performance, 0.4);
+  await rm(runsDir, { recursive: true, force: true });
+});
+
+test('settings: GET daftar, PATCH whitelist + rentang, audit tercatat', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  let r = await f.call('/api/settings', { cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.log_max_bytes, '5242880');
+
+  // key tak dikenal diabaikan, bukan bikin baris baru
+  r = await f.call('/api/settings', { method: 'PATCH', cookie, body: { log_max_bytes: 1048576, key_ngawur: 5 } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.log_max_bytes, '1048576');
+  assert.equal(r.body.key_ngawur, undefined);
+
+  // di luar rentang ditolak, tidak ada yang tersimpan
+  r = await f.call('/api/settings', { method: 'PATCH', cookie, body: { artifact_retention_days: 0 } });
+  assert.equal(r.status, 400);
+  r = await f.call('/api/settings', { cookie });
+  assert.equal(r.body.artifact_retention_days, '7');
+
+  // body kosong ditolak
+  r = await f.call('/api/settings', { method: 'PATCH', cookie, body: {} });
+  assert.equal(r.status, 400);
+
+  const audit = f.store.listAudit({ limit: 10 });
+  assert.ok(audit.some(a => a.action === 'update_settings'), 'perubahan settings masuk audit');
+});

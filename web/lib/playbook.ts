@@ -68,6 +68,23 @@ export type Report = {
   created_at: string; built_at: string | null;
 };
 
+// Nilai settings disimpan sebagai TEXT di SQLite; UI yang mengubah ke angka.
+export type Settings = {
+  session_reuse_minutes: string; log_max_bytes: string;
+  artifact_retention_days: string; report_retention_days: string;
+  log_retention_days: string; max_queue_length: string;
+  max_upload_mb: string; range_default_days: string;
+};
+export type CliToken = {
+  id: string; label: string | null; created_at: string;
+  last_used_at: string | null; revoked_at: string | null;
+};
+export type AuditRow = {
+  id: string; user_id: string | null; action: string; entity: string;
+  entity_id: string | null; detail: string | null; created_at: string;
+};
+
+
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) { super(message); this.status = status; }
@@ -95,6 +112,23 @@ export const api = {
   me: () => request<User>("/api/me"),
 
   projects: () => request<Project[]>("/api/projects"),
+  patchProject: (id: string, body: Partial<Pick<Project, "base_url" | "staging_url" | "local_url" | "origins" | "allow_production">>) =>
+    request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  settings: () => request<Settings>("/api/settings"),
+  patchSettings: (body: Partial<Record<keyof Settings, number>>) =>
+    request<Settings>("/api/settings", { method: "PATCH", body: JSON.stringify(body) }),
+
+  cliTokens: () => request<CliToken[]>("/api/auth/cli-token"),
+  createCliToken: (label: string) =>
+    request<{ id: string; token: string; label: string | null }>("/api/auth/cli-token", {
+      method: "POST", body: JSON.stringify({ label }),
+    }),
+  revokeCliToken: (id: string) =>
+    request<null>(`/api/auth/cli-token/${id}`, { method: "DELETE" }),
+
+  audit: (limit = 50) => request<AuditRow[]>(`/api/audit?limit=${limit}`),
+
   testFiles: (q: { project?: string; tool?: string } = {}) => {
     const p = new URLSearchParams();
     if (q.project) p.set("project", q.project);
