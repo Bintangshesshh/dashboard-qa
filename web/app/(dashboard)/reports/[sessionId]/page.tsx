@@ -67,9 +67,23 @@ export default function SessionDetail() {
   };
 
   const closeSession = async () => {
-    if (!confirm("Tutup sesi ini? Sesi tertutup tidak bisa dipakai ulang.")) return;
+    if (!confirm("Tutup sesi ini? Sesi tertutup tidak bisa dipakai ulang, tapi datanya tetap ada.")) return;
+    setBusy("close"); setError(""); setNotice("");
+    try { await api.closeSession(sessionId); setNotice("Sesi ditutup."); load(); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(""); }
+  };
+
+  const deleteSession = async () => {
+    if (!confirm("Hapus sesi ini beserta semua run, artifact, dan laporannya? Tidak bisa dibatalkan.")) return;
     try { await api.deleteSession(sessionId); location.href = "/reports"; }
     catch (e) { setError((e as Error).message); }
+  };
+
+  const deleteRun = async (run: Run) => {
+    if (!confirm("Hapus run ini beserta artifact-nya?")) return;
+    setBusy(run.id); setError(""); setNotice("");
+    try { await api.deleteRun(run.id); setNotice("Run dihapus."); load(); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   };
 
   if (!session) return <p className="pb-empty">{error || "Memuat sesi…"}</p>;
@@ -87,7 +101,8 @@ export default function SessionDetail() {
           </p>
         </div>
         <div className="pb-row">
-          <button className="pb-btn sm" onClick={closeSession} disabled={!!session.closed_at}>Tutup sesi</button>
+          <button className="pb-btn sm" onClick={closeSession} disabled={!!session.closed_at || !!busy}>Tutup sesi</button>
+          <button className="pb-btn sm" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
           <button className="pb-btn sm" onClick={() => { setBusy("pw"); publish("pw"); }} disabled={!tools.has("pw") || !!busy}>Laporan Playwright</button>
           <button className="pb-btn sm" onClick={() => { setBusy("lh"); publish("lh"); }} disabled={!tools.has("lh") || !!busy}>Laporan Lighthouse</button>
           <button className="pb-btn sm primary" onClick={() => publish("both")} disabled={!tools.has("pw") || !tools.has("lh") || !!busy}>Gabungan</button>
@@ -119,6 +134,9 @@ export default function SessionDetail() {
                         </button>
                       )}
                       <button className="pb-btn sm" onClick={() => openRunDetail(r)}>Hasil</button>
+                      {["passed", "failed", "cancelled", "interrupted"].includes(r.status) && (
+                        <button className="pb-btn sm" onClick={() => deleteRun(r)} disabled={busy === r.id}>Hapus</button>
+                      )}
                     </span>
                   </td>
                 </tr>

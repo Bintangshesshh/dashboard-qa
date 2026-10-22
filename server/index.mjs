@@ -295,6 +295,17 @@ export function createApp({ store, runner, token, origins }) {
     res.json(session);
   }));
 
+  // PRD §10.6: `Tutup sesi` mengunci sesi (closed_at), bukan menghapus.
+  app.post('/api/sessions/:id/close', requireAuth, requireAdmin, route(async (req, res) => {
+    const session = store.getSession(id(req.params.id));
+    if (!session) fail('Not found', 404);
+    if (session.closed_at) return res.json(session);
+    if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
+    store.closeSession(session.id);
+    store.audit({ userId: req.user.id, action: 'close_session', entity: 'sessions', entityId: session.id });
+    res.json(store.getSession(session.id));
+  }));
+
   app.delete('/api/sessions/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id), true);
     if (!session) fail('Not found', 404);

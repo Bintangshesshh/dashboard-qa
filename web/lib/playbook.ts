@@ -172,7 +172,9 @@ export const api = {
     if (!res.ok) throw new ApiError(body?.error ?? `Request gagal (${res.status})`, res.status);
     return body as { sessionId: string; targetUrl: string; session: Session };
   },
+  closeSession: (id: string) => request<Session>(`/api/sessions/${id}/close`, { method: "POST" }),
   deleteSession: (id: string) => request<null>(`/api/sessions/${id}`, { method: "DELETE" }),
+  deleteRun: (id: string) => request<null>(`/api/runs/${id}`, { method: "DELETE" }),
 
   // PRD §10.2/A43: satu klik → smoke Playwright + Lighthouse budget default.
   quickCheck: (projectId: string, env: string, confirm?: string) =>

@@ -707,3 +707,35 @@ test('B7: run queued bisa dibatalkan dan tidak dijalankan runner', async t => {
   r = await f.call('/api/runs/r-b7/cancel', { method: 'POST', cookie });
   assert.equal(r.status, 409);
 });
+
+test('B8: tutup sesi tidak menghapus, hapus sesi/run menghapus datanya', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-b8', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  f.store.createRun({ id: 'r-b8', sessionId: session, testFileId: 'tf-b8', tool: 'pw' });
+
+  // run aktif memblokir tutup sesi
+  let r = await f.call(`/api/sessions/${session}/close`, { method: 'POST', cookie });
+  assert.equal(r.status, 409);
+
+  f.store.patchRun('r-b8', { status: 'passed' });
+  r = await f.call(`/api/sessions/${session}/close`, { method: 'POST', cookie });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.closed_at, 'sesi ditutup, bukan dihapus');
+  assert.ok(f.store.getSession(session), 'baris sesi masih ada');
+
+  // hapus run final boleh, run aktif ditolak
+  f.store.createRun({ id: 'r-b8b', sessionId: session, testFileId: 'tf-b8', tool: 'pw' });
+  r = await f.call('/api/runs/r-b8b', { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+  r = await f.call('/api/runs/r-b8', { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(f.store.getRun('r-b8'), undefined);
+
+  // hapus sesi
+  f.store.patchRun('r-b8b', { status: 'failed' });
+  r = await f.call(`/api/sessions/${session}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(f.store.getSession(session), undefined);
+});
