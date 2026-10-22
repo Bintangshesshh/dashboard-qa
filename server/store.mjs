@@ -229,6 +229,20 @@ export class Store {
     this.logBytesCache.set(runId, used);
     if (used > limit) this.trimLogs(runId, limit);
   }
+  // Batch dari CLI: satu transaksi, trim sekali di akhir.
+  logsBatch(runId, entries) {
+    if (!entries.length) return;
+    const ins = this.db.prepare('INSERT OR IGNORE INTO run_logs (run_id, seq, stream, text, at) VALUES (?,?,?,?,?)');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const e of entries) ins.run(runId, e.seq, e.stream, String(e.text), e.at);
+      this.db.exec('COMMIT');
+    } catch (err) { this.db.exec('ROLLBACK'); throw err; }
+    const limit = Number(this.getSetting('log_max_bytes') ?? 5242880);
+    const total = this.logBytes(runId);
+    this.logBytesCache.set(runId, total);
+    if (total > limit) this.trimLogs(runId, limit);
+  }
   trimLogs(runId, limit) {
     const rows = this.db.prepare('SELECT seq, length(text) AS n FROM run_logs WHERE run_id=? ORDER BY seq').all(runId);
     const total = rows.reduce((s, r) => s + r.n, 0);
