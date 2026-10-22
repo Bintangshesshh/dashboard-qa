@@ -250,16 +250,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
 
       <RunTerminal runId={run.id} />
 
-      {html && (
-        <div style={{ marginTop: 14 }}>
-          <div className="pb-row" style={{ marginBottom: 8 }}>
-            <a className="pb-btn sm" href={artifactUrl(run.id, html.path)} target="_blank" rel="noreferrer">Buka tab baru</a>
-            {report && <a className="pb-btn sm" href={artifactUrl(run.id, report.path)} target="_blank" rel="noreferrer">JSON mentah</a>}
-          </div>
-          <iframe title="report mentah" src={artifactUrl(run.id, html.path)}
-            style={{ width: "100%", height: 520, border: "1px solid var(--line)", borderRadius: 10, background: "#fff" }} />
-        </div>
-      )}
+      {html && <ReportFrame runId={run.id} path={html.path} jsonPath={report?.path} />}
       {!html && !(run.artifacts?.length) && ["passed", "failed", "cancelled", "interrupted"].includes(run.status) && (
         <p className="pb-muted" style={{ marginTop: 12, fontSize: 12 }}>
           <button className="pb-btn sm" disabled>Report mentah</button>{" "}
@@ -267,5 +258,43 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
         </p>
       )}
     </section>
+  );
+}
+
+// PRD §10.8: cek artifact dulu. 401 → tombol login ulang, selain itu → pesan jelas,
+// supaya tidak ada iframe kosong yang bikin dashboard terlihat rusak.
+function ReportFrame({ runId, path, jsonPath }: { runId: string; path: string; jsonPath?: string }) {
+  const url = artifactUrl(runId, path);
+  const [state, setState] = useState<"checking" | "ok" | "auth" | "missing">("checking");
+
+  useEffect(() => {
+    let live = true;
+    setState("checking");
+    fetch(url, { method: "HEAD", credentials: "include" })
+      .then(r => { if (live) setState(r.ok ? "ok" : r.status === 401 ? "auth" : "missing"); })
+      .catch(() => { if (live) setState("missing"); });
+    return () => { live = false; };
+  }, [url]);
+
+  if (state === "checking") return <div className="pb-skel" style={{ height: 200, marginTop: 14 }} />;
+  if (state === "auth") {
+    return (
+      <p className="pb-muted" style={{ marginTop: 14, fontSize: 12 }}>
+        Sesi login habis.{" "}
+        <a className="pb-btn sm" href={"/login?next=" + encodeURIComponent(location.pathname + location.search)}>Login ulang</a>
+      </p>
+    );
+  }
+  if (state === "missing") return <p className="pb-muted" style={{ marginTop: 14, fontSize: 12 }}>report tidak tersedia</p>;
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div className="pb-row" style={{ marginBottom: 8 }}>
+        <a className="pb-btn sm" href={url} target="_blank" rel="noreferrer">Buka tab baru</a>
+        {jsonPath && <a className="pb-btn sm" href={artifactUrl(runId, jsonPath)} target="_blank" rel="noreferrer">JSON mentah</a>}
+      </div>
+      <iframe title="report mentah" src={url}
+        style={{ width: "100%", height: 520, border: "1px solid var(--line)", borderRadius: 10, background: "#fff" }} />
+    </div>
   );
 }
