@@ -53,15 +53,40 @@ async function api(path, { method = 'GET', body, raw, token, baseUrl, cookie } =
 
 // ─── login / logout / whoami ───────────────────────────────────────────────
 async function ask(question, { hidden = false } = {}) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-  if (hidden) {
-    // Matikan echo: tulis ulang prompt tanpa meneruskan karakter.
-    const write = rl._writeToOutput.bind(rl);
-    rl._writeToOutput = s => { if (s.includes(question)) write(s); };
+  process.stdout.write(question);
+  // Password: baca stdin langsung. `rl._writeToOutput` privat readline dan sudah
+  // tidak ada di Node baru, jadi jangan dipakai.
+  if (!hidden || !process.stdin.isTTY) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await rl.question('');
+    rl.close();
+    return answer;
   }
-  const answer = await rl.question(question);
-  rl.close();
-  return answer;
+  const stdin = process.stdin;
+  stdin.setRawMode(true);
+  stdin.resume();
+  stdin.setEncoding('utf8');
+  return new Promise(resolve => {
+    let buf = '';
+    const onData = chunk => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') {
+          stdin.setRawMode(false); stdin.pause(); stdin.off('data', onData);
+          process.stdout.write('\n');
+          resolve(buf);
+          return;
+        }
+        if (ch === '\u0003') { // Ctrl+C
+          stdin.setRawMode(false); stdin.pause(); stdin.off('data', onData);
+          process.stdout.write('\n');
+          process.exit(130);
+        }
+        if (ch === '\u007f' || ch === '\b') { buf = buf.slice(0, -1); continue; }
+        buf += ch;
+      }
+    };
+    stdin.on('data', onData);
+  });
 }
 
 async function login() {
