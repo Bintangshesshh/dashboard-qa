@@ -260,6 +260,11 @@ export class Store {
     this.logBytesCache.set(runId, used);
     if (used > limit) this.trimLogs(runId, limit);
   }
+  // Baris `system` di luar runner (mis. jejak run production) tanpa perlu tahu seq.
+  systemLog(runId, text) {
+    const seq = this.db.prepare('SELECT COALESCE(MAX(seq),0) AS n FROM run_logs WHERE run_id=?').get(runId).n + 1;
+    this.log(runId, { seq, stream: 'system', text: text.endsWith('\n') ? text : `${text}\n`, at: new Date().toISOString() });
+  }
   // Batch dari CLI: satu transaksi, trim sekali di akhir.
   logsBatch(runId, entries) {
     if (!entries.length) return;

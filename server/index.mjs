@@ -234,6 +234,11 @@ export function createApp({ store, runner, token, origins }) {
     return e === 'local' ? raw : target(href, [...(project.origins ?? []), ...origins]);
   };
 
+  // PRD §8.2 step 2: setiap run production meninggalkan satu baris `system`.
+  const traceProduction = (runId, e, user) => {
+    if (e === 'production') store.systemLog(runId, `production run by ${user.username} at ${new Date().toISOString()}`);
+  };
+
   app.post('/api/sessions', requireAuth, requireAdmin, route(async (req, res) => {
     const projectId = id(req.body?.projectId);
     const project = store.getProject(projectId);
@@ -332,6 +337,8 @@ export function createApp({ store, runner, token, origins }) {
     const lhRun = randomUUID();
     store.createRun({ id: pwRun, sessionId: session.id, testFileId: null, tool: 'pw' });
     store.createRun({ id: lhRun, sessionId: session.id, testFileId: null, tool: 'lh' });
+    traceProduction(pwRun, e, req.user);
+    traceProduction(lhRun, e, req.user);
 
     const pwFile = {
       id: null, tool: 'pw', path: 'quick.spec.ts',
@@ -364,6 +371,7 @@ export function createApp({ store, runner, token, origins }) {
     if (store.countActiveRuns() >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
     const runId = randomUUID();
     store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
+    traceProduction(runId, session.env, req.user);
     runner.start(runId, tf, session.id, session.target_url);
     res.status(202).json({ runId });
   }));
@@ -406,6 +414,7 @@ export function createApp({ store, runner, token, origins }) {
     const runId = randomUUID();
     store.createRun({ id: runId, sessionId, testFileId: tf.id, tool: tf.tool });
     store.audit({ userId: req.user.id, action: 'run_local', entity: 'runs', entityId: runId, detail: JSON.stringify({ testFile: tf.path, env: e }) });
+    traceProduction(runId, e, req.user);
     res.status(201).json({ runId, sessionId, code: tf.code, targetUrl, tool: tf.tool, config: tf.config });
   }));
 

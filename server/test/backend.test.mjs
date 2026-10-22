@@ -627,3 +627,25 @@ test('A3: target divalidasi terhadap projects.origins, bukan cuma TARGET_ALLOWLI
   assert.equal(r.status, 400, 'origin tidak boleh punya path');
   assert.deepEqual(f.store.getProject('p2').origins, ['https://staging.p2.test'], 'origins lama tidak berubah');
 });
+
+test('A5: run production menulis satu baris log system', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  f.store.db.prepare("UPDATE projects SET allow_production=1, origins='[\"https://ebh.test\"]' WHERE id='p1'").run();
+  f.store.createTestFile({ id: 'tf-a5', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+
+  // local: tidak ada baris production
+  let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  const localSession = r.body.sessionId;
+  let runId = (await f.call(`/api/sessions/${localSession}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf-a5' } })).body.runId;
+  assert.equal(f.store.logsRaw(runId).some(l => /production run by/.test(l.text)), false);
+
+  // production: satu baris, berisi username
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'production', confirm: 'EBH' } });
+  assert.equal(r.status, 201);
+  runId = (await f.call(`/api/sessions/${r.body.sessionId}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf-a5' } })).body.runId;
+
+  const lines = f.store.logsRaw(runId).filter(l => l.stream === 'system' && /production run by/.test(l.text));
+  assert.equal(lines.length, 1);
+  assert.match(lines[0].text, /production run by tester at \d{4}-\d{2}-\d{2}T/);
+});
