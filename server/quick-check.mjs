@@ -10,11 +10,20 @@ export const pwConfig = join(quickDir, 'playwright.config.ts');
 export const lhConfigName = 'lighthouserc.cjs';
 
 const SPEC = `import { test, expect } from '@playwright/test';
+import { appendFileSync } from 'node:fs';
 
-// Quick check: hanya memastikan URL target merespons dan halaman ter-render.
+// Quick check: pastikan URL target merespons, sekaligus rekam console/network.
 test('quick check smoke', async ({ page }) => {
   const base = process.env.BASE_URL;
   if (!base) throw new Error('BASE_URL tidak di-set');
+  const out = process.env.PLAYBOOK_CAPTURE_FILE;
+  const emit = (stream, payload) => { if (out) appendFileSync(out, JSON.stringify({ stream, payload }) + '\\n'); };
+
+  page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') emit('console', { type: m.type(), text: m.text(), location: m.location()?.url ?? null }); });
+  page.on('pageerror', e => emit('console', { type: 'pageerror', text: e.message, location: null }));
+  page.on('requestfailed', r => emit('network', { url: r.url(), method: r.method(), status: null, failure: r.failure()?.errorText ?? 'failed', ms: null }));
+  page.on('response', r => { if (r.status() >= 400) emit('network', { url: r.url(), method: r.request().method(), status: r.status(), failure: null, ms: null }); });
+
   const res = await page.goto(base, { waitUntil: 'domcontentloaded' });
   expect(res?.status() ?? 0, 'status HTTP < 400').toBeLessThan(400);
   await expect(page.locator('body')).toBeVisible();

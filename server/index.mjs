@@ -3,9 +3,9 @@ import { WebSocketServer } from 'ws';
 import { randomUUID, createHash, scrypt as _scrypt, randomBytes, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { createServer } from 'node:http';
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { realpath, lstat, rm } from 'node:fs/promises';
+import { realpath, lstat, rm, mkdir, writeFile } from 'node:fs/promises';
 import { Store } from './store.mjs';
 import { Runner } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
@@ -31,10 +31,27 @@ async function verifyPassword(password, hash) {
   return got.length === expected.length && timingSafeEqual(got, expected);
 }
 
+// Stream `console`/`network` ditulis reporter sebagai satu baris JSON; toleran ke teks mentah.
+function parseConsole(text) {
+  try {
+    const v = JSON.parse(text);
+    return { type: v.type ?? 'log', text: String(v.text ?? ''), location: v.location ?? null };
+  } catch { return { type: 'log', text: String(text).trim(), location: null }; }
+}
+function parseNetwork(text) {
+  try {
+    const v = JSON.parse(text);
+    return { url: v.url ?? '', status: v.status ?? null, method: v.method ?? null, failure: v.failure ?? null, ms: v.ms ?? null };
+  } catch { return { url: String(text).trim(), status: null, method: null, failure: null, ms: null }; }
+}
+
 export function createApp({ store, runner, token, origins }) {
   const app = express();
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '256kb' }));
+  app.use(express.json({
+    limit: '256kb',
+    type: req => !(req.method === 'PUT' && /^\/api\/runs\/[^/]+\/artifacts$/.test(req.path)),
+  }));
 
   // PRD §7: hapus sesi/run ikut hapus artifact di disk.
   const runsDir = runner?.runsDir ?? resolve(root, '.runs');
@@ -367,8 +384,10 @@ export function createApp({ store, runner, token, origins }) {
       if (store.countRunsByStatus(sessionId, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
     } else {
       const open = store.findOpenSession(project.id, e, req.user.id);
-      if (open) sessionId = open.id;
-      else {
+      if (open) {
+        if (store.countRunsByStatus(open.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
+        sessionId = open.id;
+      } else {
         sessionId = randomUUID();
         const label = `${project.name} — ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
         store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
@@ -404,7 +423,7 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   // Upload artifact mentah: body biner, query ?kind=&path=
-  app.put('/api/runs/:id/artifacts', requireAuth, requireAdmin, route(async (req, res) => {
+  app.put('/api/runs/:id/artifacts', express.raw({ type: () => true, limit: '100mb' }), requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
     if (!run) fail('Not found', 404);
     const kind = String(req.query.kind ?? 'log');
@@ -436,6 +455,10 @@ export function createApp({ store, runner, token, origins }) {
     if (!run) fail('Not found', 404);
     run.artifacts = store.listArtifacts(run.id);
     run.results = run.tool === 'pw' ? store.listPlaywrightResults(run.id) : store.listLighthouseResults(run.id);
+    // PRD §7: console & network dipisah dari logs (dipakai panel §10.3).
+    const raw = store.logsRaw(run.id);
+    run.console = raw.filter(e => e.stream === 'console').map(e => ({ seq: e.seq, at: e.at, ...parseConsole(e.text) }));
+    run.network = raw.filter(e => e.stream === 'network').map(e => ({ seq: e.seq, at: e.at, ...parseNetwork(e.text) }));
     res.json(run);
   }));
 

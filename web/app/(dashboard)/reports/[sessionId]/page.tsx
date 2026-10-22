@@ -6,6 +6,7 @@ import {
   api, artifactUrl, fmtDate, fmtDur, pct, reportUrl,
   type LighthouseResult, type PlaywrightResult, type Report, type Run, type Session,
 } from "../../../../lib/playbook";
+import { RunTerminal } from "../../run-terminal";
 
 export default function SessionDetail() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -195,6 +196,8 @@ function RunPanel({ run, onClose }: { run: Run; onClose: () => void }) {
           </tbody>
         </table>
       )}
+
+      <RunTerminal runId={run.id} status={run.status} />
 
       {html && (
         <div style={{ marginTop: 14 }}>

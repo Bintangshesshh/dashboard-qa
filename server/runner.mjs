@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdir, writeFile, appendFile, readdir, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, appendFile, readdir, readFile, rm } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -115,9 +115,11 @@ export class Runner extends EventEmitter {
     const dir = this.directory(runId);
     await this.log(state, 'system', `[runner] Menjalankan Playwright ${testFile.path}\n`);
     const specPath = testFile.path.replaceAll('\\', '/'); // relatif: path absolut Windows dibaca Playwright sebagai regex
+    const captureFile = join(dir, 'capture.jsonl');
     const env = {
       ...process.env,
       ...(targetUrl ? { BASE_URL: targetUrl } : {}),
+      PLAYBOOK_CAPTURE_FILE: captureFile,
       PLAYWRIGHT_JSON_OUTPUT_NAME: join(dir, 'artifacts', 'report.json'),
       // Report HTML ditulis ke folder run supaya bisa disajikan sebagai artifact.
       PLAYWRIGHT_HTML_OUTPUT_DIR: join(dir, 'artifacts', 'playwright-report'),
@@ -151,6 +153,7 @@ export class Runner extends EventEmitter {
       duration_ms: Date.now() - state.startTime,
     });
     if (results.length) await this.store.addPlaywrightResults(runId, results);
+    await this.ingestCapture(state, captureFile);
     await this.collectArtifacts(runId, dir, 'pw');
     await this.store.patchRun(runId, { finalized_at: new Date().toISOString() });
     this.store.markReportsStale(state.sessionId);
@@ -186,6 +189,20 @@ export class Runner extends EventEmitter {
     await this.collectArtifacts(runId, dir, 'lh');
     await this.store.patchRun(runId, { finalized_at: new Date().toISOString() });
     this.store.markReportsStale(state.sessionId);
+  }
+
+  // PRD §8.8: console/network dari reporter masuk ke run_logs sebagai stream terpisah.
+  async ingestCapture(state, file) {
+    const raw = await readFile(file, 'utf8').catch(() => '');
+    if (!raw.trim()) return;
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      let item;
+      try { item = JSON.parse(line); } catch { continue; }
+      if (!item?.stream || !item?.payload) continue;
+      await this.log(state, item.stream, JSON.stringify(item.payload) + '\n');
+    }
+    await rm(file, { force: true }).catch(() => {});
   }
 
   async parsePlaywright(dir) {

@@ -311,6 +311,81 @@ test('CLI token: dibuat, terdaftar tanpa nilai plain, lalu dicabut', async t => 
   assert.equal(r.status, 401, 'token yang dicabut harus ditolak');
 });
 
+test('CLI lokal: local → start → logs → upload artifact → finalisasi', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'test("x",()=>{})' });
+
+  let r = await f.call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: 'tf1', env: 'local' } });
+  assert.equal(r.status, 201);
+  const { runId, sessionId, code, targetUrl, tool } = r.body;
+  assert.equal(code, 'test("x",()=>{})');
+  assert.equal(targetUrl, ORIGIN);
+  assert.equal(tool, 'pw');
+  assert.ok(runId && sessionId);
+
+  // sesi dipakai ulang untuk project+env+user yang sama
+  r = await f.call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: 'tf1', env: 'local' } });
+  assert.equal(r.status, 409, 'sesi masih punya run belum final');
+
+  r = await f.call(`/api/runs/${runId}/start`, { method: 'POST', cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.status, 'running');
+  assert.ok(r.body.started_at);
+
+  r = await f.call(`/api/runs/${runId}/logs`, {
+    method: 'POST', cookie,
+    body: { entries: [{ seq: 1, stream: 'stdout', text: 'mulai\n', at: new Date().toISOString() }] },
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.inserted, 1);
+
+  r = await f.call(`/api/runs/${runId}/artifacts?kind=pw-json&path=report.json`, {
+    method: 'PUT', cookie, body: { a: 1 },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.path, 'report.json');
+
+  r = await f.call(`/api/runs/${runId}/artifacts?kind=pw-json&path=..%2Fescape.json`, { method: 'PUT', cookie, body: { a: 1 } });
+  assert.equal(r.status, 400);
+
+  r = await f.call(`/api/runs/${runId}`, { method: 'PATCH', cookie, body: { status: 'passed', exitCode: 0 } });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.finalized_at);
+
+  const run = f.store.getRun(runId);
+  assert.equal(run.status, 'passed');
+  assert.equal(f.store.listArtifacts(runId).length, 1);
+  assert.equal((await f.store.logsText(runId)), 'mulai\n');
+});
+
+test('GET run memisahkan console & network dari logs', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  const runId = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } })).body.runId;
+
+  const at = new Date().toISOString();
+  f.store.logsBatch(runId, [
+    { seq: 1, stream: 'stdout', text: 'mulai\n', at },
+    { seq: 2, stream: 'console', text: JSON.stringify({ type: 'error', text: 'boom', location: 'app.js:1' }), at },
+    { seq: 3, stream: 'network', text: JSON.stringify({ url: '/x', method: 'GET', status: 500 }), at },
+    { seq: 4, stream: 'console', text: 'teks mentah', at },
+  ]);
+
+  const r = await f.call(`/api/runs/${runId}`, { cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.console.length, 2);
+  assert.equal(r.body.console[0].type, 'error');
+  assert.equal(r.body.console[0].text, 'boom');
+  assert.equal(r.body.console[1].text, 'teks mentah', 'baris non-JSON tetap terbaca');
+  assert.equal(r.body.network.length, 1);
+  assert.equal(r.body.network[0].status, 500);
+  assert.equal(r.body.network[0].url, '/x');
+  assert.equal(r.body.results.length, 0);
+});
+
 test('artifact: traversal ditolak, file sah disajikan dengan header aman', async t => {
   const f = await fixture(t);
   const cookie = await f.login();

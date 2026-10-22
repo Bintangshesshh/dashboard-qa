@@ -18,6 +18,8 @@ export type Run = {
   finalized_at: string | null; duration_ms: number | null; exit_code: number | null;
   error: string | null; artifacts?: Artifact[];
   results?: PlaywrightResult[] | LighthouseResult[];
+  console?: { seq: number; at: string; type: string; text: string; location: string | null }[];
+  network?: { seq: number; at: string; url: string; status: number | null; method: string | null; failure: string | null; ms: number | null }[];
 };
 export type RunRow = Run & { session_label: string; env: string; has_html: number };
 export type Artifact = { id: string; run_id: string; kind: string; path: string; bytes: number | null };
