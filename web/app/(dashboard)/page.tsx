@@ -121,8 +121,8 @@ export default function OverviewPage() {
                 title={`${d.day}: ${d.total} run, ${d.passed} lulus`}>
                 <div style={{
                   height: `${Math.max(4, (d.total / maxDay) * 96)}px`,
-                  background: "linear-gradient(180deg, var(--accent), var(--accent-soft))",
-                  borderRadius: 4,
+                  background: "linear-gradient(180deg, var(--accent), color-mix(in oklab, var(--accent), transparent 55%))",
+                  borderRadius: 3,
                 }} />
                 <small className="pb-muted" style={{ fontSize: 10 }}>{d.day.slice(5)}</small>
               </div>
