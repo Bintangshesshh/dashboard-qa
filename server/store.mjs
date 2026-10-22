@@ -266,12 +266,15 @@ export class Store {
     this.log(runId, { seq: this.lastLogSeq(runId) + 1, stream: 'system', text: text.endsWith('\n') ? text : `${text}\n`, at: new Date().toISOString() });
   }
   // Batch dari CLI: satu transaksi, trim sekali di akhir.
+  // seq dihitung server (lanjut dari baris terakhir) supaya baris `system` yang
+  // sudah ditulis saat run dibuat tidak menabrak seq kiriman klien.
   logsBatch(runId, entries) {
     if (!entries.length) return;
-    const ins = this.db.prepare('INSERT OR IGNORE INTO run_logs (run_id, seq, stream, text, at) VALUES (?,?,?,?,?)');
+    const ins = this.db.prepare('INSERT INTO run_logs (run_id, seq, stream, text, at) VALUES (?,?,?,?,?)');
+    const base = this.lastLogSeq(runId);
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      for (const e of entries) ins.run(runId, e.seq, e.stream, String(e.text), e.at);
+      entries.forEach((e, i) => ins.run(runId, base + i + 1, e.stream, String(e.text), e.at));
       this.db.exec('COMMIT');
     } catch (err) { this.db.exec('ROLLBACK'); throw err; }
     const limit = Number(this.getSetting('log_max_bytes') ?? 5242880);

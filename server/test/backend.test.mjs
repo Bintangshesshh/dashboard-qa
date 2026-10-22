@@ -659,3 +659,25 @@ test('A5: run production menulis satu baris log system', async t => {
   const seqs = f.store.logsRaw(runId).map(l => l.seq);
   assert.deepEqual(seqs, [1, 2], 'seq lanjut, tidak bentrok primary key');
 });
+
+test('CLI: batch log setelah baris system tidak hilang', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  f.store.db.prepare("UPDATE projects SET allow_production=1, origins='[\"https://ebh.test\"]' WHERE id='p1'").run();
+  f.store.createTestFile({ id: 'tf-cli', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+
+  const r = await f.call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: 'tf-cli', env: 'production', confirm: 'EBH' } });
+  assert.equal(r.status, 201);
+
+  // klien tetap mengirim seq mulai 1, seperti CLI sekarang
+  const post = await f.call(`/api/runs/${r.body.runId}/logs`, {
+    method: 'POST', cookie,
+    body: { entries: [{ seq: 1, stream: 'stdout', text: 'mulai\n', at: new Date().toISOString() }] },
+  });
+  assert.equal(post.status, 200);
+
+  const texts = f.store.logsRaw(r.body.runId).map(l => l.text);
+  assert.equal(texts.length, 2, 'baris system + baris klien');
+  assert.ok(texts.some(t => t.includes('production run by')));
+  assert.ok(texts.includes('mulai\n'), 'log klien tidak dibuang');
+});
