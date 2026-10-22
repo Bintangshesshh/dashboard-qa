@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { mkdir, writeFile, appendFile, readdir, readFile } from 'node:fs/promises';
-import { join, resolve, relative } from 'node:path';
+import { join, resolve, relative, isAbsolute } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
@@ -28,9 +28,16 @@ export class Runner extends EventEmitter {
 
   directory(runId) { return join(this.runsDir, runId); }
 
-  async start(runId, testFile, sessionId = null) {
-    if (this.active) throw Object.assign(new Error('Another run is active'), { status: 409 });
-    const state = { runId, sessionId, testFile, seq: 0, chain: Promise.resolve(), child: null, cancelled: false, startTime: Date.now() };
+  async start(runId, testFile, sessionId = null, targetUrl = null) {
+    // Antrekan, jangan tolak: hanya satu proses tool yang boleh jalan sekaligus.
+    // `this.chain` selalu di-catch supaya satu run gagal tidak mematikan antrean.
+    const run = (this.chain ?? Promise.resolve()).then(() => this._start(runId, testFile, sessionId, targetUrl));
+    this.chain = run.catch(() => {});
+    return run;
+  }
+
+  async _start(runId, testFile, sessionId, targetUrl) {
+    const state = { runId, sessionId, testFile, targetUrl, seq: 0, chain: Promise.resolve(), child: null, cancelled: false, startTime: Date.now() };
     this.active = state;
     state.done = this.execute(state).finally(() => { this.active = null; });
     return state.done;
@@ -104,18 +111,22 @@ export class Runner extends EventEmitter {
 
   // Jalankan satu spec Playwright langsung (fase 1: CLI lokal menjalankan).
   async runPlaywright(state) {
-    const { runId, testFile } = state;
+    const { runId, testFile, targetUrl } = state;
     const dir = this.directory(runId);
-    const targetUrl = null; // diisi oleh CLI/API pada fase selanjutnya; untuk saat ini hardcode dari test_file code
     await this.log(state, 'system', `[runner] Menjalankan Playwright ${testFile.path}\n`);
     const specPath = testFile.path.replaceAll('\\', '/'); // relatif: path absolut Windows dibaca Playwright sebagai regex
     const env = {
       ...process.env,
+      ...(targetUrl ? { BASE_URL: targetUrl } : {}),
       PLAYWRIGHT_JSON_OUTPUT_NAME: join(dir, 'artifacts', 'report.json'),
       // Report HTML ditulis ke folder run supaya bisa disajikan sebagai artifact.
       PLAYWRIGHT_HTML_OUTPUT_DIR: join(dir, 'artifacts', 'playwright-report'),
     };
-    const args = ['playwright', 'test', specPath, '--reporter=json,html', `--output=${join(dir, 'artifacts')}`];
+    // `config` opsional: { configPath } untuk config Playwright khusus (quick check).
+    const cfgPath = (() => { try { return JSON.parse(testFile.config ?? '{}')?.configPath ?? null; } catch { return null; } })();
+    const args = ['playwright', 'test', specPath, `--output=${join(dir, 'artifacts')}`];
+    if (cfgPath) args.push('--config=' + cfgPath);
+    else args.push('--reporter=json,html');
     const child = spawn('npx', args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
     state.child = child;
     child.stdout.on('data', d => this.log(state, 'stdout', d));
@@ -149,7 +160,7 @@ export class Runner extends EventEmitter {
     const { runId, testFile } = state;
     const dir = this.directory(runId);
     await this.log(state, 'system', `[runner] Menjalankan Lighthouse CI ${testFile.path}\n`);
-    const configPath = join(root, testFile.path);
+    const configPath = isAbsolute(testFile.path) ? testFile.path : join(root, testFile.path);
     const outDir = join(dir, 'artifacts');
     await mkdir(outDir, { recursive: true });
     // cwd = dir: lhci menulis .lighthouseci/ relatif cwd, jadi tiap run terisolasi.

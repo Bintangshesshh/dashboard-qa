@@ -30,6 +30,7 @@ export class Store {
     this.path = databasePath(connectionString);
     if (this.path !== ':memory:') mkdirSync(dirname(this.path), { recursive: true });
     this.db = new DatabaseSync(this.path);
+    this.logBytesCache = new Map();
   }
 
   async init() {
@@ -214,7 +215,49 @@ export class Store {
   deleteRun(id) { this.db.prepare('DELETE FROM runs WHERE id=?').run(id); return true; }
 
   // ─── Run logs ────────────────────────────────────────────────────────────
-  async log(runId, entry) { this.db.prepare('INSERT INTO run_logs (run_id, seq, stream, text, at) VALUES (?,?,?,?,?)').run(runId, entry.seq, entry.stream, String(entry.text), entry.at); }
+  // PRD §7/A33: total log per run dibatasi `log_max_bytes`; bagian tengah
+  // dipotong dan diganti penanda, head & tail dipertahankan.
+  logBytes(runId) {
+    return this.db.prepare('SELECT coalesce(sum(length(text)),0) AS n FROM run_logs WHERE run_id=?').get(runId).n;
+  }
+  log(runId, entry) {
+    const text = String(entry.text);
+    this.db.prepare('INSERT INTO run_logs (run_id, seq, stream, text, at) VALUES (?,?,?,?,?)')
+      .run(runId, entry.seq, entry.stream, text, entry.at);
+    const limit = Number(this.getSetting('log_max_bytes') ?? 5242880);
+    const used = (this.logBytesCache.get(runId) ?? this.logBytes(runId) - text.length) + text.length;
+    this.logBytesCache.set(runId, used);
+    if (used > limit) this.trimLogs(runId, limit);
+  }
+  trimLogs(runId, limit) {
+    const rows = this.db.prepare('SELECT seq, length(text) AS n FROM run_logs WHERE run_id=? ORDER BY seq').all(runId);
+    const total = rows.reduce((s, r) => s + r.n, 0);
+    if (total <= limit) { this.logBytesCache.set(runId, total); return; }
+    const budget = Math.floor(limit * 0.8); // sisakan ruang untuk log berikutnya
+    const headBudget = Math.floor(budget * 0.4);
+    let cutTo = -1, cum = 0, head = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const after = cum + rows[i].n;
+      if (cum <= headBudget) head = i + 1;
+      if (total - after >= budget - headBudget) cutTo = i;
+      cum = after;
+    }
+    // ponytail: satu baris tunggal > limit tak bisa dipotong tengah.
+    // Kalau perlu, potong per karakter di sini (head/tail char).
+    if (cutTo < head) return;
+    const removed = rows.slice(head, cutTo + 1);
+    if (!removed.length) return;
+    const markerSeq = removed[0].seq;
+    const db = this.db;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare(`DELETE FROM run_logs WHERE run_id=? AND seq BETWEEN ? AND ?`).run(runId, markerSeq, removed.at(-1).seq);
+      db.prepare('INSERT INTO run_logs (run_id, seq, stream, text, at) VALUES (?,?,?,?,?)')
+        .run(runId, markerSeq, 'system', `… [${removed.length} baris dipotong] …\n`, new Date().toISOString());
+      db.exec('COMMIT');
+    } catch (e) { db.exec('ROLLBACK'); throw e; }
+    this.logBytesCache.set(runId, this.logBytes(runId));
+  }
   logs(runId, after = 0, limit = 5000) {
     const safeLimit = Math.min(Math.max(Number(limit) || 5000, 1), 10000);
     const rows = this.db.prepare('SELECT seq, stream, text, at FROM run_logs WHERE run_id=? AND seq>? ORDER BY seq LIMIT ?').all(runId, after, safeLimit + 1);

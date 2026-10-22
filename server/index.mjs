@@ -9,7 +9,8 @@ import { realpath, lstat, rm } from 'node:fs/promises';
 import { Store } from './store.mjs';
 import { Runner } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
-import { fail, id, text, env as envValue, tool as toolValue, allowlist, target, authorized, cursor, bool, rangeDays } from './validation.mjs';
+import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check.mjs';
+import { fail, id, text, env as envValue, tool as toolValue, allowlist, target, authorized, cursor, bool, rangeDays, isoTimestamp } from './validation.mjs';
 
 const scrypt = promisify(_scrypt);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -200,16 +201,15 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   // ─── Sessions ────────────────────────────────────────────────────────────
+  // PRD §7/§8.2: URL target selalu dari `projects`, tidak pernah dari input bebas.
+  const resolveTarget = (project, e) => e === 'local' ? project.local_url : e === 'staging' ? project.staging_url : project.base_url;
+
   app.post('/api/sessions', requireAuth, requireAdmin, route(async (req, res) => {
     const projectId = id(req.body?.projectId);
     const project = store.getProject(projectId);
     if (!project) fail('Project tidak ditemukan', 400);
     const e = envValue(req.body?.env);
-    // determine target URL from project per env
-    let targetUrl;
-    if (e === 'local') targetUrl = project.local_url;
-    else if (e === 'staging') targetUrl = project.staging_url;
-    else targetUrl = project.base_url;
+    const targetUrl = resolveTarget(project, e);
     if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
     // production guard (PRD §8.2 step 2)
     if (e === 'production') {
@@ -276,6 +276,50 @@ export function createApp({ store, runner, token, origins }) {
     res.sendStatus(204);
   }));
 
+  // ─── Quick check (PRD §7, A43/A48) ───────────────────────────────────────
+  app.post('/api/quick-check', requireAuth, requireAdmin, route(async (req, res) => {
+    const project = store.getProject(id(req.body?.projectId));
+    if (!project) fail('Project tidak ditemukan', 400);
+    const e = envValue(req.body?.env);
+    const targetUrl = resolveTarget(project, e);
+    if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
+    if (e === 'production') {
+      if (!project.allow_production) fail('Run production diblokir untuk project ini', 403);
+      if (req.body?.confirm !== project.name) fail('Ketik ulang nama project untuk konfirmasi production', 400);
+    }
+    if (store.countActiveRuns() >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
+
+    let session = store.findOpenSession(project.id, e, req.user.id);
+    if (!session) {
+      const sessionId = randomUUID();
+      const label = `Quick check — ${project.name} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+      store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
+      session = { id: sessionId };
+    }
+
+    await ensureQuickFiles();
+    const pwRun = randomUUID();
+    const lhRun = randomUUID();
+    store.createRun({ id: pwRun, sessionId: session.id, testFileId: null, tool: 'pw' });
+    store.createRun({ id: lhRun, sessionId: session.id, testFileId: null, tool: 'lh' });
+
+    const pwFile = {
+      id: null, tool: 'pw', path: 'quick.spec.ts',
+      label: 'Quick check smoke', config: JSON.stringify({ configPath: pwConfig }),
+    };
+    const lhConfig = await writeLighthouseConfig(join(runner.runsDir, lhRun), targetUrl);
+    const lhFile = { id: null, tool: 'lh', path: lhConfig, label: 'Quick check Lighthouse' };
+
+    // Runner hanya menjalankan satu proses sekaligus → antre berurutan.
+    runner.start(pwRun, pwFile, session.id, targetUrl)
+      .catch(err => console.error('[quick-check pw]', err.message))
+      .then(() => runner.start(lhRun, lhFile, session.id, targetUrl))
+      .catch(err => console.error('[quick-check lh]', err.message));
+
+    store.audit({ userId: req.user.id, action: 'quick_check', entity: 'sessions', entityId: session.id, detail: JSON.stringify({ project: project.slug, env: e }) });
+    res.status(202).json({ sessionId: session.id, runIds: [pwRun, lhRun] });
+  }));
+
   // ─── Runs ────────────────────────────────────────────────────────────────
   app.post('/api/sessions/:id/runs', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id));
@@ -290,7 +334,7 @@ export function createApp({ store, runner, token, origins }) {
     if (store.countActiveRuns() >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
     const runId = randomUUID();
     store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
-    runner.start(runId, tf, session.id);
+    runner.start(runId, tf, session.id, session.target_url);
     res.status(202).json({ runId });
   }));
 
@@ -329,19 +373,47 @@ export function createApp({ store, runner, token, origins }) {
     res.send(await store.logsText(req.params.id));
   }));
 
+  const RUN_STATUS = ['queued', 'running', 'uploading', 'passed', 'failed', 'cancelled', 'interrupted'];
+  const FINAL_STATUS = new Set(['passed', 'failed', 'cancelled', 'interrupted']);
+
   app.patch('/api/runs/:id', requireAuth, requireAdmin, route(async (req, res) => {
-    if (!store.getRun(id(req.params.id))) fail('Not found', 404);
+    const existing = store.getRun(id(req.params.id));
+    if (!existing) fail('Not found', 404);
+    const b = req.body ?? {};
     const fields = {};
-    if (req.body.status !== undefined) fields.status = req.body.status;
-    if (req.body.started_at !== undefined) fields.started_at = req.body.started_at;
-    if (req.body.finished_at !== undefined) fields.finished_at = req.body.finished_at;
-    if (req.body.finalized_at !== undefined) fields.finalized_at = req.body.finalized_at;
-    if (req.body.duration_ms !== undefined) fields.duration_ms = Number(req.body.duration_ms);
-    if (req.body.exit_code !== undefined) fields.exit_code = Number(req.body.exit_code);
-    if (req.body.error !== undefined) fields.error = req.body.error;
-    if (req.body.results !== undefined && Array.isArray(req.body.results)) store.addPlaywrightResults(req.params.id, req.body.results);
-    if (req.body.lighthouse !== undefined && Array.isArray(req.body.lighthouse)) store.addLighthouseResults(req.params.id, req.body.lighthouse);
-    const run = store.patchRun(req.params.id, fields);
+
+    if (b.status !== undefined) {
+      if (!RUN_STATUS.includes(b.status)) fail(`status must be ${RUN_STATUS.join('|')}`);
+      fields.status = b.status;
+    }
+    // PRD §7 pakai camelCase; snake_case tetap diterima (klien lama).
+    const startedAt = b.startedAt ?? b.started_at;
+    const finishedAt = b.finishedAt ?? b.finished_at;
+    const exitCode = b.exitCode ?? b.exit_code;
+    const durationMs = b.durationMs ?? b.duration_ms;
+    if (startedAt !== undefined) fields.started_at = isoTimestamp(startedAt);
+    if (finishedAt !== undefined) fields.finished_at = isoTimestamp(finishedAt);
+    if (b.finalized_at !== undefined) fields.finalized_at = isoTimestamp(b.finalized_at);
+    if (durationMs !== undefined) {
+      if (!Number.isFinite(Number(durationMs)) || Number(durationMs) < 0) fail('duration_ms must be a non-negative number');
+      fields.duration_ms = Number(durationMs);
+    }
+    if (exitCode !== undefined) {
+      if (!Number.isInteger(Number(exitCode))) fail('exit_code must be an integer');
+      fields.exit_code = Number(exitCode);
+    }
+    if (b.error !== undefined) fields.error = b.error == null ? null : String(b.error).slice(0, 2000);
+    if (Array.isArray(b.results)) store.addPlaywrightResults(existing.id, b.results);
+    if (Array.isArray(b.lighthouse)) store.addLighthouseResults(existing.id, b.lighthouse);
+
+    // Finalisasi: sekali saja, jangan timpa finalized_at yang sudah ada.
+    const now = new Date().toISOString();
+    if (fields.status && FINAL_STATUS.has(fields.status) && !existing.finalized_at) {
+      fields.finalized_at = now;
+      fields.finished_at ??= now;
+    }
+    const run = store.patchRun(existing.id, fields);
+    if (fields.finalized_at) store.markReportsStale(existing.session_id);
     res.json(run);
   }));
 
