@@ -42,6 +42,20 @@ export function target(value, origins) {
     fail('Target origin is not allowlisted');
   return u.href;
 }
+// URL biasa (kolom projects.*): wajib http(s), tanpa kredensial. Origin tidak
+// dibatasi karena admin yang mengisi; yang dicegah hanya skema aneh (javascript:).
+export function url(value, name = 'url') {
+  let u;
+  try { u = new URL(value); } catch { fail(`Invalid ${name}`); }
+  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password)
+    fail(`${name} harus URL http(s) tanpa kredensial`);
+  return u.href;
+}
+// Daftar origin dari input JSON; allowlist() melempar Error biasa → ubah ke 400.
+export function originList(value) {
+  if (!Array.isArray(value)) fail('origins harus array origin');
+  try { return allowlist(value.join(',')); } catch (e) { fail(e.message); }
+}
 // Timing-safe compare, returns boolean.
 export function authorized(value, token) {
   if (typeof value !== 'string' || !token) return false;

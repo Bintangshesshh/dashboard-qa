@@ -10,7 +10,7 @@ import { Store } from './store.mjs';
 import { Runner } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
 import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check.mjs';
-import { fail, id, text, env as envValue, tool as toolValue, allowlist, target, authorized, cursor, bool, rangeDays, isoTimestamp } from './validation.mjs';
+import { fail, id, text, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp } from './validation.mjs';
 
 const scrypt = promisify(_scrypt);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -179,10 +179,10 @@ export function createApp({ store, runner, token, origins }) {
     if (!p) fail('Not found', 404);
     const fields = {};
     if (req.body.name !== undefined) fields.name = text(req.body.name, 'name');
-    if (req.body.base_url !== undefined) fields.base_url = target(req.body.base_url, allowlist((p.allow_production ? [p.base_url] : [p.base_url]).join(',')).concat(origins));
-    if (req.body.staging_url !== undefined) fields.staging_url = req.body.staging_url ? new URL(req.body.staging_url).href : null;
-    if (req.body.local_url !== undefined) fields.local_url = req.body.local_url ? new URL(req.body.local_url).href : null;
-    if (req.body.origins !== undefined) fields.origins = req.body.origins;
+    if (req.body.base_url !== undefined) fields.base_url = urlValue(req.body.base_url, 'base_url');
+    if (req.body.staging_url !== undefined) fields.staging_url = req.body.staging_url ? urlValue(req.body.staging_url, 'staging_url') : null;
+    if (req.body.local_url !== undefined) fields.local_url = req.body.local_url ? urlValue(req.body.local_url, 'local_url') : null;
+    if (req.body.origins !== undefined) fields.origins = originList(req.body.origins);
     if (req.body.allow_production !== undefined) fields.allow_production = bool(req.body.allow_production, 'allow_production');
     if (req.body.active !== undefined) fields.active = bool(req.body.active, 'active');
     store.patchProject(id(req.params.id), fields);
@@ -223,7 +223,16 @@ export function createApp({ store, runner, token, origins }) {
 
   // ─── Sessions ────────────────────────────────────────────────────────────
   // PRD §7/§8.2: URL target selalu dari `projects`, tidak pernah dari input bebas.
-  const resolveTarget = (project, e) => e === 'local' ? project.local_url : e === 'staging' ? project.staging_url : project.base_url;
+  // Origin hasil resolve wajib ada di `projects.origins` atau TARGET_ALLOWLIST (anti-SSRF).
+  // ponytail: env local dikecualikan dari cek origin — local_url menunjuk mesin
+  // developer, bukan jaringan server. Kalau nanti runner jalan di server juga,
+  // hapus pengecualian ini.
+  const resolveTarget = (project, e) => {
+    const raw = e === 'local' ? project.local_url : e === 'staging' ? project.staging_url : project.base_url;
+    if (!raw) return null;
+    const href = urlValue(raw, `target ${e}`);
+    return e === 'local' ? raw : target(href, [...(project.origins ?? []), ...origins]);
+  };
 
   app.post('/api/sessions', requireAuth, requireAdmin, route(async (req, res) => {
     const projectId = id(req.body?.projectId);

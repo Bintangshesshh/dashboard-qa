@@ -597,3 +597,33 @@ test('A2: runner menolak target di luar allowlist-nya sendiri', async t => {
   assert.match(run.error, /not allowlisted/);
   assert.equal(existsSync(join(runsDir, 'r-a2')), false, 'tidak ada folder/spawn untuk target terlarang');
 });
+
+test('A3: target divalidasi terhadap projects.origins, bukan cuma TARGET_ALLOWLIST', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  f.store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, staging_url, local_url, origins, allow_production, active, created_at)
+    VALUES ('p2','p2','P2','https://p2.test',?,?,'[]',0,1,?)`)
+    .run('https://staging.p2.test', 'http://localhost:5173', new Date().toISOString());
+
+  // origin staging.p2.test tak ada di allowlist global fixture, tapi ada di projects.origins
+  let r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { origins: ['https://staging.p2.test'] } });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.origins, ['https://staging.p2.test']);
+
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p2', env: 'staging' } });
+  assert.equal(r.status, 201, 'origin dari projects.origins diterima');
+  assert.equal(r.body.targetUrl, 'https://staging.p2.test/');
+
+  // origin tak terdaftar di mana pun → ditolak
+  f.store.db.prepare("UPDATE projects SET staging_url='https://evil.test/' WHERE id='p2'").run();
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p2', env: 'staging' } });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /not allowlisted/);
+
+  // skema aneh & origins bukan array ditolak
+  r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { local_url: 'javascript:alert(1)' } });
+  assert.equal(r.status, 400);
+  r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { origins: ['https://ok.test/path'] } });
+  assert.equal(r.status, 400, 'origin tidak boleh punya path');
+  assert.deepEqual(f.store.getProject('p2').origins, ['https://staging.p2.test'], 'origins lama tidak berubah');
+});

@@ -136,8 +136,14 @@ export class Runner extends EventEmitter {
   async execute(state) {
     const { runId, testFile } = state;
     // PRD §7/G11: runner tidak percaya pemanggil — target harus tetap di allowlist.
+    // Origin milik project (dari sesi) ikut diizinkan, sama seperti resolveTarget.
     if (state.targetUrl) {
-      try { state.targetUrl = validateTarget(state.targetUrl, this.origins); }
+      const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
+      const project = session ? this.store.getProject(session.project_id) : null;
+      const declared = [project?.base_url, project?.staging_url, project?.local_url]
+        .filter(Boolean).map(v => { try { return new URL(v).origin; } catch { return null; } }).filter(Boolean);
+      const allowed = [...this.origins, ...(project?.origins ?? []), ...declared];
+      try { state.targetUrl = validateTarget(state.targetUrl, allowed); }
       catch (error) {
         await this.store.patchRun(runId, { status: 'failed', error: error.message, finished_at: new Date().toISOString() });
         this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
