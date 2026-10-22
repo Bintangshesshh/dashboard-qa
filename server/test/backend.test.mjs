@@ -15,6 +15,7 @@ import { createApp } from '../index.mjs';
 import { Store, databasePath } from '../store.mjs';
 import { Runner } from '../runner.mjs';
 import { runRetention } from '../retention.mjs';
+import { backupDatabase } from '../backup.mjs';
 
 const scrypt = promisify(_scrypt);
 const PASSWORD = 'rahasia-test-123';
@@ -787,4 +788,32 @@ test('retensi: folder → artifacts → reports stale → run_logs, baris hasil 
   assert.equal(f.store.getRun('r-queued').status, 'interrupted', 'antre > 30 menit jadi interrupted');
   assert.equal(f.store.getRun('r-old').status, 'passed', 'baris run tetap ada sebagai riwayat');
   assert.ok(f.store.getRun('r-new'), 'baris run baru tetap');
+});
+
+test('backup: VACUUM INTO menyalin DB, backup lama dibuang', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'pb-backup-'));
+  const store = new Store(join(dir, 'playbook.db'));
+  await store.init();
+  t.after(async () => { store.close(); await rm(dir, { recursive: true, force: true }); });
+  store.setSetting('log_retention_days', '45');
+
+  const backupDir = join(dir, 'backups');
+  const first = await backupDatabase({ store, backupDir, now: new Date('2026-01-01T02:00:00Z') });
+  assert.ok(existsSync(first.file));
+  assert.ok(first.bytes > 0);
+
+  // Salinan harus memuat data yang sama.
+  const copy = new Store(first.file);
+  assert.equal(copy.getSetting('log_retention_days'), '45');
+  copy.close();
+
+  // Backup tua (> keepDays) dibuang, yang baru dipertahankan.
+  const old = join(backupDir, 'playbook-2020-01-01T00-00-00-000Z.db');
+  await writeFile(old, 'x');
+  const second = await backupDatabase({ store, backupDir, keepDays: 7, now: new Date('2026-01-10T02:00:00Z') });
+  assert.equal(second.pruned, 2, 'backup 2026-01-01 dan file 2020 dua-duanya basi');
+  assert.equal(existsSync(second.file), true);
+  assert.equal(existsSync(old), false);
+
+  await assert.rejects(() => backupDatabase({ store: new Store(':memory:'), backupDir }), /in-memory/);
 });

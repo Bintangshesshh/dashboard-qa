@@ -11,6 +11,7 @@ import { Runner } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
 import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check.mjs';
 import { runRetention } from './retention.mjs';
+import { backupDatabase } from './backup.mjs';
 import { fail, id, text, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp } from './validation.mjs';
 
 const scrypt = promisify(_scrypt);
@@ -738,12 +739,31 @@ export async function main() {
   if (!origins.length) throw new Error('TARGET_ALLOWLIST must contain at least one exact origin');
   // PRD §8.6: retensi harian. Opt-in lewat env supaya deployment bisa pakai cron
   // eksternal (scripts/retention.mjs) tanpa dua job jalan bersamaan.
+  // PRD §8.6/A60: backup wajib jalan SEBELUM retensi. Kalau RETENTION_INTERVAL_MS
+  // aktif tapi BACKUP_INTERVAL_MS lebih lambat/lagi tak diset, jadwalnya terbalik
+  // (retensi duluan → yang tersimpan hanya sisa). Tolak saat startup.
   const retentionMs = Number(process.env.RETENTION_INTERVAL_MS ?? 0);
+  const backupMs = Number(process.env.BACKUP_INTERVAL_MS ?? 0);
+  if (retentionMs > 0 && (backupMs === 0 || backupMs > retentionMs)) {
+    throw new Error('BACKUP_INTERVAL_MS harus ≤ RETENTION_INTERVAL_MS (A60: backup sebelum retensi)');
+  }
   if (retentionMs > 0) {
     const reportsDirEnv = resolve(process.env.REPORTS_DIR ?? join(root, '.reports'));
-    const job = () => runRetention({ store, runsDir: runsDirEnv, reportsDir: reportsDirEnv })
-      .then(r => console.log('retensi:', JSON.stringify(r)))
-      .catch(err => console.error('[retensi]', err.message));
+    const backupDir = resolve(process.env.BACKUP_DIR ?? join(root, 'data', 'backups'));
+    const keepDays = Number(process.env.BACKUP_KEEP_DAYS ?? 7);
+    const job = async () => {
+      // Backup dulu, retensi belakangan. Backup gagal → retensi dilewati.
+      try {
+        const b = await backupDatabase({ store, backupDir, keepDays });
+        console.log('backup:', JSON.stringify({ file: b.file, bytes: b.bytes, pruned: b.pruned }));
+      } catch (err) {
+        console.error('[backup] gagal, retensi dilewati:', err.message);
+        return;
+      }
+      await runRetention({ store, runsDir: runsDirEnv, reportsDir: reportsDirEnv })
+        .then(r => console.log('retensi:', JSON.stringify(r)))
+        .catch(err => console.error('[retensi]', err.message));
+    };
     setTimeout(job, 60_000).unref();
     setInterval(job, retentionMs).unref();
   }
