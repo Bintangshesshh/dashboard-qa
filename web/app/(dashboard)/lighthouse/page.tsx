@@ -53,6 +53,9 @@ export default function LighthousePage() {
   const selected = useMemo(() => files.find(f => f.id === fileId), [files, fileId]);
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
+  // B4 (PRD §10.3/A30): production wajib ketik ulang nama project.
+  const [confirmName, setConfirmName] = useState("");
+  const productionOk = env !== "production" || confirmName.trim() === (project?.name ?? "");
 
   // Muat config terpilih ke draft form.
   useEffect(() => {
@@ -87,9 +90,10 @@ export default function LighthousePage() {
     setBusy(true); setError(""); setNotice("");
     try {
       if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
+      if (env === "production" && !productionOk) throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       let s = session;
       if (!s || s.project_id !== projectId || s.env !== env) {
-        const created = await api.createSession(projectId, env);
+        const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
         s = created.session;
         setSession(s);
       }
@@ -136,7 +140,13 @@ export default function LighthousePage() {
             <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
               Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
             </p>
-            <button className="pb-btn primary" onClick={start} disabled={busy || !fileId || !target}>
+            {env === "production" && (
+              <label className="pb-field">
+                Ketik <strong>{project?.name}</strong> untuk konfirmasi production
+                <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
+              </label>
+            )}
+            <button className="pb-btn primary" onClick={start} disabled={busy || !fileId || !target || !productionOk}>
               {busy ? "Menjalankan…" : "Run Lighthouse"}
             </button>
           </div>
