@@ -174,6 +174,12 @@ export const api = {
   },
   deleteSession: (id: string) => request<null>(`/api/sessions/${id}`, { method: "DELETE" }),
 
+  // PRD §10.2/A43: satu klik → smoke Playwright + Lighthouse budget default.
+  quickCheck: (projectId: string, env: string, confirm?: string) =>
+    request<{ sessionId: string; runIds: string[] }>("/api/quick-check", {
+      method: "POST", body: JSON.stringify({ projectId, env, confirm }),
+    }),
+
   createRun: (sessionId: string, testFileId: string) =>
     request<{ runId: string }>(`/api/sessions/${sessionId}/runs`, {
       method: "POST", body: JSON.stringify({ testFileId }),

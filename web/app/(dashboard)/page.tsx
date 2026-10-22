@@ -13,6 +13,22 @@ export default function OverviewPage() {
   const [projectId, setProjectId] = useState("");
   const [range, setRange] = useState(14);
   const [error, setError] = useState("");
+  // B6 (PRD §10.2/A43): quick check = smoke pw + lh tanpa memilih test file.
+  const [qcEnv, setQcEnv] = useState("local");
+  const [qcConfirm, setQcConfirm] = useState("");
+  const [qcBusy, setQcBusy] = useState(false);
+  const [qcNotice, setQcNotice] = useState("");
+  const qcProject = projects.find(p => p.id === projectId);
+
+  const quickCheck = async () => {
+    if (!qcProject) return;
+    setQcBusy(true); setError(""); setQcNotice("");
+    try {
+      const r = await api.quickCheck(qcProject.id, qcEnv, qcEnv === "production" ? qcConfirm : undefined);
+      setQcNotice(`Quick check jalan: ${r.runIds.length} run (pw + lh) diantrekan.`);
+      setQcConfirm("");
+    } catch (e) { setError((e as Error).message); } finally { setQcBusy(false); }
+  };
 
   useEffect(() => {
     api.projects().then(setProjects).catch(e => setError(e.message));
@@ -48,6 +64,30 @@ export default function OverviewPage() {
         </div>
       </div>
       {error && <div className="pb-err">{error}</div>}
+      {qcNotice && <div className="pb-card" style={{ marginBottom: 12, padding: "10px 12px" }}>{qcNotice}</div>}
+
+      <section className="pb-card" style={{ marginBottom: 18 }}>
+        <h2 style={{ margin: "0 0 12px", fontSize: 15 }}>Quick check</h2>
+        <div className="pb-row" style={{ flexWrap: "wrap", gap: 10 }}>
+          <select className="pb-select" value={qcEnv} onChange={e => setQcEnv(e.target.value)}>
+            <option value="local">local</option>
+            <option value="staging">staging</option>
+            <option value="production">production</option>
+          </select>
+          {qcEnv === "production" && (
+            <input className="pb-input" style={{ maxWidth: 240 }} placeholder={`ketik "${qcProject?.name ?? ""}"`}
+              value={qcConfirm} onChange={e => setQcConfirm(e.target.value)} />
+          )}
+          <button className="pb-btn primary" onClick={quickCheck}
+            disabled={qcBusy || !qcProject || (qcEnv === "production" && qcConfirm !== qcProject?.name)}>
+            {qcBusy ? "Menjalankan…" : "Quick check"}
+          </button>
+          <span className="pb-muted" style={{ fontSize: 12 }}>
+            Smoke Playwright + Lighthouse budget default, tanpa memilih test file.
+          </span>
+        </div>
+        {!qcProject && <p className="pb-muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Pilih satu project dulu di filter atas.</p>}
+      </section>
 
       <div className="pb-grid kpi" style={{ marginBottom: 18 }}>
         <article className="pb-card pb-kpi">
