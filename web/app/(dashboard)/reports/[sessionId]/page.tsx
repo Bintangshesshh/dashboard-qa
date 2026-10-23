@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -7,6 +8,8 @@ import {
   type LighthouseResult, type PlaywrightResult, type Report, type Run, type Session,
 } from "../../../../lib/playbook";
 import { RunTerminal } from "../../run-terminal";
+
+const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
 export default function SessionDetail() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -90,99 +93,152 @@ export default function SessionDetail() {
   if (!session) return <p className="pb-empty">{error || "Memuat sesi…"}</p>;
 
   const runs = session.runs ?? [];
-  const tools = new Set(runs.filter(r => ["passed", "failed"].includes(r.status)).map(r => r.tool));
+  const tools = new Set(runs.filter(r => FINAL.includes(r.status)).map(r => r.tool));
+  const passed = runs.filter(r => r.status === "passed").length;
+  const failed = runs.filter(r => r.status === "failed").length;
+  const active = runs.filter(r => !FINAL.includes(r.status)).length;
+  const durations = runs.map(r => r.duration_ms).filter((v): v is number => v != null);
+  const avgDur = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
+  const back = session.project_id ? `/reports/project/${session.project_id}` : "/reports";
 
   return (
     <>
-      <div className="pb-head">
-        <div>
-          <div className="eyebrow">Detail sesi</div>
+      <Link className="pb-crumb" href={back}>← Kembali ke project</Link>
+
+      <div className="pb-sess-head">
+        <div className="pb-sess-title">
+          <div className="eyebrow">Sesi</div>
           <h1>{session.label}</h1>
-          <p className="pb-muted" style={{ margin: "4px 0 0" }}>
-            {session.target_url} · <span className={`pb-badge ${session.status}`}>{session.status}</span>
-          </p>
+          <div className="pb-sess-meta">
+            <span className={`pb-badge ${session.status}`}>{session.status}</span>
+            <span className="pb-chip mono">{session.target_url}</span>
+            <span className="pb-chip">{fmtDate(session.created_at)}</span>
+          </div>
         </div>
-        <div className="pb-row">
-          <button className="pb-btn sm" onClick={() => router.back()}>← Kembali</button>
+        <div className="pb-sess-actions">
+          <div className="pb-btn-group">
+            <button className="pb-btn sm" onClick={() => { setBusy("pw"); publish("pw"); }}
+              disabled={!tools.has("pw") || !!busy}>Playwright</button>
+            <button className="pb-btn sm" onClick={() => { setBusy("lh"); publish("lh"); }}
+              disabled={!tools.has("lh") || !!busy}>Lighthouse</button>
+            <button className="pb-btn sm primary" onClick={() => publish("both")}
+              disabled={!tools.has("pw") || !tools.has("lh") || !!busy}>Gabungan</button>
+          </div>
           <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
-          <button className="pb-btn sm" onClick={() => { setBusy("pw"); publish("pw"); }} disabled={!tools.has("pw") || !!busy}>Laporan Playwright</button>
-          <button className="pb-btn sm" onClick={() => { setBusy("lh"); publish("lh"); }} disabled={!tools.has("lh") || !!busy}>Laporan Lighthouse</button>
-          <button className="pb-btn sm primary" onClick={() => publish("both")} disabled={!tools.has("pw") || !tools.has("lh") || !!busy}>Gabungan</button>
         </div>
       </div>
 
       {error && <div className="pb-err">{error}</div>}
-      {notice && <div className="pb-card" style={{ marginBottom: 14 }}>{notice}</div>}
+      {notice && <div className="pb-card pb-notice">{notice}</div>}
 
-      <section className="pb-card" style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: "0 0 12px", fontSize: 15 }}>Run ({runs.length})</h2>
-        {runs.length === 0 && <p className="pb-empty">Belum ada run di sesi ini.</p>}
-        {runs.length > 0 && (
-          <table className="pb-table">
-            <thead><tr><th>Tool</th><th>Status</th><th>Durasi</th><th>Exit</th><th>Final</th><th /></tr></thead>
-            <tbody>
+      <div className="pb-kpi-grid">
+        <div className="pb-kpi">
+          <div className="pb-kpi-label">Total run</div>
+          <div className="pb-kpi-value">{runs.length}</div>
+          <div className="pb-kpi-foot">{active > 0 ? `${active} masih jalan` : "semua final"}</div>
+        </div>
+        <div className="pb-kpi">
+          <div className="pb-kpi-label">Lulus</div>
+          <div className="pb-kpi-value ok">{passed}</div>
+          <div className="pb-kpi-foot">run status passed</div>
+        </div>
+        <div className="pb-kpi">
+          <div className="pb-kpi-label">Gagal</div>
+          <div className="pb-kpi-value bad">{failed}</div>
+          <div className="pb-kpi-foot">run status failed</div>
+        </div>
+        <div className="pb-kpi">
+          <div className="pb-kpi-label">Rata-rata durasi</div>
+          <div className="pb-kpi-value">{avgDur == null ? "—" : fmtDur(avgDur)}</div>
+          <div className="pb-kpi-foot">{durations.length} run terukur</div>
+        </div>
+      </div>
+
+      <div className="pb-sess-cols">
+        <section className="pb-card pb-sess-panel">
+          <div className="pb-card-head">
+            <div>
+              <h2>Run</h2>
+              <div className="pb-card-sub">{runs.length} run di sesi ini</div>
+            </div>
+          </div>
+
+          {runs.length === 0 ? (
+            <p className="pb-empty">Belum ada run di sesi ini.</p>
+          ) : (
+            <div className="pb-runlist">
               {runs.map(r => (
-                <tr key={r.id}>
-                  <td>{r.tool === "pw" ? "Playwright" : "Lighthouse"}</td>
-                  <td><span className={`pb-badge ${r.status}`}>{r.status}</span></td>
-                  <td className="mono">{fmtDur(r.duration_ms)}</td>
-                  <td className="mono">{r.exit_code ?? "—"}</td>
-                  <td className="mono">{fmtDate(r.finalized_at)}</td>
-                  <td style={{ textAlign: "right" }}>
-                    <span className="pb-row" style={{ justifyContent: "flex-end" }}>
-                      {!["passed", "failed", "cancelled", "interrupted"].includes(r.status) && (
-                        <button className="pb-btn sm" onClick={() => cancelRun(r)} disabled={busy === r.id}>
-                          {busy === r.id ? "Membatalkan…" : "Cancel"}
-                        </button>
-                      )}
-                      <button className="pb-btn sm" onClick={() => openRunDetail(r)}>Hasil</button>
-                      {["passed", "failed", "cancelled", "interrupted"].includes(r.status) && (
-                        <button className="pb-btn sm" onClick={() => deleteRun(r)} disabled={busy === r.id}>Hapus</button>
-                      )}
-                    </span>
-                  </td>
-                </tr>
+                <div className="pb-runrow" key={r.id}>
+                  <span className={`pb-tool ${r.tool}`}>{r.tool === "pw" ? "PW" : "LH"}</span>
+                  <div className="pb-runrow-main">
+                    <div className="pb-runrow-title">{r.tool === "pw" ? "Playwright" : "Lighthouse"}</div>
+                    <div className="pb-runrow-sub mono">
+                      {fmtDate(r.finalized_at)} · {fmtDur(r.duration_ms)} · exit {r.exit_code ?? "—"}
+                    </div>
+                  </div>
+                  <span className={`pb-badge ${r.status}`}>{r.status}</span>
+                  <div className="pb-runrow-act">
+                    {!FINAL.includes(r.status) && (
+                      <button className="pb-btn sm" onClick={() => cancelRun(r)} disabled={busy === r.id}>
+                        {busy === r.id ? "…" : "Cancel"}
+                      </button>
+                    )}
+                    <button className="pb-btn sm" onClick={() => openRunDetail(r)}>Hasil</button>
+                    {FINAL.includes(r.status) && (
+                      <button className="pb-btn sm" onClick={() => deleteRun(r)} disabled={busy === r.id}>Hapus</button>
+                    )}
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+            </div>
+          )}
+        </section>
 
-      {(session.reports?.length ?? 0) > 0 && (
-        <section className="pb-card" style={{ marginBottom: 16 }}>
-          <h2 style={{ margin: "0 0 12px", fontSize: 15 }}>Laporan</h2>
-          <table className="pb-table">
-            <tbody>
+        <aside className="pb-card pb-sess-panel">
+          <div className="pb-card-head">
+            <div>
+              <h2>Laporan</h2>
+              <div className="pb-card-sub">Snapshot HTML dari run sesi ini</div>
+            </div>
+          </div>
+
+          {(session.reports?.length ?? 0) === 0 ? (
+            <p className="pb-empty">Belum ada laporan. Terbitkan dari tombol di atas.</p>
+          ) : (
+            <div className="pb-replist">
               {session.reports!.map((rep: Report) => {
                 const ids: string[] = (() => { try { return JSON.parse(rep.run_ids ?? "[]"); } catch { return []; } })();
                 const missing = ids.filter(id => !runs.some(r => r.id === id));
                 const scopeLabel = rep.scope === "both" ? "Gabungan" : rep.scope === "pw" ? "Playwright" : "Lighthouse";
                 return (
-                  <tr key={rep.id}>
-                    <td>{scopeLabel}</td>
-                    <td>
-                      <span className={`pb-badge ${rep.status}`}>{rep.status}</span>
-                      {rep.status === "stale" && <span className="pb-muted" style={{ fontSize: 11, marginLeft: 6 }}>ada run baru</span>}
-                    </td>
-                    <td className="mono">{fmtDate(rep.built_at)}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <span className="pb-row" style={{ justifyContent: "flex-end" }}>
-                        {rep.status === "ready" || rep.status === "stale"
-                          ? <a className="pb-btn sm" href={reportUrl(rep.id)} target="_blank" rel="noreferrer">Buka</a>
-                          : <span className="pb-muted">{rep.error ?? "…"}</span>}
-                        <button className="pb-btn sm" onClick={() => publish(rep.scope)} disabled={!!busy}>
-                          {rep.status === "stale" ? "Build ulang" : "Terbitkan"}
-                        </button>
+                  <div className="pb-repcard" key={rep.id}>
+                    <div className="pb-repcard-top">
+                      <span className={`pb-tool ${rep.scope === "both" ? "both" : rep.scope}`}>
+                        {rep.scope === "both" ? "PW+LH" : rep.scope === "pw" ? "PW" : "LH"}
                       </span>
-                      {missing.length > 0 && <div className="pb-muted" style={{ fontSize: 11 }}>run dihapus: {missing.length}</div>}
-                    </td>
-                  </tr>
+                      <div className="pb-repcard-main">
+                        <div className="pb-repcard-title">{scopeLabel}</div>
+                        <div className="pb-repcard-sub mono">{fmtDate(rep.built_at)}</div>
+                      </div>
+                      <span className={`pb-badge ${rep.status}`}>{rep.status}</span>
+                    </div>
+                    {rep.status === "stale" && <div className="pb-repcard-note">ada run baru, build ulang</div>}
+                    {missing.length > 0 && <div className="pb-repcard-note">run dihapus: {missing.length}</div>}
+                    <div className="pb-repcard-act">
+                      {rep.status === "ready" || rep.status === "stale"
+                        ? <a className="pb-btn sm primary" href={reportUrl(rep.id)} target="_blank" rel="noreferrer">Buka</a>
+                        : <span className="pb-muted" style={{ fontSize: 12 }}>{rep.error ?? "menunggu…"}</span>}
+                      <button className="pb-btn sm" onClick={() => publish(rep.scope)} disabled={!!busy}>
+                        {rep.status === "stale" ? "Build ulang" : "Terbitkan"}
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </section>
-      )}
+            </div>
+          )}
+        </aside>
+      </div>
 
       {openRun && <RunPanel run={openRun} retention={retention} onClose={() => setOpenRun(null)} />}
     </>
@@ -196,11 +252,13 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
   const html = run.artifacts?.find(a => a.path.endsWith(".html"));
 
   return (
-    <section className="pb-card" style={{ marginBottom: 16 }}>
-      <div className="pb-row" style={{ marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 15 }}>Hasil run · {run.tool === "pw" ? "Playwright" : "Lighthouse"}</h2>
+    <section className="pb-card pb-runpanel">
+      <div className="pb-runpanel-head">
+        <span className={`pb-tool ${run.tool}`}>{isPw ? "PW" : "LH"}</span>
+        <h2>Hasil run · {isPw ? "Playwright" : "Lighthouse"}</h2>
         <span className={`pb-badge ${run.status}`}>{run.status}</span>
         <span className="pb-spacer" />
+        <span className="pb-muted mono" style={{ fontSize: 12 }}>{fmtDur(run.duration_ms)}</span>
         <button className="pb-btn sm" onClick={onClose}>Tutup</button>
       </div>
 
@@ -247,7 +305,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
       <RunTerminal runId={run.id} />
 
       {html && <ReportFrame runId={run.id} path={html.path} jsonPath={report?.path} />}
-      {!html && !(run.artifacts?.length) && ["passed", "failed", "cancelled", "interrupted"].includes(run.status) && (
+      {!html && !(run.artifacts?.length) && FINAL.includes(run.status) && (
         <p className="pb-muted" style={{ marginTop: 12, fontSize: 12 }}>
           <button className="pb-btn sm" disabled>Report mentah</button>{" "}
           artifact dihapus (retensi {retention} hari)
