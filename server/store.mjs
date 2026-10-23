@@ -375,7 +375,7 @@ export class Store {
   getReport(id) { return this.db.prepare('SELECT * FROM reports WHERE id=?').get(id); }
   listReportsBySession(sessionId) { return this.db.prepare('SELECT * FROM reports WHERE session_id=? ORDER BY created_at DESC').all(sessionId); }
   patchReport(id, fields) {
-    const allowed = ['status', 'run_ids', 'path', 'error', 'built_at'];
+    const allowed = ['status', 'run_ids', 'path', 'error', 'built_at', 'mode'];
     const set = []; const vals = [];
     for (const k of allowed) if (k in fields) { set.push(`${k}=?`); vals.push(k === 'run_ids' && fields[k] != null ? JSON.stringify(fields[k]) : fields[k]); }
     if (!set.length) return this.getReport(id);

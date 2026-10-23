@@ -224,6 +224,12 @@ export default function SessionDetail() {
                     </div>
                     {rep.status === "stale" && <div className="pb-repcard-note">ada run baru, build ulang</div>}
                     {missing.length > 0 && <div className="pb-repcard-note">run dihapus: {missing.length}</div>}
+                    {rep.status === "ready" && rep.mode === "html" && (
+                      <div className="pb-repcard-note">mode HTML cadangan{rep.error ? `: ${rep.error}` : ""}</div>
+                    )}
+                    {rep.status === "ready" && rep.mode === "docs" && (
+                      <div className="pb-repcard-note" style={{ color: "var(--ok)" }}>mode Docusaurus</div>
+                    )}
                     <div className="pb-repcard-act">
                       {rep.status === "ready" || rep.status === "stale"
                         ? <a className="pb-btn sm primary" href={reportUrl(rep.id)} target="_blank" rel="noreferrer">Buka</a>

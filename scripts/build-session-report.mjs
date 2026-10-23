@@ -179,14 +179,16 @@ ${sections.join('\n')}
       await writeFile(file, JSON.stringify(meta, null, 2)).catch(() => {});
     }
     let mode = 'docs';
+    let fallbackError = null;
     try {
       await buildReportDocs(runIds.map(id => join(runsDir, id)), outDir, `/artifacts/reports/${reportId}/`);
     } catch (error) {
       mode = 'html';
-      console.error('[report] fallback html', reportId, error.message);
+      fallbackError = error.message ?? String(error);
+      console.error('[report] fallback html', reportId, fallbackError);
       await writeFile(join(outDir, 'index.html'), html);
     }
-    store.patchReport(reportId, { status: 'ready', path: 'index.html', built_at: new Date().toISOString(), error: null });
+    store.patchReport(reportId, { status: 'ready', path: 'index.html', mode, error: fallbackError, built_at: new Date().toISOString() });
     return { ok: true, dir: outDir, mode };
   } catch (error) {
     await rm(outDir, { recursive: true, force: true }).catch(() => {});

@@ -69,6 +69,7 @@ export type Report = {
   id: string; session_id: string; scope: "pw" | "lh" | "both";
   status: "queued" | "building" | "ready" | "failed" | "stale";
   run_ids: string | null; path: string | null; error: string | null;
+  mode: string | null;
   created_at: string; built_at: string | null;
 };
 
