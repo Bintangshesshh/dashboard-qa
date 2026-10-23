@@ -108,7 +108,13 @@ export default function LighthousePage() {
 
   return (
     <>
-      <div className="pb-head"><h1>Lighthouse</h1></div>
+      <div className="pb-head">
+        <div>
+          <div className="eyebrow">Lighthouse</div>
+          <h1>Audit performa.</h1>
+          <p className="pb-lead">Skor per kategori dari run final terbaru. Budget di bawah ambang ditandai warn.</p>
+        </div>
+      </div>
       {error && <div className="pb-err">{error}</div>}
       {notice && <div className="pb-card" style={{ marginBottom: 14 }}>{notice}</div>}
 

@@ -36,34 +36,76 @@ export function Shell({ children }: { children: React.ReactNode }) {
     router.replace("/login");
   };
 
+  const all = [...NAV, ...(user?.role === "admin" ? ADMIN_NAV : [])];
+  const screen = all.find(i => i.href === path)?.label ?? "Overview";
+
   return (
     <div className="pb-shell">
       <aside className="pb-side">
         <div className="pb-brand">
-          <strong>Playbook</strong>
-          <span>Eureka Group</span>
+          <div>
+            <div className="pb-brand-name">Playbook</div>
+            <div className="pb-brand-sub">Eureka Group</div>
+          </div>
         </div>
+
         <nav className="pb-nav" aria-label="Navigasi utama">
-          {[...NAV, ...(user?.role === "admin" ? ADMIN_NAV : [])].map(item => (
+          <div className="pb-nav-label">Ruang kerja</div>
+          {NAV.map(item => (
             <Link key={item.href} href={item.href} aria-current={path === item.href ? "page" : undefined}>
               {item.label}
             </Link>
           ))}
+          {user?.role === "admin" && (
+            <>
+              <div className="pb-nav-label pb-nav-label-gap">Admin</div>
+              {ADMIN_NAV.map(item => (
+                <Link key={item.href} href={item.href} aria-current={path === item.href ? "page" : undefined}>
+                  {item.label}
+                </Link>
+              ))}
+            </>
+          )}
         </nav>
+
         <div className="pb-side-foot">
-          {user && <span className="pb-user">{user.username} · {user.role}</span>}
-          <button className="pb-btn sm" onClick={logout}>Logout</button>
+          {user && (
+            <div className="pb-user-row">
+              <span className="pb-avatar" aria-hidden="true">{user.username[0].toUpperCase()}</span>
+              <span className="pb-user-meta">
+                <strong>{user.username}</strong>
+                <span>{user.role}</span>
+              </span>
+            </div>
+          )}
+          <button className="pb-logout" onClick={logout}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+              <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /><path d="M15 8l4 4-4 4M19 12H9" />
+            </svg>
+            Logout
+          </button>
         </div>
       </aside>
-      <main className="pb-main">
-        {down && (
-          <div className="pb-err" role="alert" style={{ marginBottom: 12 }}>
-            Backend tidak tersedia.{" "}
-            <button className="pb-btn sm" onClick={ping}>Coba lagi</button>
+
+      <div className="pb-mainwrap">
+        <header className="pb-topbar">
+          <div className="pb-crumb">
+            <span>Playbook</span>
+            <span aria-hidden="true">/</span>
+            <strong>{screen}</strong>
           </div>
-        )}
-        {loading && !down ? <Skeleton /> : children}
-      </main>
+        </header>
+
+        <main className="pb-main">
+          {down && (
+            <div className="pb-err" role="alert" style={{ marginBottom: 12 }}>
+              Backend tidak tersedia.{" "}
+              <button className="pb-btn sm" onClick={ping}>Coba lagi</button>
+            </div>
+          )}
+          {loading && !down ? <Skeleton /> : children}
+        </main>
+      </div>
     </div>
   );
 }
@@ -74,7 +116,7 @@ function Skeleton() {
     <div aria-busy="true" aria-live="polite">
       <div className="pb-skel" style={{ width: 220, height: 28, marginBottom: 16 }} />
       <div className="pb-grid kpi" style={{ marginBottom: 18 }}>
-        {[0, 1, 2, 3].map(i => <div key={i} className="pb-skel" style={{ height: 86 }} />)}
+        {[0, 1, 2, 3].map(i => <div key={i} className="pb-skel" style={{ height: 132 }} />)}
       </div>
       <div className="pb-skel" style={{ height: 180 }} />
     </div>

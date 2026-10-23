@@ -31,7 +31,11 @@ function ReportsInner() {
   return (
     <>
       <div className="pb-head">
-        <h1>Reports</h1>
+        <div>
+          <div className="eyebrow">Reports</div>
+          <h1>Sesi dan laporan.</h1>
+          <p className="pb-lead">Setiap sesi mengumpulkan run Playwright dan Lighthouse beserta snapshot laporannya.</p>
+        </div>
         <div className="pb-filters">
           <select className="pb-select" defaultValue={project}
             onChange={e => { location.href = link({ project: e.target.value }); }}>

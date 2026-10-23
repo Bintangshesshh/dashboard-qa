@@ -79,7 +79,13 @@ export default function PlaywrightPage() {
 
   return (
     <>
-      <div className="pb-head"><h1>Playwright</h1></div>
+      <div className="pb-head">
+        <div>
+          <div className="eyebrow">Playwright</div>
+          <h1>Jalankan test suite.</h1>
+          <p className="pb-lead">Pilih project, environment, dan file test. Run masuk antrean lalu dipantau di sini.</p>
+        </div>
+      </div>
       {error && <div className="pb-err">{error}</div>}
 
       <div className="pb-grid two">

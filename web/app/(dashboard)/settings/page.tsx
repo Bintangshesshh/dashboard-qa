@@ -81,7 +81,13 @@ export default function SettingsPage() {
 
   return (
     <>
-      <div className="pb-head"><h1>Pengaturan</h1></div>
+      <div className="pb-head">
+        <div>
+          <div className="eyebrow">Pengaturan</div>
+          <h1>Konfigurasi Playbook.</h1>
+          <p className="pb-lead">Retensi, token CLI, project, dan audit log.</p>
+        </div>
+      </div>
       {error && <div className="pb-err">{error}</div>}
       {notice && <div className="pb-card" style={{ marginBottom: 14 }}>{notice}</div>}
 
