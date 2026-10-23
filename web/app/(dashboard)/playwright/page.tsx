@@ -30,11 +30,25 @@ export default function PlaywrightPage() {
   const [conflict, setConflict] = useState(false);
 
   // Run + terminal
+  // runId di-sessionStorage: pindah ke Overview unmount page, state reset.
+  // Restore di sini biar polling + log lanjut saat balik, run backend tak hilang.
   const [starting, setStarting] = useState(false);
-  const [runId, setRunId] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(
+    () => (typeof window !== "undefined" ? sessionStorage.getItem("pw-runId") : null),
+  );
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const termRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (runId) sessionStorage.setItem("pw-runId", runId);
+    else sessionStorage.removeItem("pw-runId");
+  }, [runId]);
+
+  // Run sudah final: jangan di-restore lagi saat masuk halaman.
+  useEffect(() => {
+    if (run && FINAL.includes(run.status)) sessionStorage.removeItem("pw-runId");
+  }, [run]);
 
   useEffect(() => {
     api.projects().then(p => {
