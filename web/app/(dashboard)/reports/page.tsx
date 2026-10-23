@@ -92,7 +92,7 @@ function ReportsInner() {
                       : s.reports!.map(rep => (
                         <a key={rep.id} className="pb-btn sm" href={reportUrl(rep.id)} target="_blank" rel="noreferrer"
                           title={`${rep.scope} · ${rep.status}`} style={{ marginRight: 6 }}>
-                          {rep.scope}{rep.status === "stale" ? " (basi)" : ""}
+                          {rep.scope}
                         </a>
                       ))}
                   </td>

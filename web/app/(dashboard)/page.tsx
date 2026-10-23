@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, fmtDate, fmtDur, pct, type Project, type Session, type Stats } from "../../lib/playbook";
+import { api, fmtDate, fmtDur, type Project, type Session, type Stats } from "../../lib/playbook";
 
 const RANGES = [7, 14, 30];
 
@@ -217,9 +217,49 @@ export default function OverviewPage() {
         </div>
       )}
 
-      <p className="pb-muted" style={{ fontSize: 12, marginTop: 16 }}>
-        Lighthouse: {lh ? `${pct(lh.performance)} perf · ${pct(lh.accessibility)} a11y · ${pct(lh.bestPractices)} BP · ${pct(lh.seo)} SEO (${lh.urls} URL)` : "belum ada data"}
-      </p>
+      <section className="pb-card pb-lh" style={{ marginTop: 16 }}>
+        <div className="pb-card-head">
+          <div>
+            <h2>Audit Lighthouse</h2>
+            <div className="pb-card-sub">Skor rata-rata per kategori dari run Lighthouse final.</div>
+          </div>
+          <Link className="pb-link-muted" href="/lighthouse">Buka Lighthouse</Link>
+        </div>
+        {lh == null ? (
+          <p className="pb-empty">Belum ada run Lighthouse dalam {range} hari terakhir.</p>
+        ) : (
+          <>
+            <div className="pb-score-grid">
+              {[
+                { key: "perf", label: "Performance", v: lh.performance },
+                { key: "a11y", label: "Accessibility", v: lh.accessibility },
+                { key: "bp", label: "Best practices", v: lh.bestPractices },
+                { key: "seo", label: "SEO", v: lh.seo },
+              ].map(s => {
+                const n = s.v == null ? null : Math.round(s.v * 100);
+                const tone = n == null ? "" : n >= 90 ? "ok" : n >= 50 ? "warn" : "bad";
+                return (
+                  <div className="pb-score" key={s.key}>
+                    <svg className="pb-score-ring" viewBox="0 0 76 76" role="img"
+                      aria-label={n == null ? `${s.label} belum ada data` : `${s.label} ${n}`}>
+                      <circle className="pb-donut-track" cx="38" cy="38" r="30" />
+                      <circle className={`pb-donut-val ${tone}`} cx="38" cy="38" r="30"
+                        strokeDasharray={188.5} strokeDashoffset={188.5 - (188.5 * (n ?? 0)) / 100} />
+                      <text className="pb-score-num" x="38" y="43" textAnchor="middle">{n ?? "—"}</text>
+                    </svg>
+                    <span className="pb-score-label">{s.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="pb-chart-note">
+              <span>{lh.urls} URL diaudit</span>
+              <span>Asia/Jakarta</span>
+            </div>
+          </>
+        )}
+      </section>
+
     </>
   );
 }
