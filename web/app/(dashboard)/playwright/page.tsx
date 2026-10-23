@@ -45,6 +45,15 @@ export default function PlaywrightPage() {
     else sessionStorage.removeItem("pw-runId");
   }, [runId]);
 
+  // ID dari sessionStorage bisa basi (run dihapus/cancel dari halaman lain).
+  // Validasi sekali: kalau 404, buang ID, biar terminal tidak polling hantu.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!runId || restored.current) return;
+    restored.current = true;
+    api.run(runId).then(() => {}).catch(() => { setRunId(null); setLogs([]); });
+  }, [runId]);
+
   useEffect(() => {
     api.projects().then(p => {
       setProjects(p);
