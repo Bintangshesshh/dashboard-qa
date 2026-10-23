@@ -11,7 +11,9 @@ const NAV = [
   { href: "/lighthouse", label: "Lighthouse" },
   { href: "/reports", label: "Reports" },
 ];
-const ADMIN_NAV = [{ href: "/settings", label: "Pengaturan" }];
+// ponytail: menu Pengaturan disembunyikan untuk demo. Halaman /settings tetap ada,
+// buka langsung lewat URL kalau perlu. Kembalikan kalau admin panel dipakai lagi.
+const ADMIN_NAV: { href: string; label: string }[] = [];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();

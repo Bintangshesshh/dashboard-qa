@@ -104,7 +104,7 @@ export default function SessionDetail() {
           <div className="eyebrow">Detail sesi</div>
           <h1>{session.label}</h1>
           <p className="pb-muted" style={{ margin: "4px 0 0" }}>
-            {session.env} · {session.target_url} · <span className={`pb-badge ${session.status}`}>{session.status}</span>
+            {session.target_url} · <span className={`pb-badge ${session.status}`}>{session.status}</span>
           </p>
         </div>
         <div className="pb-row">

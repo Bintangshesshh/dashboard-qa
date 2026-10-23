@@ -9,7 +9,10 @@ export default function PlaywrightPage() {
   const [files, setFiles] = useState<TestFile[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [projectId, setProjectId] = useState("");
-  const [env, setEnv] = useState("local");
+  // Env UI disembunyikan untuk demo: target selalu base_url (web online) dengan env
+  // production. Konfirmasi nama project diisi otomatis, guard backend tetap jalan.
+  // ponytail: kalau perlu pilih env lagi, kembalikan select + confirm input.
+  const env = "production";
   const [fileId, setFileId] = useState("");
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
@@ -33,12 +36,11 @@ export default function PlaywrightPage() {
 
   const selected = useMemo(() => files.find(f => f.id === fileId), [files, fileId]);
   const project = projects.find(p => p.id === projectId);
-  const target = !project ? "" : env === "local" ? project.local_url ?? "" : env === "staging" ? project.staging_url ?? "" : project.base_url;
+  const target = project?.base_url ?? "";
 
   // Draft editor; disinkronkan saat spec berganti, bukan saat mengetik.
   const [draft, setDraft] = useState("");
-  const [confirmName, setConfirmName] = useState("");
-  useEffect(() => { setDraft(selected?.code ?? ""); setConfirmName(""); }, [selected]);
+  useEffect(() => { setDraft(selected?.code ?? ""); }, [selected]);
 
   // PRD §10.3: editor memperingatkan URL hardcoded (bikin spec tidak bisa pindah env).
   const hardcoded = (draft.match(/https?:\/\/[^\s'"`)]+/g) ?? []).filter(u => !u.includes("process.env"));
@@ -56,16 +58,13 @@ export default function PlaywrightPage() {
   const start = async () => {
     setBusy(true); setError("");
     try {
-      if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
+      if (!target) throw new Error("Project ini belum punya URL.");
       if (!fileId) throw new Error("Pilih spec dulu.");
       if (dirty) throw new Error("Ada perubahan belum disimpan. Klik Simpan dulu.");
-      // PRD §10.3/§11: production wajib ketik ulang nama project.
-      if (env === "production" && confirmName.trim() !== project?.name) {
-        throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
-      }
       let s = session;
       if (!s || s.project_id !== projectId || s.env !== env) {
-        const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
+        // Konfirmasi production diisi otomatis: UI tidak menampilkan env/konfirmasi.
+        const created = await api.createSession(projectId, env, project?.name);
         s = created.session;
         setSession(s);
       }
@@ -83,7 +82,7 @@ export default function PlaywrightPage() {
         <div>
           <div className="eyebrow">Playwright</div>
           <h1>Jalankan test suite.</h1>
-          <p className="pb-lead">Pilih project, environment, dan file test. Run masuk antrean lalu dipantau di sini.</p>
+          <p className="pb-lead">Pilih project dan file test. Run masuk antrean lalu dipantau di sini.</p>
         </div>
       </div>
       {error && <div className="pb-err">{error}</div>}
@@ -99,14 +98,6 @@ export default function PlaywrightPage() {
               </select>
             </label>
             <label className="pb-field">
-              Environment
-              <select className="pb-select" value={env} onChange={e => setEnv(e.target.value)}>
-                <option value="local">local</option>
-                <option value="staging">staging</option>
-                <option value="production">production</option>
-              </select>
-            </label>
-            <label className="pb-field">
               Spec
               <select className="pb-select" value={fileId} onChange={e => setFileId(e.target.value)}>
                 {files.length === 0 && <option value="">(tidak ada spec)</option>}
@@ -114,14 +105,8 @@ export default function PlaywrightPage() {
               </select>
             </label>
             <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-              Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
+              Target: <span className="pb-mono">{target || "belum diisi di project"}</span>
             </p>
-            {env === "production" && (
-              <label className="pb-field">
-                Ketik <strong>{project?.name}</strong> untuk konfirmasi production
-                <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
-              </label>
-            )}
             <div className="pb-row">
               <button className="pb-btn primary" onClick={start} disabled={busy || !fileId || !target || dirty}>
                 {busy ? "Menjalankan…" : "Run"}
@@ -129,7 +114,7 @@ export default function PlaywrightPage() {
               {session && <Link className="pb-btn sm" href={`/reports/${session.id}`}>Sesi aktif</Link>}
             </div>
             <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-              Satu run = satu spec. Sesi dipakai ulang bila masih terbuka untuk project + env yang sama.
+              Satu run = satu spec. Sesi dipakai ulang bila masih terbuka untuk project yang sama.
             </p>
           </div>
         </section>

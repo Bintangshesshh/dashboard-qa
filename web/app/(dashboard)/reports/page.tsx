@@ -67,13 +67,12 @@ function ReportsInner() {
         ) : (
           <table className="pb-table">
             <thead>
-              <tr><th>Sesi</th><th>Env</th><th>Target</th><th>Status</th><th>Run</th><th>Laporan</th><th>Dibuat</th><th /></tr>
+              <tr><th>Sesi</th><th>Target</th><th>Status</th><th>Run</th><th>Laporan</th><th>Dibuat</th><th /></tr>
             </thead>
             <tbody>
               {sessions.map(s => (
                 <tr key={s.id}>
                   <td><Link href={`/reports/${s.id}`}>{s.label}</Link></td>
-                  <td className="pb-muted">{s.env}</td>
                   <td className="mono">{s.target_url}</td>
                   <td><span className={`pb-badge ${s.status}`}>{s.status}</span></td>
                   <td className="mono" style={{ fontSize: 12 }}>

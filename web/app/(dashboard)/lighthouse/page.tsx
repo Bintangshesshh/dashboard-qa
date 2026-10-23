@@ -17,15 +17,16 @@ const CATEGORIES = [
   { key: "categories:seo", label: "SEO" },
 ];
 
-const resolvedUrl = (p: Project | undefined, env: string) =>
-  !p ? "" : env === "local" ? p.local_url ?? "" : env === "staging" ? p.staging_url ?? "" : p.base_url;
+// Env UI disembunyikan untuk demo: audit selalu ke web online (base_url).
+// ponytail: kalau perlu local/staging lagi, kembalikan resolvedUrl(env).
+const liveUrl = (p: Project | undefined) => p?.base_url ?? "";
 
 export default function LighthousePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<TestFile[]>([]);
   const [session, setSession] = useState<Session | null>(null);
   const [projectId, setProjectId] = useState("");
-  const [env, setEnv] = useState("local");
+  const env = "production";
   const [fileId, setFileId] = useState("");
   const [rows, setRows] = useState<LighthouseRow[]>([]);
   const [error, setError] = useState("");
@@ -52,10 +53,7 @@ export default function LighthousePage() {
 
   const selected = useMemo(() => files.find(f => f.id === fileId), [files, fileId]);
   const project = projects.find(p => p.id === projectId);
-  const target = resolvedUrl(project, env);
-  // B4 (PRD §10.3/A30): production wajib ketik ulang nama project.
-  const [confirmName, setConfirmName] = useState("");
-  const productionOk = env !== "production" || confirmName.trim() === (project?.name ?? "");
+  const target = liveUrl(project);
 
   // Muat config terpilih ke draft form.
   useEffect(() => {
@@ -89,11 +87,11 @@ export default function LighthousePage() {
   const start = async () => {
     setBusy(true); setError(""); setNotice("");
     try {
-      if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
-      if (env === "production" && !productionOk) throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
+      if (!target) throw new Error("Project ini belum punya URL.");
       let s = session;
       if (!s || s.project_id !== projectId || s.env !== env) {
-        const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
+        // Konfirmasi production diisi otomatis: UI tidak menampilkan env/konfirmasi.
+        const created = await api.createSession(projectId, env, project?.name);
         s = created.session;
         setSession(s);
       }
@@ -129,14 +127,6 @@ export default function LighthousePage() {
               </select>
             </label>
             <label className="pb-field">
-              Environment
-              <select className="pb-select" value={env} onChange={e => setEnv(e.target.value)}>
-                <option value="local">local</option>
-                <option value="staging">staging</option>
-                <option value="production">production</option>
-              </select>
-            </label>
-            <label className="pb-field">
               Config
               <select className="pb-select" value={fileId} onChange={e => setFileId(e.target.value)}>
                 {files.length === 0 && <option value="">(tidak ada config)</option>}
@@ -144,15 +134,9 @@ export default function LighthousePage() {
               </select>
             </label>
             <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-              Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
+              Target: <span className="pb-mono">{target || "belum diisi di project"}</span>
             </p>
-            {env === "production" && (
-              <label className="pb-field">
-                Ketik <strong>{project?.name}</strong> untuk konfirmasi production
-                <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
-              </label>
-            )}
-            <button className="pb-btn primary" onClick={start} disabled={busy || !fileId || !target || !productionOk}>
+            <button className="pb-btn primary" onClick={start} disabled={busy || !fileId || !target}>
               {busy ? "Menjalankan…" : "Run Lighthouse"}
             </button>
           </div>
@@ -192,9 +176,9 @@ export default function LighthousePage() {
       <section className="pb-card" style={{ marginTop: 16 }}>
         <h2 style={{ margin: "0 0 12px", fontSize: 15 }}>URL yang akan diaudit ({audited.length})</h2>
         {audited.length === 0
-          ? <p className="pb-empty">Belum ada URL: pilih env dengan URL terisi, atau tambah URL di config.</p>
+          ? <p className="pb-empty">Belum ada URL: tambah URL di config.</p>
           : <ul className="pb-mono" style={{ margin: 0, paddingLeft: 18 }}>
-            {audited.map((u, i) => <li key={u}>{u}{i === 0 && target === u && <span className="pb-muted"> — dari env {env}</span>}</li>)}
+            {audited.map(u => <li key={u}>{u}</li>)}
           </ul>}
       </section>
 
