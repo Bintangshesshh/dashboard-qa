@@ -145,7 +145,7 @@ export class Store {
       .run(id, projectId, tool, path, label, code, config ?? null, now, now, updatedBy ?? null);
   }
   patchTestFile(id, fields) {
-    const allowed = ['code', 'config', 'label', 'enabled'];
+    const allowed = ['code', 'config', 'label', 'enabled', 'disk_hash'];
     const set = []; const vals = [];
     for (const k of allowed) if (k in fields) { set.push(`${k}=?`); vals.push(fields[k]); }
     if (!set.length) return this.getTestFile(id);

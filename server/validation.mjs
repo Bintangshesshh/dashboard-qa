@@ -18,6 +18,13 @@ export function optionalText(value, name, max = 200) {
   if (value === undefined || value === null) return null;
   return text(value, name, max);
 }
+// Kode sumber disimpan apa adanya: trim akan membuat DB beda dari file di disk
+// dan memicu status "belum disimpan" palsu di editor.
+export function code(value, max = 200000) {
+  if (typeof value !== 'string' || !value.trim() || value.length > max)
+    fail(`code must contain 1–${max} characters`);
+  return value;
+}
 // env dari PRD §6: hanya local | staging | production
 export function env(value) {
   if (!['local', 'staging', 'production'].includes(value)) fail('env must be local|staging|production');

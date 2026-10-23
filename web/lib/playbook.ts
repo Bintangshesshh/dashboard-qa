@@ -10,6 +10,7 @@ export type Project = {
 export type TestFile = {
   id: string; project_id: string; tool: "pw" | "lh"; path: string;
   label: string; code: string; config: string | null; enabled: number;
+  disk_hash?: string | null;
 };
 export type Run = {
   id: string; session_id: string; test_file_id: string | null; tool: "pw" | "lh";
@@ -148,8 +149,10 @@ export const api = {
     const s = p.toString();
     return request<TestFile[]>("/api/test-files" + (s ? "?" + s : ""));
   },
-  patchTestFile: (id: string, body: Partial<Pick<TestFile, "code" | "config" | "label" | "enabled">>) =>
+  patchTestFile: (id: string, body: Partial<Pick<TestFile, "code" | "config" | "label" | "enabled">> & { force?: boolean }) =>
     request<TestFile>(`/api/test-files/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  reloadTestFile: (id: string) =>
+    request<TestFile>(`/api/test-files/${id}/reload`, { method: "POST" }),
 
   sessions: (q: { project?: string; status?: string; from?: string; to?: string; range?: number } = {}) => {
     const p = new URLSearchParams();

@@ -22,6 +22,8 @@ export default function PlaywrightPage() {
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Konflik = file di disk berubah sejak sinkron terakhir; butuh keputusan user.
+  const [conflict, setConflict] = useState(false);
 
   // Run + terminal
   const [starting, setStarting] = useState(false);
@@ -84,15 +86,32 @@ export default function PlaywrightPage() {
     termRef.current?.scrollTo({ top: termRef.current.scrollHeight });
   }, [logs]);
 
-  const save = async () => {
+  const save = async (force = false) => {
     if (!selected) return;
     setSaving(true); setError("");
     try {
-      const updated = await api.patchTestFile(selected.id, { code: draft });
+      const updated = await api.patchTestFile(selected.id, { code: draft, ...(force ? { force: true } : {}) });
       setFiles([updated]);
       // Backend men-trim teks. Tanpa sinkron balik, `dirty` tetap true dan Run
       // terkunci walau sudah disimpan.
       setDraft(updated.code);
+      setConflict(false);
+    } catch (e) {
+      const err = e as { status?: number; message: string };
+      if (err.status === 409) setConflict(true);
+      else setError(err.message);
+    } finally { setSaving(false); }
+  };
+
+  // Arah sebaliknya: ambil versi disk (mis. habis pull dari git).
+  const reload = async () => {
+    if (!selected) return;
+    setSaving(true); setError("");
+    try {
+      const updated = await api.reloadTestFile(selected.id);
+      setFiles([updated]);
+      setDraft(updated.code);
+      setConflict(false);
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
 
@@ -158,13 +177,25 @@ export default function PlaywrightPage() {
           </div>
           <span className="pb-row" style={{ gap: 8 }}>
             {dirty && <span className="pb-muted" style={{ fontSize: 12 }}>belum disimpan</span>}
-            <button className="pb-btn sm primary" onClick={save} disabled={saving || !dirty || running}>
+            <button className="pb-btn sm primary" onClick={() => save()} disabled={saving || !dirty || running}>
               {saving ? "Menyimpan…" : "Simpan"}
+            </button>
+            <button className="pb-btn sm" onClick={reload} disabled={saving || running} title="Ambil ulang isi file dari disk">
+              Muat ulang
             </button>
             <button className="pb-btn sm" onClick={() => setDraft(selected?.code ?? "")}
               disabled={saving || !dirty || running}>Reset</button>
           </span>
         </div>
+        {conflict && (
+          <div className="pb-err" style={{ marginBottom: 8, display: "grid", gap: 8 }}>
+            <span>File spec di disk sudah berubah sejak sinkron terakhir (kemungkinan ada perubahan di git).</span>
+            <span className="pb-row" style={{ gap: 8 }}>
+              <button className="pb-btn sm danger" onClick={() => save(true)} disabled={saving}>Timpa file di disk</button>
+              <button className="pb-btn sm" onClick={reload} disabled={saving}>Muat ulang dari disk</button>
+            </span>
+          </div>
+        )}
         {hardcoded.length > 0 && (
           <div className="pb-err" style={{ marginBottom: 8 }}>
             URL hardcoded terdeteksi ({hardcoded.length}): spec tidak akan mengikuti env.

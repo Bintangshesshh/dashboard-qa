@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -54,6 +55,7 @@ for (const [path, projectId, label] of PW) {
     label,
     code,
     config: null,
+    disk_hash: createHash('sha256').update(code).digest('hex'),
   });
 }
 
@@ -88,15 +90,15 @@ for (const [path, projectId, label] of LH) {
 }
 
 const insert = db.prepare(`INSERT INTO test_files
-  (id, project_id, tool, path, label, code, config, enabled, created_at, updated_at, updated_by)
-  VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, NULL)
+  (id, project_id, tool, path, label, code, config, enabled, created_at, updated_at, updated_by, disk_hash)
+  VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, NULL, ?)
   ON CONFLICT(project_id, path) DO UPDATE SET
     tool = excluded.tool, label = excluded.label, code = excluded.code,
-    config = excluded.config, updated_at = excluded.updated_at`);
+    config = excluded.config, updated_at = excluded.updated_at, disk_hash = excluded.disk_hash`);
 
 db.exec('BEGIN');
 try {
-  for (const r of rows) insert.run(r.id, r.project_id, r.tool, r.path, r.label, r.code, r.config, now, now);
+  for (const r of rows) insert.run(r.id, r.project_id, r.tool, r.path, r.label, r.code, r.config, now, now, r.disk_hash ?? null);
   db.exec('COMMIT');
 } catch (error) {
   db.exec('ROLLBACK');

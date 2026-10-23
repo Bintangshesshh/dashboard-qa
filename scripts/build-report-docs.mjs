@@ -18,6 +18,8 @@ export async function collectRun(runDir) {
   const source = JSON.parse(await readFile(join(runDir, 'run.json'), 'utf8'));
   const run = Object.fromEntries(RUN_KEYS.filter(k => k in source).map(k => [k, source[k]]));
   const logs = await readFile(join(runDir, 'logs.txt'), 'utf8').catch(() => '');
+  // PRD §9.1: simpan 500 baris terakhir saja; log penuh tetap di dashboard.
+  const tail = logs.split('\n').slice(-500).join('\n');
   const files = [];
   const walk = async dir => {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -41,7 +43,7 @@ export async function collectRun(runDir) {
   }
   if (run.mode !== 'lh' && !reports.some(r => r.kind === 'playwright')) warnings.push('No Playwright JSON report found. Missing report does not mean tests passed.');
   if (run.mode !== 'pw' && !reports.some(r => r.kind === 'lighthouse')) warnings.push('No Lighthouse JSON report found. Missing report does not mean audits passed.');
-  return { runDir, run, logs, files, reports, warnings };
+  return { runDir, run, logs: tail, files, reports, warnings };
 }
 
 const indexPage = runs => `import React from 'react';
@@ -147,7 +149,7 @@ export async function buildReportDocs(runDirs, outDir, baseUrl) {
         });
       } else {
         // Run yang foldernya sudah dihapus retensi tetap muncul, tanpa halaman detail.
-        index.push({ id: name, slug: name, suiteName: 'Run dihapus', mode: null, status: 'missing', targetUrl: null, finishedAt: null });
+        index.push({ id: name, slug: name, suiteName: 'Run dihapus', mode: null, status: 'missing', targetUrl: null, finishedAt: new Date().toISOString() });
       }
     }
     await writeFile(join(site, 'src', 'pages', 'index.jsx'), indexPage(index));

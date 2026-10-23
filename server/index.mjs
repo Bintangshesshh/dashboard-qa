@@ -11,8 +11,9 @@ import { Runner } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
 import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check.mjs';
 import { runRetention } from './retention.mjs';
+import { specPath, readSpec, writeSpec } from './spec-sync.mjs';
 import { backupDatabase } from './backup.mjs';
-import { fail, id, text, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp } from './validation.mjs';
+import { fail, id, text, code as codeValue, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp } from './validation.mjs';
 
 const scrypt = promisify(_scrypt);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -202,7 +203,7 @@ export function createApp({ store, runner, token, origins }) {
     const projectId = id(req.body?.projectId);
     if (!store.getProject(projectId)) fail('Project tidak ditemukan', 400);
     const path = text(req.body?.path, 'path', 500);
-    const code = text(req.body?.code, 'code', 200000);
+    const code = codeValue(req.body?.code);
     const label = text(req.body?.label, 'label', 200);
     const config = req.body?.config != null ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config)) : null;
     const tf = { id: randomUUID(), projectId, tool: t, path, label, code, config, updatedBy: req.user.id };
@@ -214,13 +215,42 @@ export function createApp({ store, runner, token, origins }) {
     const tf = store.getTestFile(id(req.params.id));
     if (!tf) fail('Not found', 404);
     const fields = {};
-    if (req.body.code !== undefined) fields.code = text(req.body.code, 'code', 200000);
+    if (req.body.code !== undefined) fields.code = codeValue(req.body.code);
     if (req.body.label !== undefined) fields.label = text(req.body.label, 'label');
     if (req.body.config !== undefined) fields.config = req.body.config != null ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config)) : null;
     if (req.body.enabled !== undefined) fields.enabled = bool(req.body.enabled, 'enabled');
+
+    // Sinkron ke disk hanya untuk spec Playwright yang punya path file nyata.
+    // Guard: tolak kalau file di disk sudah berubah sejak sinkron terakhir,
+    // supaya edit di git tidak tertimpa diam-diam. `force: true` = timpa paksa.
+    if (fields.code !== undefined && tf.tool === 'pw') {
+      const abs = specPath(root, tf.path);
+      const disk = await readSpec(abs);
+      const expected = tf.disk_hash ?? (disk ? disk.hash : null);
+      if (!req.body.force && disk && tf.disk_hash && disk.hash !== tf.disk_hash) {
+        return res.status(409).json({
+          error: 'File spec di disk sudah berubah sejak sinkron terakhir.',
+          conflict: true, diskHash: disk.hash, expected,
+        });
+      }
+      fields.disk_hash = await writeSpec(abs, fields.code);
+    }
+
     store.patchTestFile(req.params.id, fields);
     store.audit({ userId: req.user.id, action: 'update_test_file', entity: 'test_files', entityId: req.params.id });
     res.json(store.getTestFile(req.params.id));
+  }));
+
+  // Muat ulang isi spec dari disk ke DB (arah sebaliknya, manual).
+  app.post('/api/test-files/:id/reload', requireAuth, requireAdmin, route(async (req, res) => {
+    const tf = store.getTestFile(id(req.params.id));
+    if (!tf) fail('Not found', 404);
+    if (tf.tool !== 'pw') fail('Hanya spec Playwright yang punya file di disk', 400);
+    const disk = await readSpec(specPath(root, tf.path));
+    if (!disk) fail('File spec tidak ada di disk', 404);
+    store.patchTestFile(tf.id, { code: disk.text, disk_hash: disk.hash });
+    store.audit({ userId: req.user.id, action: 'reload_test_file', entity: 'test_files', entityId: tf.id });
+    res.json(store.getTestFile(tf.id));
   }));
 
   // ─── Sessions ────────────────────────────────────────────────────────────
