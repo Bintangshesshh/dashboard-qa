@@ -27,7 +27,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [sessionInfo, setSessionInfo] = useState<{ label: string; projectId: string } | null>(null);
 
   const ping = useCallback(() => {
-    setLoading(true);
     api.me()
       .then(u => { setUser(u); setDown(false); })
       .catch(e => { if (!(e instanceof ApiError)) setDown(true); })
@@ -149,7 +148,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <button className="pb-btn sm" onClick={ping}>Coba lagi</button>
             </div>
           )}
-          {loading && !down ? <Skeleton /> : children}
+          {loading && !down ? <Skeleton /> : (
+            <div key={path} className="pb-page">{children}</div>
+          )}
         </main>
       </div>
     </div>
