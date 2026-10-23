@@ -9,6 +9,10 @@ import {
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
+// Log lama di DB menyimpan escape ANSI dari Playwright/lhci; buang saat render.
+// Sebagian tersimpan tanpa karakter ESC, jadi pola SGR telanjang ikut dibuang.
+const stripAnsi = (s: string) => s.replace(/\u001b?\[[0-9;]*m/g, "");
+
 export default function PlaywrightPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<TestFile[]>([]);
@@ -180,11 +184,16 @@ export default function PlaywrightPage() {
             <button className="pb-btn sm primary" onClick={() => save()} disabled={saving || !dirty || running}>
               {saving ? "Menyimpan…" : "Simpan"}
             </button>
-            <button className="pb-btn sm" onClick={reload} disabled={saving || running} title="Ambil ulang isi file dari disk">
-              Muat ulang
-            </button>
             <button className="pb-btn sm" onClick={() => setDraft(selected?.code ?? "")}
               disabled={saving || !dirty || running}>Reset</button>
+            <button className="pb-btn sm pb-icon-btn" onClick={reload} disabled={saving || running}
+              title="Muat ulang dari disk" aria-label="Muat ulang dari disk">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M13.5 8a5.5 5.5 0 1 1-1.65-3.94" />
+                <path d="M13.5 1.8V4.6h-2.8" />
+              </svg>
+            </button>
           </span>
         </div>
         {conflict && (
@@ -223,7 +232,7 @@ export default function PlaywrightPage() {
         <div className="pb-term" ref={termRef} style={{ maxHeight: 300, minHeight: 120 }}>
           {logs.length === 0
             ? (runId ? "Menunggu log…" : "Log run akan muncul di sini.")
-            : logs.map(l => <div key={l.seq} className={l.stream === "stderr" ? "pb-log-err" : undefined}>{l.text}</div>)}
+            : logs.map(l => <div key={l.seq} className={l.stream === "stderr" ? "pb-log-err" : undefined}>{stripAnsi(l.text)}</div>)}
         </div>
         <div className="pb-row" style={{ marginTop: 12 }}>
           <button className="pb-btn primary" onClick={start}
@@ -231,9 +240,6 @@ export default function PlaywrightPage() {
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
           </button>
           {running && <button className="pb-btn" onClick={stop}>Stop</button>}
-          <span className="pb-muted" style={{ fontSize: 12 }}>
-            Satu run = satu spec. Sesi dipakai ulang bila masih terbuka untuk project yang sama.
-          </span>
         </div>
       </section>
 

@@ -109,7 +109,7 @@ button { cursor: pointer; }
 :focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
 
 /* ─── Login ─────────────────────────────────────────────── */
-/* Satu kartu di tengah: brand, headline, form, footer. */
+/* Satu kartu di tengah: brand, form. */
 .pb-login {
   min-height: 100vh;
   min-height: 100dvh;
@@ -124,7 +124,7 @@ button { cursor: pointer; }
   max-width: 420px;
   display: flex;
   flex-direction: column;
-  padding: 40px 40px 28px;
+  padding: 40px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -149,35 +149,6 @@ button { cursor: pointer; }
   color: var(--meta);
 }
 
-.pb-login-copy { margin: 26px 0 24px; }
-.pb-login-copy h1 {
-  font-size: clamp(26px, 5vw, 31px);
-  font-weight: 600;
-  line-height: 1.14;
-  letter-spacing: -.024em;
-  color: var(--text);
-}
-.pb-login-copy p {
-  font-size: 13.5px;
-  line-height: 1.6;
-  color: var(--muted);
-  margin-top: 10px;
-}
-
-.pb-login-foot {
-  margin-top: 26px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--meta);
-}
-
 .pb-login-card .pb-field { font-size: 11.5px; }
 .pb-login-card .pb-input { height: 44px; }
 .pb-login-card .pb-btn { height: 44px; width: 100%; margin-top: 4px; }
@@ -186,9 +157,7 @@ button { cursor: pointer; }
 
 @media (max-width: 480px) {
   .pb-login { padding: 16px; place-items: start center; }
-  .pb-login-card { padding: 28px 22px 20px; border-radius: var(--radius-md); }
-  .pb-login-copy { margin: 20px 0 20px; }
-  .pb-login-foot { margin-top: 20px; }
+  .pb-login-card { padding: 28px 22px; border-radius: var(--radius-md); }
 }
 
 /* ─── Shell ─────────────────────────────────────────────── */
@@ -700,6 +669,8 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-btn.danger:hover { background: var(--bad-bg); color: var(--bad); }
 .pb-btn:disabled { opacity: .45; cursor: not-allowed; }
 .pb-btn.sm { height: 30px; padding: 0 10px; font-size: 12px; border-radius: var(--radius-sm); }
+.pb-icon-btn { width: 30px; padding: 0; flex: none; }
+.pb-icon-btn svg { display: block; }
 
 /* ─── Table ─────────────────────────────────────────────── */
 .pb-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }

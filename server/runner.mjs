@@ -116,7 +116,10 @@ export class Runner extends EventEmitter {
   }
 
   async log(state, stream, text) {
-    const entry = { seq: ++state.seq, stream, text: String(text), at: new Date().toISOString() };
+    // ANSI colour dari Playwright/lhci tampil sebagai `[31m` di dashboard.
+    // eslint-disable-next-line no-control-regex
+    const plain = String(text).replace(/\u001b?\[[0-9;]*m/g, '');
+    const entry = { seq: ++state.seq, stream, text: plain, at: new Date().toISOString() };
     state.chain = state.chain.then(async () => {
       await this.store.log(state.runId, entry);
       await appendFile(join(this.directory(state.runId), 'logs.txt'), entry.text);
@@ -218,7 +221,9 @@ export class Runner extends EventEmitter {
       specPath = basename(generated);
       await this.log(state, 'system', `[runner] Spec dari database → ${basename(generated)}\n`);
     }
-    const args = ['playwright', 'test', specPath, `--output=${join(dir, 'artifacts')}`];
+    // `--output` (test-results) harus terpisah dari folder report HTML; kalau
+    // bersarang, Playwright menolak karena reporter HTML menghapus foldernya.
+    const args = ['playwright', 'test', specPath, `--output=${join(dir, 'artifacts', 'test-results')}`];
     if (cfgPath) args.push('--config=' + cfgPath);
     else args.push('--reporter=json,html');
     const child = spawn('npx', args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
