@@ -4,13 +4,16 @@
 // → test_files.config. Config lhci digenerate saat run, bukan disimpan di repo.
 // Layout menumpuk: Project → Config → Terminal → Run → Hasil.
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api, artifactUrl, fmtDate, fmtDur, pct,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
+
+// Log lama/baru dari lhci menyimpan escape ANSI; buang saat render.
+const stripAnsi = (s: string) => s.replace(/\u001b?\[[0-9;]*m/g, "");
 
 type Budgets = Record<string, { minScore: number }>;
 type LhConfig = { urls?: string[]; numberOfRuns?: number; budgets?: Budgets };
@@ -69,12 +72,6 @@ export default function LighthousePage() {
     setExtraUrls((cfg.urls ?? []).join("\n"));
     setScores(Object.fromEntries(CATEGORIES.map(c => [c.key, cfg.budgets?.[c.key]?.minScore ?? 0.6])));
   }, [selected]);
-
-  // URL yang benar-benar diaudit — cermin lhConfig(): URL sesi dulu, lalu tambahan.
-  const audited = useMemo(
-    () => [...new Set([...(target ? [target] : []), ...extraUrls.split("\n").map(s => s.trim()).filter(Boolean)])],
-    [target, extraUrls],
-  );
 
   useEffect(() => {
     if (!runId) return;
@@ -145,7 +142,7 @@ export default function LighthousePage() {
         <div>
           <div className="eyebrow">Lighthouse</div>
           <h1>Audit performa.</h1>
-          <p className="pb-lead">Pilih project, atur budget, lalu jalankan. Log muncul langsung di bawah.</p>
+          <p className="pb-lead">Pilih project, atur skor minimum, lalu jalankan. Log muncul langsung di bawah.</p>
         </div>
       </div>
       {error && <div className="pb-err">{error}</div>}
@@ -196,9 +193,6 @@ export default function LighthousePage() {
                 </label>
               ))}
             </div>
-            <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-              Config digenerate saat run; file repo tidak diubah.
-            </p>
           </div>
         ) : <p className="pb-empty">Project ini belum punya config Lighthouse.</p>}
       </section>
@@ -216,7 +210,7 @@ export default function LighthousePage() {
         <div className="pb-term" ref={termRef} style={{ maxHeight: 300, minHeight: 120 }}>
           {logs.length === 0
             ? (runId ? "Menunggu log…" : "Log run akan muncul di sini.")
-            : logs.map(l => <div key={l.seq} className={l.stream === "stderr" ? "pb-log-err" : undefined}>{l.text}</div>)}
+            : logs.map(l => <div key={l.seq} className={l.stream === "stderr" ? "pb-log-err" : undefined}>{stripAnsi(l.text)}</div>)}
         </div>
         <div className="pb-row" style={{ marginTop: 12 }}>
           <button className="pb-btn primary" onClick={start}
@@ -224,9 +218,6 @@ export default function LighthousePage() {
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run Lighthouse"}
           </button>
           {running && <button className="pb-btn" onClick={stop}>Stop</button>}
-          <span className="pb-muted" style={{ fontSize: 12 }}>
-            {audited.length} URL akan diaudit.
-          </span>
         </div>
       </section>
 
@@ -243,7 +234,7 @@ export default function LighthousePage() {
             <p className="pb-empty">Tidak ada hasil Lighthouse pada run ini.</p>
           ) : (
             <table className="pb-table">
-              <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Budget gagal</th><th /></tr></thead>
+              <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
               <tbody>
                 {results.map(r => (
                   <tr key={r.id}>

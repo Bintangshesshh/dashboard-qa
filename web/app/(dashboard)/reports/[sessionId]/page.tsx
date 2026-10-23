@@ -280,7 +280,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
         </table>
       ) : (
         <table className="pb-table">
-          <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Budget gagal</th><th /></tr></thead>
+          <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
           <tbody>
             {(results as LighthouseResult[]).map(r => (
               <tr key={r.id}>

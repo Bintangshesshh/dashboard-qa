@@ -272,7 +272,8 @@ export class Runner extends EventEmitter {
     if (cfg) {
       configPath = join(dir, 'lighthouserc.cjs');
       await writeFile(configPath, lhConfig(cfg, targetUrl, outDir));
-      await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${(cfg.urls ?? []).length + (targetUrl ? 1 : 0)} URL)\n`);
+      const audited = new Set([...(targetUrl ? [targetUrl] : []), ...(cfg.urls ?? [])]);
+      await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${audited.size} URL)\n`);
     }
     // cwd = dir: lhci menulis .lighthouseci/ relatif cwd, jadi tiap run terisolasi.
     const child = spawn('npx', ['lhci', 'autorun', '--config=' + configPath, '--upload.target=filesystem', '--upload.outputDir=' + outDir], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
