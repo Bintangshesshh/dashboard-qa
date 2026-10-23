@@ -288,7 +288,7 @@ export function createApp({ store, runner, token, origins }) {
     if (existing) return res.status(409).json({ sessionId: existing.id, reuse: true });
     try {
       const id = randomUUID();
-      const label = `${project.name} — ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+      const label = `${project.name} ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
       store.createSession({ id, projectId, env: e, targetUrl, label, createdBy: req.user.id });
       const session = store.getSession(id);
       res.status(201).json({ sessionId: id, targetUrl, session });
@@ -370,7 +370,7 @@ export function createApp({ store, runner, token, origins }) {
     let session = store.findOpenSession(project.id, e, req.user.id);
     if (!session) {
       const sessionId = randomUUID();
-      const label = `Quick check — ${project.name} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+      const label = `Quick check ${project.name} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
       store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
       session = { id: sessionId };
     }
@@ -449,7 +449,7 @@ export function createApp({ store, runner, token, origins }) {
         sessionId = open.id;
       } else {
         sessionId = randomUUID();
-        const label = `${project.name} — ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+        const label = `${project.name} ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
         store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
       }
     }
