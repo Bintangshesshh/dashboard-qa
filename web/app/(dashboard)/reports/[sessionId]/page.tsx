@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   api, artifactUrl, fmtDate, fmtDur, pct, reportUrl,
@@ -10,6 +10,7 @@ import { RunTerminal } from "../../run-terminal";
 
 export default function SessionDetail() {
   const { sessionId } = useParams<{ sessionId: string }>();
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -72,16 +73,10 @@ export default function SessionDetail() {
     } catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   };
 
-  const closeSession = async () => {
-    if (!confirm("Tutup sesi ini? Sesi tertutup tidak bisa dipakai ulang, tapi datanya tetap ada.")) return;
-    setBusy("close"); setError(""); setNotice("");
-    try { await api.closeSession(sessionId); setNotice("Sesi ditutup."); load(); }
-    catch (e) { setError((e as Error).message); } finally { setBusy(""); }
-  };
-
   const deleteSession = async () => {
     if (!confirm("Hapus sesi ini beserta semua run, artifact, dan laporannya? Tidak bisa dibatalkan.")) return;
-    try { await api.deleteSession(sessionId); location.href = "/reports"; }
+    const back = session?.project_id ? `/reports/project/${session.project_id}` : "/reports";
+    try { await api.deleteSession(sessionId); router.push(back); }
     catch (e) { setError((e as Error).message); }
   };
 
@@ -108,8 +103,8 @@ export default function SessionDetail() {
           </p>
         </div>
         <div className="pb-row">
-          <button className="pb-btn sm" onClick={closeSession} disabled={!!session.closed_at || !!busy}>Tutup sesi</button>
-          <button className="pb-btn sm" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
+          <button className="pb-btn sm" onClick={() => router.back()}>← Kembali</button>
+          <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
           <button className="pb-btn sm" onClick={() => { setBusy("pw"); publish("pw"); }} disabled={!tools.has("pw") || !!busy}>Laporan Playwright</button>
           <button className="pb-btn sm" onClick={() => { setBusy("lh"); publish("lh"); }} disabled={!tools.has("lh") || !!busy}>Laporan Lighthouse</button>
           <button className="pb-btn sm primary" onClick={() => publish("both")} disabled={!tools.has("pw") || !tools.has("lh") || !!busy}>Gabungan</button>

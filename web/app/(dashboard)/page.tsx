@@ -196,7 +196,7 @@ export default function OverviewPage() {
             const prate = ps?.passRate == null ? null : Math.round(ps.passRate * 100);
             const tone = prate == null ? "" : prate >= 90 ? "ok" : prate >= 75 ? "warn" : "bad";
             return (
-              <Link className="pb-card pb-pcard" key={p.id} href={`/reports?project=${p.id}`}>
+              <Link className="pb-card pb-pcard" key={p.id} href={`/reports/project/${p.id}`}>
                 <div className="pb-pcard-top">
                   <div>
                     <h3>{p.name}</h3>
