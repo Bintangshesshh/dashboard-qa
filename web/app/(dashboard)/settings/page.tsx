@@ -123,7 +123,7 @@ export default function SettingsPage() {
         {newToken && (
           <div className="pb-card" style={{ marginBottom: 12 }}>
             <p className="pb-muted" style={{ margin: "0 0 6px", fontSize: 12 }}>
-              Salin sekarang — nilai penuh tidak ditampilkan lagi.
+              Salin sekarang - nilai penuh tidak ditampilkan lagi.
             </p>
             <code className="pb-mono" style={{ wordBreak: "break-all" }}>{newToken}</code>
           </div>
@@ -135,7 +135,7 @@ export default function SettingsPage() {
             <tbody>
               {tokens.map(t => (
                 <tr key={t.id}>
-                  <td>{t.label ?? "—"}</td>
+                  <td>{t.label ?? "-"}</td>
                   <td className="mono">{fmtDate(t.created_at)}</td>
                   <td className="mono">{t.last_used_at ? fmtDate(t.last_used_at) : "belum"}</td>
                   <td style={{ textAlign: "right" }}>
@@ -166,7 +166,7 @@ export default function SettingsPage() {
                   <td className="mono">{fmtDate(a.created_at)}</td>
                   <td>{a.action}</td>
                   <td className="mono">{a.entity}{a.entity_id ? ` · ${a.entity_id.slice(0, 8)}` : ""}</td>
-                  <td className="mono" style={{ maxWidth: 380, overflowWrap: "anywhere" }}>{a.detail ?? "—"}</td>
+                  <td className="mono" style={{ maxWidth: 380, overflowWrap: "anywhere" }}>{a.detail ?? "-"}</td>
                 </tr>
               ))}
             </tbody>

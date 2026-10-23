@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { type Row, type Stats, days, dur, stamp } from "../qa-model";
 
-// Success rate stays a donut — same 314 circumference trick as ui/app.js,
+// Success rate stays a donut - same 314 circumference trick as ui/app.js,
 // recoloured to the reference accent.
 export function KpiGrid({ rows, s }: { rows: Row[]; s: Stats }) {
   const tone = s.rate >= 90 ? "ok" : s.rate >= 75 ? "warn" : "bad";
@@ -34,7 +34,7 @@ export function KpiGrid({ rows, s }: { rows: Row[]; s: Stats }) {
       <article className="card kpi"><h2>Passed</h2><strong className="kpi-value ok">{s.passed.toLocaleString("en-US")}</strong><p className="kpi-note">this range</p></article>
       <article className="card kpi"><h2>Failed</h2><strong className="kpi-value bad">{s.failed}</strong><p className="kpi-note">needs triage</p></article>
       <article className="card kpi"><h2>Flaky</h2><strong className="kpi-value warn">{s.flaky}</strong><p className="kpi-note">retried and passed</p></article>
-      <article className="card kpi"><h2>Avg duration</h2><strong className="kpi-value">{s.avg ? dur(s.avg) : "—"}</strong><p className="kpi-note">per suite run</p></article>
+      <article className="card kpi"><h2>Avg duration</h2><strong className="kpi-value">{s.avg ? dur(s.avg) : "-"}</strong><p className="kpi-note">per suite run</p></article>
     </div>
   );
 }
@@ -92,7 +92,7 @@ export function LineChart({ rows, range, today, series = "runs", ariaLabel = "Ex
   );
 }
 
-// Horizontal pass-rate bars per project — mirrors the reference distribution panel.
+// Horizontal pass-rate bars per project - mirrors the reference distribution panel.
 export function PassRateBars({ rows }: { rows: Row[] }) {
   const groups = [...new Set(rows.map(r => r.project))].map(p => {
     const mine = rows.filter(r => r.project === p);

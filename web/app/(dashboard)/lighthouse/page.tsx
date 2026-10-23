@@ -186,7 +186,7 @@ export default function LighthousePage() {
             <div className="pb-grid two">
               {CATEGORIES.map(c => (
                 <label className="pb-field" key={c.key}>
-                  {c.label} — min skor
+                  {c.label} - min skor
                   <input className="pb-input" type="number" min={0} max={1} step={0.05}
                     value={scores[c.key] ?? 0.6}
                     onChange={e => setScores(s => ({ ...s, [c.key]: Math.max(0, Math.min(1, Number(e.target.value) || 0)) }))} />
@@ -243,12 +243,12 @@ export default function LighthousePage() {
                     <td>{pct(r.accessibility)}</td>
                     <td>{pct(r.best_practices)}</td>
                     <td>{pct(r.seo)}</td>
-                    <td className="mono">{r.lcp_ms ? `${Math.round(r.lcp_ms)}ms` : "—"}</td>
-                    <td className="mono">{r.budget_failed ?? "—"}</td>
+                    <td className="mono">{r.lcp_ms ? `${Math.round(r.lcp_ms)}ms` : "-"}</td>
+                    <td className="mono">{r.budget_failed ?? "-"}</td>
                     <td style={{ textAlign: "right" }}>
                       {r.report_path
                         ? <a className="pb-btn sm" href={artifactUrl(r.run_id, r.report_path)} target="_blank" rel="noreferrer">Buka report</a>
-                        : <span className="pb-muted" style={{ fontSize: 12 }}>—</span>}
+                        : <span className="pb-muted" style={{ fontSize: 12 }}>-</span>}
                     </td>
                   </tr>
                 ))}

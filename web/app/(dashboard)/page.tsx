@@ -79,7 +79,7 @@ export default function OverviewPage() {
         <article className="pb-card pb-kpi">
           <div className="pb-kpi-label">Total sesi</div>
           <div>
-            <div className="pb-kpi-val">{stats?.sessions ?? "—"}</div>
+            <div className="pb-kpi-val">{stats?.sessions ?? "-"}</div>
             <div className="pb-kpi-foot"><span className="dot" /><strong>{projects.length} project</strong> · {stats?.runs ?? 0} run</div>
           </div>
         </article>
@@ -92,7 +92,7 @@ export default function OverviewPage() {
               <circle className="pb-donut-track" cx="60" cy="60" r="50" />
               <circle className={`pb-donut-val ${rateClass}`} cx="60" cy="60" r="50"
                 strokeDasharray={314} strokeDashoffset={314 - (314 * (rate ?? 0)) / 100} />
-              <text className="pb-donut-num" x="60" y="66" textAnchor="middle">{rate == null ? "—" : `${rate}%`}</text>
+              <text className="pb-donut-num" x="60" y="66" textAnchor="middle">{rate == null ? "-" : `${rate}%`}</text>
             </svg>
           </div>
           <div className="pb-kpi-foot">
@@ -103,7 +103,7 @@ export default function OverviewPage() {
         <article className="pb-card pb-kpi">
           <div className="pb-kpi-label">Rata-rata durasi</div>
           <div>
-            <div className="pb-kpi-val">{stats ? fmtDur(stats.avgDurationMs) : "—"}</div>
+            <div className="pb-kpi-val">{stats ? fmtDur(stats.avgDurationMs) : "-"}</div>
             <div className="pb-kpi-foot"><span className="dot" />{stats?.runs ?? 0} run final</div>
           </div>
         </article>
@@ -111,7 +111,7 @@ export default function OverviewPage() {
         <article className="pb-card pb-kpi">
           <div className="pb-kpi-label">Kegagalan</div>
           <div>
-            <div className="pb-kpi-val">{stats?.failedRuns ?? "—"}</div>
+            <div className="pb-kpi-val">{stats?.failedRuns ?? "-"}</div>
             <div className="pb-kpi-foot"><span className="dot bad" />{stats?.failures?.length ?? 0} sesi terdampak</div>
           </div>
         </article>
@@ -169,7 +169,7 @@ export default function OverviewPage() {
                 <Link className="pb-fail-item" key={f.id} href={`/reports/${f.session_id}`}>
                   <span className="pb-fail-dot" />
                   <span>
-                    <span className="pb-fail-title">{f.project_name} — {f.tool === "pw" ? "Playwright" : "Lighthouse"}</span>
+                    <span className="pb-fail-title">{f.project_name} - {f.tool === "pw" ? "Playwright" : "Lighthouse"}</span>
                     <span className="pb-fail-meta">{f.session_label} · {f.env} · {fmtDate(f.finished_at)}</span>
                     <span className="pb-fail-msg">{f.error ?? "tanpa pesan error"}</span>
                   </span>
@@ -208,7 +208,7 @@ export default function OverviewPage() {
                 </div>
                 <div className="pb-pcard-bar"><span style={{ width: `${prate ?? 0}%` }} /></div>
                 <div className="pb-pcard-foot">
-                  <span>pass rate <strong>{prate == null ? "—" : `${prate}%`}</strong></span>
+                  <span>pass rate <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
                   <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
                 </div>
               </Link>
@@ -245,7 +245,7 @@ export default function OverviewPage() {
                       <circle className="pb-donut-track" cx="38" cy="38" r="30" />
                       <circle className={`pb-donut-val ${tone}`} cx="38" cy="38" r="30"
                         strokeDasharray={188.5} strokeDashoffset={188.5 - (188.5 * (n ?? 0)) / 100} />
-                      <text className="pb-score-num" x="38" y="43" textAnchor="middle">{n ?? "—"}</text>
+                      <text className="pb-score-num" x="38" y="43" textAnchor="middle">{n ?? "-"}</text>
                     </svg>
                     <span className="pb-score-label">{s.label}</span>
                   </div>

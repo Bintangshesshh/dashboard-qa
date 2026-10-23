@@ -129,7 +129,7 @@ export function RunTerminal({ runId }: { runId: string }) {
                 <tr key={c.seq}>
                   <td><span className={"pb-badge " + (c.type === "error" || c.type === "pageerror" ? "failed" : "passed")}>{c.type}</span></td>
                   <td className="mono">{c.text}</td>
-                  <td className="pb-muted mono" style={{ fontSize: 11 }}>{c.location ?? "—"}</td>
+                  <td className="pb-muted mono" style={{ fontSize: 11 }}>{c.location ?? "-"}</td>
                 </tr>
               ))}
             </tbody>
@@ -144,11 +144,11 @@ export function RunTerminal({ runId }: { runId: string }) {
             <tbody>
               {networkLines.map(n => (
                 <tr key={n.seq}>
-                  <td><span className={"pb-badge " + ((n.status ?? 0) >= 400 ? "failed" : "passed")}>{n.status ?? "—"}</span></td>
-                  <td className="mono">{n.method ?? "—"}</td>
+                  <td><span className={"pb-badge " + ((n.status ?? 0) >= 400 ? "failed" : "passed")}>{n.status ?? "-"}</span></td>
+                  <td className="mono">{n.method ?? "-"}</td>
                   <td className="mono" style={{ wordBreak: "break-all" }}>{n.url}</td>
-                  <td className="pb-muted">{n.failure ?? "—"}</td>
-                  <td className="mono">{n.ms == null ? "—" : `${Math.round(n.ms)}ms`}</td>
+                  <td className="pb-muted">{n.failure ?? "-"}</td>
+                  <td className="mono">{n.ms == null ? "-" : `${Math.round(n.ms)}ms`}</td>
                 </tr>
               ))}
             </tbody>

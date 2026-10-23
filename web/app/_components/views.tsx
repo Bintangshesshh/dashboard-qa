@@ -124,7 +124,7 @@ export function ProjectGrid({ rows, projects }: { rows: Row[]; projects: string[
               <dl>
                 <div><dt>Runs</dt><dd>{mine.length}</dd></div>
                 <div><dt>Failed</dt><dd>{failed}</dd></div>
-                <div><dt>Avg</dt><dd>{avg ? dur(avg) : "—"}</dd></div>
+                <div><dt>Avg</dt><dd>{avg ? dur(avg) : "-"}</dd></div>
               </dl>
               <p className="kpi-note">{last ? <>Last run <Clock iso={last.startedAt} /></> : "No runs yet"}</p>
             </article>
@@ -153,8 +153,8 @@ export function RunDrawer({ row, suites, onClose }: { row: Row; suites: Suite[];
           <dt>Started</dt><dd><Clock iso={row.startedAt} /></dd>
           <dt>Duration</dt><dd>{dur(row.durationMs)}</dd>
           <dt>Results</dt><dd>{row.passed} passed · {row.failed} failed · {row.flaky} flaky</dd>
-          <dt>Exit code</dt><dd>{row.run.exitCode ?? "—"}</dd>
-          <dt>Cases</dt><dd>{suite ? suite.cases.length : "—"}</dd>
+          <dt>Exit code</dt><dd>{row.run.exitCode ?? "-"}</dd>
+          <dt>Cases</dt><dd>{suite ? suite.cases.length : "-"}</dd>
         </dl>
         <h3>Failure</h3>
         {row.run.error ? <pre>{row.run.error}</pre> : <p className="kpi-note">No failure recorded for this run.</p>}

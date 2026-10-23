@@ -1,4 +1,4 @@
-// Klien API Playbook v5 — kontrak docs/PRD.md §7.
+// Klien API Playbook v5 - kontrak docs/PRD.md §7.
 
 export type User = { id: string; username: string; role: "admin" | "viewer" };
 export type Project = {
@@ -235,9 +235,9 @@ export const reportUrl = (reportId: string, path = "index.html") =>
   `/artifacts/reports/${reportId}/${path}`;
 
 export const fmtDur = (ms: number | null) => {
-  if (ms == null) return "—";
+  if (ms == null) return "-";
   return ms >= 60000 ? `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s` : `${(ms / 1000).toFixed(1)}s`;
 };
 export const fmtDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-export const pct = (v: number | null) => (v == null ? "—" : Math.round(v * 100) + "%");
+  iso ? new Date(iso).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "-";
+export const pct = (v: number | null) => (v == null ? "-" : Math.round(v * 100) + "%");

@@ -34,15 +34,7 @@ function LoginForm() {
           <span className="brand-sub">Eureka Group</span>
         </div>
 
-        <div className="pb-login-copy">
-          <h1>QA yang bisa dibaca, bukan cuma dijalankan.</h1>
-          <p>
-            Playwright dan Lighthouse dalam satu dashboard. Hasil per sesi, bukti per run,
-            tanpa perlu buka terminal tiap kali mau tahu ada yang rusak.
-          </p>
-        </div>
-
-        <form onSubmit={submit}>
+        <form onSubmit={submit} style={{ marginTop: 26 }}>
           <div className="pb-grid" style={{ gap: 13 }}>
             <label className="pb-field">
               Username
@@ -59,10 +51,6 @@ function LoginForm() {
           </div>
         </form>
 
-        <div className="pb-login-foot">
-          <span>playbook · internal</span>
-          <span>akses terbatas</span>
-        </div>
       </div>
     </div>
   );

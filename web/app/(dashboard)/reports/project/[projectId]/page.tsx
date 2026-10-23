@@ -73,11 +73,11 @@ export default function ProjectReports() {
                         {(s.failed_count ?? 0) > 0 && <span className="pb-badge failed" style={{ marginLeft: 6 }}>{s.failed_count}</span>}
                         {(s.active_count ?? 0) > 0 && <span className="pb-badge running" style={{ marginLeft: 6 }}>jalan</span>}
                       </span>
-                    ) : <span className="pb-muted">—</span>}
+                    ) : <span className="pb-muted">-</span>}
                   </td>
                   <td>
                     {(s.reports?.length ?? 0) === 0
-                      ? <span className="pb-muted">—</span>
+                      ? <span className="pb-muted">-</span>
                       : s.reports!.map(rep => (
                         <a key={rep.id} className="pb-btn sm" href={reportUrl(rep.id)} target="_blank" rel="noreferrer"
                           title={`${rep.scope} · ${rep.status}`} style={{ marginRight: 6 }}>{rep.scope}</a>

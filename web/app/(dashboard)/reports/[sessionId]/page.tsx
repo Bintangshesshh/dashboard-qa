@@ -149,7 +149,7 @@ export default function SessionDetail() {
         </div>
         <div className="pb-kpi">
           <div className="pb-kpi-label">Rata-rata durasi</div>
-          <div className="pb-kpi-value">{avgDur == null ? "—" : fmtDur(avgDur)}</div>
+          <div className="pb-kpi-value">{avgDur == null ? "-" : fmtDur(avgDur)}</div>
           <div className="pb-kpi-foot">{durations.length} run terukur</div>
         </div>
       </div>
@@ -173,7 +173,7 @@ export default function SessionDetail() {
                   <div className="pb-runrow-main">
                     <div className="pb-runrow-title">{r.tool === "pw" ? "Playwright" : "Lighthouse"}</div>
                     <div className="pb-runrow-sub mono">
-                      {fmtDate(r.finalized_at)} · {fmtDur(r.duration_ms)} · exit {r.exit_code ?? "—"}
+                      {fmtDate(r.finalized_at)} · {fmtDur(r.duration_ms)} · exit {r.exit_code ?? "-"}
                     </div>
                   </div>
                   <span className={`pb-badge ${r.status}`}>{r.status}</span>
@@ -268,12 +268,12 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
           <tbody>
             {(results as PlaywrightResult[]).map(r => (
               <tr key={r.id}>
-                <td className="mono">{r.tc_id ?? "—"}</td>
+                <td className="mono">{r.tc_id ?? "-"}</td>
                 <td>{r.title}</td>
                 <td><span className={`pb-badge ${r.status}`}>{r.status}</span></td>
                 <td className="mono">{fmtDur(r.duration_ms)}</td>
                 <td className="mono">{r.retry}</td>
-                <td className="mono" style={{ maxWidth: 380, overflowWrap: "anywhere" }}>{r.error ?? "—"}</td>
+                <td className="mono" style={{ maxWidth: 380, overflowWrap: "anywhere" }}>{r.error ?? "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -289,12 +289,12 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
                 <td>{pct(r.accessibility)}</td>
                 <td>{pct(r.best_practices)}</td>
                 <td>{pct(r.seo)}</td>
-                <td className="mono">{r.lcp_ms ? `${Math.round(r.lcp_ms)}ms` : "—"}</td>
-                <td className="mono">{r.budget_failed ?? "—"}</td>
+                <td className="mono">{r.lcp_ms ? `${Math.round(r.lcp_ms)}ms` : "-"}</td>
+                <td className="mono">{r.budget_failed ?? "-"}</td>
                 <td style={{ textAlign: "right" }}>
                   {r.report_path
                     ? <a className="pb-btn sm" href={artifactUrl(run.id, r.report_path)} target="_blank" rel="noreferrer">Report</a>
-                    : <span className="pb-muted">—</span>}
+                    : <span className="pb-muted">-</span>}
                 </td>
               </tr>
             ))}
