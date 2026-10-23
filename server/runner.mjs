@@ -250,6 +250,7 @@ export class Runner extends EventEmitter {
     await this.ingestCapture(state, captureFile);
     await this.collectArtifacts(runId, dir, 'pw');
     await this.store.patchRun(runId, { finalized_at: new Date().toISOString() });
+    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw' });
     this.store.markReportsStale(state.sessionId);
   }
 
@@ -292,6 +293,7 @@ export class Runner extends EventEmitter {
     for (const line of warningLines(results)) await this.log(state, 'system', line);
     await this.collectArtifacts(runId, dir, 'lh');
     await this.store.patchRun(runId, { finalized_at: new Date().toISOString() });
+    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'lh' });
     this.store.markReportsStale(state.sessionId);
   }
 
@@ -389,6 +391,24 @@ export class Runner extends EventEmitter {
       });
     }
     return [...out.values()];
+  }
+
+  // Tahap 5: snapshot run untuk pipeline Docusaurus (scripts/build-run-docs.mjs).
+  // Hanya fakta run; kode spec sengaja tidak ikut supaya tidak bocor ke report statis.
+  async writeRunJson(state, dir, { status, exitCode, error, mode }) {
+    const run = this.store.getRun(state.runId);
+    const data = {
+      id: state.runId,
+      suiteName: state.testFile?.label ?? state.testFile?.path ?? null,
+      targetUrl: state.targetUrl ?? null,
+      mode,
+      status,
+      startedAt: run?.started_at ?? null,
+      finishedAt: run?.finished_at ?? null,
+      exitCode: exitCode ?? null,
+      error: error ?? null,
+    };
+    await writeFile(join(dir, 'run.json'), JSON.stringify(data, null, 2)).catch(() => {});
   }
 
   async collectArtifacts(runId, dir, tool = 'pw') {

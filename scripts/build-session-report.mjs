@@ -5,6 +5,7 @@ import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Store } from '../server/store.mjs';
+import { buildReportDocs } from './build-report-docs.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -155,9 +156,38 @@ ${sections.join('\n')}
 <p class="mut" style="margin-top:28px;font-size:12px">Dibangun ${date(new Date().toISOString())} · cakupan ${esc(report.scope)} · ${runIds.length} run</p>
 </main></body></html>`;
     await mkdir(outDir, { recursive: true });
-    await writeFile(join(outDir, 'index.html'), html);
+
+    // Jalur utama: Docusaurus (halaman index + satu halaman per run).
+    // Fallback: HTML statis di atas, kalau build gagal laporan tetap ada.
+    const runsDir = resolve(root, process.env.RUNS_DIR ?? '.runs');
+    // Run lama belum punya run.json; lengkapi dari baris DB supaya pipeline
+    // tidak menganggapnya run yang sudah dihapus.
+    for (const run of usedRuns) {
+      const file = join(runsDir, run.id, 'run.json');
+      if (await readFile(file, 'utf8').catch(() => null)) continue;
+      const meta = {
+        id: run.id,
+        suiteName: run.tool === 'lh' ? 'Lighthouse' : 'Playwright',
+        targetUrl: session?.target_url ?? null,
+        mode: run.tool,
+        status: run.status,
+        startedAt: run.started_at ?? null,
+        finishedAt: run.finished_at ?? null,
+        exitCode: run.exit_code ?? null,
+        error: run.error ?? null,
+      };
+      await writeFile(file, JSON.stringify(meta, null, 2)).catch(() => {});
+    }
+    let mode = 'docs';
+    try {
+      await buildReportDocs(runIds.map(id => join(runsDir, id)), outDir, `/artifacts/reports/${reportId}/`);
+    } catch (error) {
+      mode = 'html';
+      console.error('[report] fallback html', reportId, error.message);
+      await writeFile(join(outDir, 'index.html'), html);
+    }
     store.patchReport(reportId, { status: 'ready', path: 'index.html', built_at: new Date().toISOString(), error: null });
-    return { ok: true, dir: outDir };
+    return { ok: true, dir: outDir, mode };
   } catch (error) {
     await rm(outDir, { recursive: true, force: true }).catch(() => {});
     store.patchReport(reportId, { status: 'failed', error: error.message, built_at: new Date().toISOString() });
