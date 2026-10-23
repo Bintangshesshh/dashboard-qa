@@ -36,9 +36,11 @@ export default function ProjectReports() {
 
   return (
     <>
+      <Link className="pb-crumb" href="/reports">← Kembali ke Reports</Link>
+
       <div className="pb-head">
         <div>
-          <div className="eyebrow"><Link href="/reports">Reports</Link> / {project?.name ?? "…"}</div>
+          <div className="eyebrow">Reports / {project?.name ?? "…"}</div>
           <h1>{project?.name ?? "Memuat…"}</h1>
           <p className="pb-muted" style={{ margin: "4px 0 0" }}>{project?.base_url}</p>
         </div>

@@ -345,6 +345,39 @@ button { cursor: pointer; }
   color: var(--meta);
 }
 .pb-crumb strong { color: var(--fg-2); font-weight: 500; }
+/* Nav berlayer di topbar: tiap level bisa diklik. */
+.pb-crumb-item { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.pb-crumb-item a {
+  color: var(--meta);
+  border-radius: 4px;
+  padding: 1px 2px;
+  transition: color var(--motion-fast) var(--ease-standard);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30ch;
+}
+.pb-crumb-item a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.pb-crumb-item strong {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 38ch;
+}
+.pb-crumb-sep { color: var(--border-soft); user-select: none; }
+/* Link "kembali" mandiri di dalam konten, bukan di topbar. */
+a.pb-crumb {
+  display: inline-flex;
+  margin: 4px 0 2px;
+  padding: 4px 8px 4px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  transition: color var(--motion-fast) var(--ease-standard),
+              background var(--motion-fast) var(--ease-standard);
+}
+a.pb-crumb:hover { color: var(--text); background: var(--card-hi); }
 
 .pb-main { padding: 28px 28px 56px; max-width: 1500px; width: 100%; margin: 0 auto; }
 .pb-head {
