@@ -45,11 +45,6 @@ export default function PlaywrightPage() {
     else sessionStorage.removeItem("pw-runId");
   }, [runId]);
 
-  // Run sudah final: jangan di-restore lagi saat masuk halaman.
-  useEffect(() => {
-    if (run && FINAL.includes(run.status)) sessionStorage.removeItem("pw-runId");
-  }, [run]);
-
   useEffect(() => {
     api.projects().then(p => {
       setProjects(p);

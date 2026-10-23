@@ -58,11 +58,6 @@ export default function LighthousePage() {
     else sessionStorage.removeItem("lh-runId");
   }, [runId]);
 
-  // Run sudah final: jangan di-restore lagi saat masuk halaman.
-  useEffect(() => {
-    if (run && FINAL.includes(run.status)) sessionStorage.removeItem("lh-runId");
-  }, [run]);
-
   useEffect(() => {
     api.projects().then(p => { setProjects(p); if (p[0]) setProjectId(p[0].id); })
       .catch(e => setError(e.message));
