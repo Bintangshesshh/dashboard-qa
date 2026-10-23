@@ -1,49 +1,49 @@
-/* Playbook — design system v6 (port dari OpenDesign prototype) */
+/* Playbook — design system v7 (Apple-inspired) */
 :root {
-  /* Surface 3 lapis: Parchment → Ivory → Warm Sand */
-  --bg: #f5f4ed;
-  --bg-soft: #faf9f5;
-  --card: #faf9f5;
-  --card-hi: #f0eee6;
-  --surface-warm: #e8e6dc;
+  /* Surface: Pale Apple Gray → Pure White → Graphite */
+  --bg: #f5f5f7;
+  --bg-soft: #ffffff;
+  --card: #ffffff;
+  --card-hi: #fbfbfd;
+  --surface-warm: #f5f5f7;
 
-  /* Foreground ramp — semua abu bernuansa kuning-cokelat */
-  --text: #141413;
-  --fg-2: #3d3d3a;
-  --muted: #5e5d59;
-  --meta: #87867f;
+  /* Foreground ramp — neutral Apple gray scale */
+  --text: #1d1d1f;
+  --fg-2: #1d1d1f;
+  --muted: #6e6e73;
+  --meta: #86868b;
 
   /* Border */
-  --line: #e8e6dc;
-  --border: #f0eee6;
-  --border-soft: #e8e6dc;
+  --line: #d2d2d7;
+  --border: #e8e8ed;
+  --border-soft: #d2d2d7;
 
-  /* Accent — terracotta satu-satunya warna kromatik */
-  --accent: #c96442;
-  --accent-on: #faf9f5;
-  --accent-soft: #f3e3dc;
+  /* Accent — Apple Action Blue */
+  --accent: #0071e3;
+  --accent-on: #ffffff;
+  --accent-soft: #e8f2fd;
 
-  --ok: #17a34a;
-  --warn: #eab308;
-  --bad: #b53333;
-  --ok-bg: rgba(23, 163, 74, .1);
-  --warn-bg: rgba(234, 179, 8, .14);
-  --bad-bg: rgba(181, 51, 51, .09);
+  --ok: #248a3d;
+  --warn: #bf4800;
+  --bad: #d70015;
+  --ok-bg: rgba(36, 138, 61, .1);
+  --warn-bg: rgba(178, 80, 0, .12);
+  --bad-bg: rgba(215, 0, 21, .08);
 
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 16px;
+  --radius-lg: 18px;
   --radius: var(--radius-md);
 
   /* Ring shadow, bukan drop shadow */
-  --shadow: rgba(0, 0, 0, .05) 0 4px 24px;
-  --elev-raised: rgba(0, 0, 0, .05) 0 4px 24px;
-  --focus-ring: 0 0 0 3px rgba(56, 152, 236, .3);
+  --shadow: rgba(0, 0, 0, .06) 0 4px 24px;
+  --elev-raised: rgba(0, 0, 0, .08) 0 8px 28px;
+  --focus-ring: 0 0 0 4px rgba(0, 113, 227, .3);
 
-  --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
-  --font: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Inter, system-ui, sans-serif;
+  --font: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Inter, system-ui, sans-serif;
   --font-body: var(--font);
-  --mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
 
   --motion-fast: 150ms;
   --motion-base: 200ms;
@@ -54,26 +54,29 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #141413;
-  --bg-soft: #30302e;
-  --card: #30302e;
-  --card-hi: #3d3d3a;
-  --surface-warm: #3d3d3a;
-  --text: #faf9f5;
-  --fg-2: #e8e6dc;
-  --muted: #b0aea5;
-  --meta: #87867f;
-  --line: #3d3d3a;
-  --border: #30302e;
-  --border-soft: #3d3d3a;
-  --accent: #d97757;
-  --accent-on: #141413;
-  --accent-soft: #4a332c;
-  --ok-bg: rgba(23, 163, 74, .16);
-  --warn-bg: rgba(234, 179, 8, .16);
-  --bad-bg: rgba(181, 51, 51, .22);
-  --shadow: rgba(0, 0, 0, .35) 0 8px 28px;
-  --elev-raised: rgba(0, 0, 0, .35) 0 8px 28px;
+  --bg: #000000;
+  --bg-soft: #1d1d1f;
+  --card: #1d1d1f;
+  --card-hi: #272729;
+  --surface-warm: #1d1d1f;
+  --text: #f5f5f7;
+  --fg-2: #f5f5f7;
+  --muted: #a1a1a6;
+  --meta: #86868b;
+  --line: #2a2a2c;
+  --border: #272729;
+  --border-soft: #2a2a2c;
+  --accent: #2997ff;
+  --accent-on: #ffffff;
+  --accent-soft: #0a2540;
+  --ok: #30d158;
+  --warn: #ff9f0a;
+  --bad: #ff453a;
+  --ok-bg: rgba(48, 209, 88, .14);
+  --warn-bg: rgba(255, 159, 10, .14);
+  --bad-bg: rgba(255, 69, 58, .14);
+  --shadow: rgba(0, 0, 0, .5) 0 8px 28px;
+  --elev-raised: rgba(0, 0, 0, .5) 0 8px 28px;
 }
 
 * { box-sizing: border-box; }
@@ -106,94 +109,86 @@ button { cursor: pointer; }
 :focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
 
 /* ─── Login ─────────────────────────────────────────────── */
-/* Split layout: panel brand gelap kiri, form kanan. */
+/* Satu kartu di tengah: brand, headline, form, footer. */
 .pb-login {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr);
   min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
   background: var(--bg);
 }
-.pb-login-brand {
-  background: var(--text);
-  color: var(--card);
-  padding: 42px 52px;
+
+.pb-login-card {
+  width: 100%;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
-  position: relative;
-  overflow: hidden;
+  padding: 40px 40px 28px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  animation: pb-rise .45s var(--ease-standard) both;
 }
+
+.pb-login-brand { display: flex; align-items: baseline; gap: 8px; }
 .pb-login-brand .brand-name {
   font-family: var(--font-display);
-  font-size: 30px;
-  font-weight: 500;
-  line-height: 1.1;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1;
+  color: var(--text);
 }
 .pb-login-brand .brand-sub {
   font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: .12em;
+  font-size: 9.5px;
+  letter-spacing: .1em;
   text-transform: uppercase;
-  color: color-mix(in oklab, var(--card) 58%, var(--text));
+  color: var(--meta);
 }
-.pb-login-copy { max-width: 480px; margin: 64px 0 36px; }
+
+.pb-login-copy { margin: 26px 0 24px; }
 .pb-login-copy h1 {
-  font-size: clamp(38px, 4.2vw, 58px);
-  line-height: 1.04;
-  letter-spacing: -.02em;
-  color: var(--card);
+  font-size: clamp(26px, 5vw, 31px);
+  font-weight: 600;
+  line-height: 1.14;
+  letter-spacing: -.024em;
+  color: var(--text);
 }
 .pb-login-copy p {
-  font-size: 15px;
-  line-height: 1.65;
-  color: color-mix(in oklab, var(--card) 64%, var(--text));
-  margin-top: 18px;
-  max-width: 44ch;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin-top: 10px;
 }
-.pb-login-status {
-  border: 1px solid color-mix(in oklab, var(--card) 13%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--card) 5%, transparent);
-  padding: 15px 16px;
-  max-width: 480px;
-}
-.pb-login-status .eyebrow {
-  font-family: var(--mono);
-  font-size: 8.5px;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: color-mix(in oklab, var(--card) 50%, var(--text));
-  margin-bottom: 9px;
-}
+
 .pb-login-foot {
-  margin-top: auto;
-  padding-top: 34px;
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   font-family: var(--mono);
   font-size: 9px;
   letter-spacing: .06em;
-  color: color-mix(in oklab, var(--card) 40%, var(--text));
+  text-transform: uppercase;
+  color: var(--meta);
 }
-.pb-login-panel { display: flex; align-items: center; justify-content: center; padding: 40px 32px; }
-.pb-login-card {
-  width: 100%;
-  max-width: 372px;
-  animation: pb-rise .5s var(--ease-standard) both;
-}
-.pb-login-card h2 { font-size: 32px; line-height: 1.1; }
-.pb-login-card p.sub { font-size: 13px; color: var(--muted); margin-top: 9px; line-height: 1.55; }
+
 .pb-login-card .pb-field { font-size: 11.5px; }
-.pb-login-card .pb-input { height: 42px; }
-.pb-login-card .pb-btn { height: 42px; width: 100%; margin-top: 4px; }
+.pb-login-card .pb-input { height: 44px; }
+.pb-login-card .pb-btn { height: 44px; width: 100%; margin-top: 4px; }
+
 @keyframes pb-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 
-@media (max-width: 900px) {
-  .pb-login { grid-template-columns: 1fr; }
-  .pb-login-brand { padding: 28px 24px; }
-  .pb-login-copy { margin: 28px 0 24px; }
-  .pb-login-copy h1 { font-size: 34px; }
-  .pb-login-status { display: none; }
+@media (max-width: 480px) {
+  .pb-login { padding: 16px; place-items: start center; }
+  .pb-login-card { padding: 28px 22px 20px; border-radius: var(--radius-md); }
+  .pb-login-copy { margin: 20px 0 20px; }
+  .pb-login-foot { margin-top: 20px; }
 }
 
 /* ─── Shell ─────────────────────────────────────────────── */
@@ -737,10 +732,10 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .pb-badge.passed, .pb-badge.ready { color: var(--ok); background: var(--ok-bg); }
 .pb-badge.failed, .pb-badge.failed- { color: var(--bad); background: var(--bad-bg); }
-.pb-badge.running, .pb-badge.building, .pb-badge.queued { color: #8a6a00; background: var(--warn-bg); }
+.pb-badge.running, .pb-badge.building, .pb-badge.queued { color: var(--warn); background: var(--warn-bg); }
 .pb-badge.open, .pb-badge.closed { color: var(--muted); }
-.pb-badge.stale { color: #8a6a00; background: var(--warn-bg); }
-.pb-badge.skipped, .pb-badge.flaky { color: #8a6a00; background: var(--warn-bg); }
+.pb-badge.stale { color: var(--warn); background: var(--warn-bg); }
+.pb-badge.skipped, .pb-badge.flaky { color: var(--warn); background: var(--warn-bg); }
 
 /* ─── Misc ──────────────────────────────────────────────── */
 .eyebrow {
@@ -777,7 +772,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-spacer { flex: 1; }
 .pb-mono { font-family: var(--mono); font-size: 12px; }
 .pb-term {
-  background: #1c1b19;
+  background: #000000;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   padding: 14px;
@@ -787,10 +782,10 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   max-height: 340px;
   overflow: auto;
   white-space: pre-wrap;
-  color: #d9d6cd;
+  color: #f5f5f7;
 }
 .pb-term > div { white-space: pre-wrap; }
-.pb-log-err { color: #f0a5a5; }
+.pb-log-err { color: #ff453a; }
 .pb-iframe {
   width: 100%; height: 640px;
   border: 1px solid var(--line);
@@ -958,7 +953,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-repcard-main { flex: 1; min-width: 0; }
 .pb-repcard-title { font-size: 13.5px; font-weight: 500; }
 .pb-repcard-sub { color: var(--meta); font-size: 11px; margin-top: 2px; }
-.pb-repcard-note { font-size: 11px; color: #8a6a00; }
+.pb-repcard-note { font-size: 11px; color: var(--warn); }
 .pb-repcard-act { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
 .pb-notice { margin-bottom: 14px; font-size: 13.5px; padding: 12px 16px; }

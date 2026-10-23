@@ -28,11 +28,12 @@ function LoginForm() {
 
   return (
     <div className="pb-login">
-      <section className="pb-login-brand">
-        <div>
-          <div className="brand-name">Playbook</div>
-          <div className="brand-sub">Eureka Group</div>
+      <div className="pb-login-card">
+        <div className="pb-login-brand">
+          <span className="brand-name">Playbook</span>
+          <span className="brand-sub">Eureka Group</span>
         </div>
+
         <div className="pb-login-copy">
           <h1>QA yang bisa dibaca, bukan cuma dijalankan.</h1>
           <p>
@@ -40,18 +41,9 @@ function LoginForm() {
             tanpa perlu buka terminal tiap kali mau tahu ada yang rusak.
           </p>
         </div>
-        <div className="pb-login-foot">
-          <span>playbook · internal</span>
-          <span>akses terbatas</span>
-        </div>
-      </section>
 
-      <section className="pb-login-panel">
-        <form className="pb-login-card" onSubmit={submit}>
-          <div className="eyebrow">Akses internal</div>
-          <h2>Masuk</h2>
-          <p className="sub">Gunakan akun yang diberikan admin.</p>
-          <div className="pb-grid" style={{ gap: 13, marginTop: 26 }}>
+        <form onSubmit={submit}>
+          <div className="pb-grid" style={{ gap: 13 }}>
             <label className="pb-field">
               Username
               <input className="pb-input" autoFocus autoComplete="username" value={username}
@@ -66,7 +58,12 @@ function LoginForm() {
             <button className="pb-btn primary" disabled={busy}>{busy ? "Memeriksa…" : "Masuk"}</button>
           </div>
         </form>
-      </section>
+
+        <div className="pb-login-foot">
+          <span>playbook · internal</span>
+          <span>akses terbatas</span>
+        </div>
+      </div>
     </div>
   );
 }
