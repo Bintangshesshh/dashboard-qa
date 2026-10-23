@@ -90,6 +90,9 @@ export default function PlaywrightPage() {
     try {
       const updated = await api.patchTestFile(selected.id, { code: draft });
       setFiles([updated]);
+      // Backend men-trim teks. Tanpa sinkron balik, `dirty` tetap true dan Run
+      // terkunci walau sudah disimpan.
+      setDraft(updated.code);
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
 
