@@ -648,6 +648,14 @@ export function createApp({ store, runner, token, origins }) {
     max_upload_mb: [1, 1024],
     range_default_days: [1, 365],
   };
+  // Angka retensi dipakai label UI untuk semua role; sisanya tetap admin-only.
+  app.get('/api/settings/public', requireAuth, route(async (req, res) => {
+    const all = store.getSettings();
+    res.json({
+      artifact_retention_days: all.artifact_retention_days,
+      report_retention_days: all.report_retention_days,
+    });
+  }));
   app.get('/api/settings', requireAuth, requireAdmin, route(async (req, res) => {
     res.json(store.getSettings());
   }));

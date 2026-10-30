@@ -72,11 +72,11 @@ async function fixture(t) {
     return { status: res.status, body: json, headers: res.headers };
   };
 
-  const login = async () => {
+  const login = async (username = 'tester', password = PASSWORD) => {
     const res = await fetch(base + '/api/auth/login', {
       method: 'POST',
       headers: { origin: base, 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'tester', password: PASSWORD }),
+      body: JSON.stringify({ username, password }),
     });
     assert.equal(res.status, 200);
     const raw = res.headers.get('set-cookie').split(';')[0];
@@ -833,4 +833,23 @@ test('CLI playbook: tanpa argumen cetak bantuan, tanpa kredensial keluar 1', asy
   const whoami = await runCli(['whoami']);
   assert.equal(whoami.code, 1);
   assert.match(whoami.out, /Belum login/);
+});
+
+test('settings publik: viewer boleh baca retensi, penuh tetap admin-only', async t => {
+  const f = await fixture(t);
+  const viewer = { id: randomUUID(), username: 'pengamat', role: 'viewer' };
+  f.store.createUser({ ...viewer, passwordHash: await hash(PASSWORD) });
+
+  const admin = await f.login();
+  let r = await f.call('/api/settings', { cookie: admin });
+  assert.equal(r.status, 200);
+
+  const cookie = await f.login('pengamat');
+  r = await f.call('/api/settings/public', { cookie });
+  assert.equal(r.status, 200);
+  assert.deepEqual(Object.keys(r.body).sort(), ['artifact_retention_days', 'report_retention_days']);
+  assert.ok(Number(r.body.artifact_retention_days) > 0);
+
+  r = await f.call('/api/settings', { cookie });
+  assert.equal(r.status, 403);
 });
