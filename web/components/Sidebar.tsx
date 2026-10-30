@@ -43,10 +43,12 @@ export default function Sidebar({
     grouped.get(key)!.push(s);
   }
 
-  // Sort categories, uncategorized last
+  // Keep empty categories visible so a newly created category does not
+  // disappear. While searching, only show categories that have matches.
+  const searching = query.trim().length > 0;
   const orderedKeys: string[] = [];
   for (const cat of categories) {
-    if (grouped.has(cat.id)) orderedKeys.push(cat.id);
+    if (!searching || grouped.has(cat.id)) orderedKeys.push(cat.id);
   }
   if (grouped.has('__uncategorized__')) orderedKeys.push('__uncategorized__');
 
@@ -88,12 +90,7 @@ export default function Sidebar({
       <div className="section-title">
         <h2>Suites</h2>
         <div className="actions">
-          {categories.length > 0 && (
-            <button disabled={!authenticated} onClick={onNewCategory}>New category</button>
-          )}
-          {categories.length === 0 && (
-            <button disabled={!authenticated} onClick={onNewCategory}>New category</button>
-          )}
+          <button disabled={!authenticated} onClick={onNewCategory}>New category</button>
           <button disabled={!authenticated} onClick={onNewSuite}>New suite</button>
         </div>
       </div>
@@ -128,6 +125,7 @@ export default function Sidebar({
               </div>
             </div>
             {suitesInGroup.map(renderSuiteTree)}
+            {suitesInGroup.length === 0 && <p className="muted">No suites in this category.</p>}
           </div>
         );
       }) : (

@@ -7,7 +7,6 @@ import { getRunLogs, wsUrl } from './api';
 
 interface UseRunStreamOptions {
   runId: string;
-  token: string;
   authenticated: boolean;
   onRunStatus?: (run: Run) => void;
 }
@@ -21,7 +20,7 @@ interface UseRunStreamResult {
   reconnect: () => void;
 }
 
-export function useRunStream({ runId, token, authenticated, onRunStatus }: UseRunStreamOptions): UseRunStreamResult {
+export function useRunStream({ runId, authenticated, onRunStatus }: UseRunStreamOptions): UseRunStreamResult {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connection, setConnection] = useState<ConnectionState>('standby');
   const [pollError, setPollError] = useState('');
@@ -62,7 +61,7 @@ export function useRunStream({ runId, token, authenticated, onRunStatus }: UseRu
     // HTTP cursor advances only from HTTP responses: WS delivery cannot skip persisted replay.
     const poll = async () => {
       try {
-        const result = await getRunLogs(runId, cursor, token || undefined);
+        const result = await getRunLogs(runId, cursor);
         if (disposed) return;
         merge(result.logs);
         for (const l of result.logs) cursor = Math.max(cursor, l.seq);
@@ -77,9 +76,8 @@ export function useRunStream({ runId, token, authenticated, onRunStatus }: UseRu
     const connect = () => {
       if (disposed) return;
       setConnection('connecting');
-      const url = wsUrl(token);
       try {
-        ws = new WebSocket(url);
+        ws = new WebSocket(wsUrl());
       } catch {
         setConnection('polling');
         return;
@@ -88,7 +86,7 @@ export function useRunStream({ runId, token, authenticated, onRunStatus }: UseRu
         if (disposed) return;
         attempt = 0;
         setConnection('connected');
-        ws?.send(JSON.stringify({ type: 'subscribe', token, runId, after: seq.current }));
+        ws?.send(JSON.stringify({ type: 'subscribe', runId, after: seq.current }));
       };
       ws.onmessage = e => {
         if (disposed) return;
@@ -97,6 +95,8 @@ export function useRunStream({ runId, token, authenticated, onRunStatus }: UseRu
           if (m.type === 'log' && m.runId === runId) {
             seq.current = Math.max(seq.current, m.seq);
             merge([m]);
+          } else if (m.type === 'replay-truncated' && m.runId === runId) {
+            setPollError('Live replay was truncated; HTTP polling will load the retained log history.');
           } else if (m.type === 'status' && m.run && onRunStatusRef.current) {
             onRunStatusRef.current(m.run);
           }
@@ -113,7 +113,7 @@ export function useRunStream({ runId, token, authenticated, onRunStatus }: UseRu
     };
 
     poll();
-    if (token) connect(); else setConnection('polling');
+    connect();
 
     return () => {
       disposed = true;
@@ -121,7 +121,7 @@ export function useRunStream({ runId, token, authenticated, onRunStatus }: UseRu
       clearTimeout(pollTimer);
       ws?.close();
     };
-  }, [runId, authenticated, token, retryCount]);
+  }, [runId, authenticated, retryCount]);
 
   // Auto-scroll terminal when following logs
   useEffect(() => {

@@ -19,13 +19,33 @@ export class Store {
     this.db = new DatabaseSync(this.path);
   }
   async init() {
-    this.db.exec(`CREATE TABLE IF NOT EXISTS qa_categories (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+    this.db.exec(`PRAGMA foreign_keys = ON;
+      CREATE TABLE IF NOT EXISTS qa_categories (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS qa_suites (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS qa_cases (id TEXT PRIMARY KEY, suite_id TEXT NOT NULL REFERENCES qa_suites(id) ON DELETE CASCADE, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS qa_runs (id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS qa_logs (run_id TEXT NOT NULL REFERENCES qa_runs(id) ON DELETE CASCADE, seq INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(run_id,seq));
-      CREATE INDEX IF NOT EXISTS qa_cases_suite_id ON qa_cases(suite_id);`);
+      CREATE TABLE IF NOT EXISTS qa_users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('admin','member')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS qa_sessions (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES qa_users(id) ON DELETE CASCADE,
+        csrf_token TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS qa_cases_suite_id ON qa_cases(suite_id);
+      CREATE INDEX IF NOT EXISTS qa_sessions_user_id ON qa_sessions(user_id);
+      CREATE INDEX IF NOT EXISTS qa_sessions_expires_at ON qa_sessions(expires_at);`);
     this.recover();
+    await this.cleanupSessions();
   }
   recover() {
     this.db.prepare(`UPDATE qa_runs SET data = json_set(data,'$.status','interrupted','$.docsStatus','interrupted','$.finishedAt',?,'$.error','Server restarted during execution') WHERE json_extract(data,'$.status') IN ('queued','running','cancelling')`).run(new Date().toISOString());
@@ -115,6 +135,146 @@ export class Store {
   async logsText(runId) {
     return this.db.prepare('SELECT data FROM qa_logs WHERE run_id=? ORDER BY seq')
       .all(runId).map(row => JSON.parse(row.data).text).join('');
+  }
+
+  // ─── Accounts and sessions ───────────────────────────────────────────────
+  userFromRow(row) {
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      passwordHash: row.password_hash,
+      role: row.role,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  async countUsers() {
+    return this.db.prepare('SELECT COUNT(*) AS count FROM qa_users').get().count;
+  }
+
+  async countAdmins() {
+    return this.db.prepare("SELECT COUNT(*) AS count FROM qa_users WHERE role='admin'").get().count;
+  }
+
+  async getUser(id) {
+    const row = this.db.prepare('SELECT * FROM qa_users WHERE id=?').get(id);
+    return row ? this.userFromRow(row) : undefined;
+  }
+
+  async getUserByEmail(email) {
+    const row = this.db.prepare('SELECT * FROM qa_users WHERE email=? COLLATE NOCASE').get(email);
+    return row ? this.userFromRow(row) : undefined;
+  }
+
+  async listUsers() {
+    return this.db.prepare('SELECT * FROM qa_users ORDER BY created_at').all().map(row => this.userFromRow(row));
+  }
+
+  async createUser(user) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const role = user.role ?? (this.db.prepare('SELECT COUNT(*) AS count FROM qa_users').get().count === 0 ? 'admin' : 'member');
+      if (!['admin', 'member'].includes(role)) throw new Error('Invalid user role');
+      const now = new Date().toISOString();
+      const email = user.email.trim().toLowerCase();
+      this.db.prepare(`INSERT INTO qa_users(id,email,name,password_hash,role,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?)`).run(
+        user.id, email, user.name, user.passwordHash, role,
+        user.createdAt ?? now, user.updatedAt ?? now,
+      );
+      this.db.exec('COMMIT');
+      return this.getUser(user.id);
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  async updateUser(id, patch) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const row = this.db.prepare('SELECT * FROM qa_users WHERE id=?').get(id);
+      if (!row) { this.db.exec('COMMIT'); return undefined; }
+      const current = this.userFromRow(row);
+      const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
+      if (!['admin', 'member'].includes(next.role)) throw new Error('Invalid user role');
+      if (current.role === 'admin' && next.role !== 'admin') {
+        if (this.db.prepare("SELECT COUNT(*) AS count FROM qa_users WHERE role='admin'").get().count <= 1) {
+          throw Object.assign(new Error('Cannot demote the last administrator'), { code: 'LAST_ADMIN' });
+        }
+      }
+      this.db.prepare(`UPDATE qa_users SET email=?, name=?, password_hash=?, role=?, updated_at=? WHERE id=?`)
+        .run(next.email.trim().toLowerCase(), next.name, next.passwordHash, next.role, next.updatedAt, id);
+      this.db.exec('COMMIT');
+      return next;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  async deleteUser(id) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const row = this.db.prepare('SELECT * FROM qa_users WHERE id=?').get(id);
+      if (!row) { this.db.exec('COMMIT'); return false; }
+      if (row.role === 'admin' && this.db.prepare("SELECT COUNT(*) AS count FROM qa_users WHERE role='admin'").get().count <= 1) {
+        throw Object.assign(new Error('Cannot remove the last administrator'), { code: 'LAST_ADMIN' });
+      }
+      this.db.prepare('DELETE FROM qa_sessions WHERE user_id=?').run(id);
+      this.db.prepare('DELETE FROM qa_users WHERE id=?').run(id);
+      this.db.exec('COMMIT');
+      return true;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  async createSession(session) {
+    this.db.prepare(`INSERT INTO qa_sessions(token_hash,user_id,csrf_token,created_at,expires_at)
+      VALUES(?,?,?,?,?)`).run(
+      session.tokenHash, session.userId, session.csrfToken, session.createdAt, session.expiresAt,
+    );
+    return session;
+  }
+
+  async getSession(tokenHash) {
+    const row = this.db.prepare(`SELECT s.token_hash, s.csrf_token, s.created_at, s.expires_at,
+        u.id AS user_id, u.email, u.name, u.password_hash, u.role,
+        u.created_at AS user_created_at, u.updated_at AS user_updated_at
+      FROM qa_sessions s JOIN qa_users u ON u.id = s.user_id
+      WHERE s.token_hash=?`).get(tokenHash);
+    if (!row) return undefined;
+    return {
+      tokenHash: row.token_hash,
+      csrfToken: row.csrf_token,
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+      user: {
+        id: row.user_id,
+        email: row.email,
+        name: row.name,
+        passwordHash: row.password_hash,
+        role: row.role,
+        createdAt: row.user_created_at,
+        updatedAt: row.user_updated_at,
+      },
+    };
+  }
+
+  async deleteSession(tokenHash) {
+    return this.db.prepare('DELETE FROM qa_sessions WHERE token_hash=?').run(tokenHash).changes > 0;
+  }
+
+  async deleteUserSessions(userId) {
+    return this.db.prepare('DELETE FROM qa_sessions WHERE user_id=?').run(userId).changes;
+  }
+
+  async cleanupSessions(now = new Date().toISOString()) {
+    this.db.prepare('DELETE FROM qa_sessions WHERE expires_at <= ?').run(now);
   }
 
   async ping() { this.db.prepare('SELECT 1').get(); }

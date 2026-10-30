@@ -1,6 +1,6 @@
 .env
 .env.local
-
+PROMPT-CLAUDE.md
 pw-out/
 test-results/
 playwright-report/

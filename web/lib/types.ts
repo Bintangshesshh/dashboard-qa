@@ -1,5 +1,22 @@
 /** Shared type definitions for the QA dashboard */
 
+export type UserRole = 'admin' | 'member';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  user?: User;
+  csrfToken?: string;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -80,7 +97,7 @@ export interface LogsResponse {
   nextAfter?: number;
 }
 
-export type ViewId = 'workspace' | 'lighthouse' | 'history';
+export type ViewId = 'workspace' | 'lighthouse' | 'history' | 'users';
 export type ModalId = '' | 'auth' | 'suite' | 'case' | 'category';
 export type ConnectionState = 'standby' | 'connecting' | 'connected' | 'polling';
 export type RunMode = 'pw' | 'lh' | 'both';

@@ -1,18 +1,16 @@
 "use client";
-/** Dashboard header with navigation, auth status and toggle */
+/** Dashboard header with navigation, account status and session controls */
 
-import type { ViewId } from '../lib/types';
+import type { User, ViewId } from '../lib/types';
 
 interface AppHeaderProps {
   view: ViewId;
   setView: (v: ViewId) => void;
   collapsed: boolean;
   setCollapsed: (fn: (v: boolean) => boolean) => void;
-  authenticated: boolean;
-  token: string;
-  onConnect: () => void;
-  onUnlock: () => void;
-  onDisconnect: () => void;
+  user: User | null;
+  onSignIn: () => void;
+  onSignOut: () => void;
 }
 
 const NAV_ITEMS: [ViewId, string][] = [
@@ -22,10 +20,12 @@ const NAV_ITEMS: [ViewId, string][] = [
 ];
 
 export default function AppHeader({
-  view, setView, collapsed, setCollapsed,
-  authenticated, token,
-  onConnect, onUnlock, onDisconnect,
+  view, setView, collapsed, setCollapsed, user, onSignIn, onSignOut,
 }: AppHeaderProps) {
+  const items = user?.role === 'admin'
+    ? [...NAV_ITEMS, ['users', 'Users'] as [ViewId, string]]
+    : NAV_ITEMS;
+
   return (
     <header>
       <a href="#main-content" className="skip-link">Skip to content</a>
@@ -39,7 +39,7 @@ export default function AppHeader({
       </button>
       <strong>QA workbench</strong>
       <nav aria-label="Main navigation">
-        {NAV_ITEMS.map(([id, label]) => (
+        {items.map(([id, label]) => (
           <button
             key={id}
             aria-current={view === id ? 'page' : undefined}
@@ -50,17 +50,14 @@ export default function AppHeader({
         ))}
       </nav>
       <span>
-        {authenticated
-          ? (token ? 'Operator connected' : 'Read-only session')
-          : 'Not connected'}
+        {user
+          ? `${user.name} · ${user.role === 'admin' ? 'Administrator' : 'Member'}`
+          : 'Signed out'}
       </span>
-      {authenticated && !token && (
-        <button onClick={onUnlock}>Unlock editing</button>
-      )}
-      {authenticated ? (
-        <button onClick={onDisconnect}>Disconnect</button>
+      {user ? (
+        <button onClick={onSignOut}>Sign out</button>
       ) : (
-        <button onClick={onConnect}>Connect workspace</button>
+        <button onClick={onSignIn}>Sign in</button>
       )}
     </header>
   );

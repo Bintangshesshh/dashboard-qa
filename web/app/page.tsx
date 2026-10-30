@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import type { Category, Suite, Case, Run, ViewId, ModalId } from "../lib/types";
+import type { Category, Suite, Case, Run, User, UserRole, ViewId, ModalId } from "../lib/types";
 import { STARTER_CODE } from "../lib/format";
 import * as api from "../lib/api";
 import { useRunStream } from "../lib/useRunStream";
@@ -12,16 +12,17 @@ import LighthouseView from "../components/LighthouseView";
 import HistoryView from "../components/HistoryView";
 import ExecutionPanel from "../components/ExecutionPanel";
 import Notice from "../components/Notice";
-import Dialog from "../components/Dialog";
+import AuthDialog from "../components/AuthDialog";
 import SuiteDialog from "../components/SuiteDialog";
 import CaseDialog from "../components/CaseDialog";
 import CategoryDialog from "../components/CategoryDialog";
+import UsersView from "../components/UsersView";
 
 export default function Page() {
-  // ─── Auth state ──────────────────────────────────────────────────────────────
-  const [token, setToken] = useState('');
-  const [authenticated, setAuthenticated] = useState(false);
-  const [input, setInput] = useState('');
+  // ─── Account state ───────────────────────────────────────────────────────────
+  const [user, setUser] = useState<User | null>(null);
+  const authenticated = !!user;
+  const [users, setUsers] = useState<User[]>([]);
 
   // ─── Navigation state ────────────────────────────────────────────────────────
   const [sid, setSid] = useState('');
@@ -51,7 +52,7 @@ export default function Page() {
 
   // ─── Data ────────────────────────────────────────────────────────────────────
   const { categories, suites, runs, totalRuns, setRuns, refresh, loadMoreRuns, updateRunInList } =
-    useWorkspace({ token, authenticated });
+    useWorkspace({ authenticated });
 
   const suite = suites.find(s => s.id === sid);
   const selected = suite?.cases.find(c => c.id === cid);
@@ -60,7 +61,6 @@ export default function Page() {
   // ─── Run stream ──────────────────────────────────────────────────────────────
   const { logs, connection, pollError, followLogs, terminalRef, reconnect } = useRunStream({
     runId: streamId,
-    token,
     authenticated,
     onRunStatus: (run: Run) => {
       updateRunInList(run);
@@ -78,7 +78,16 @@ export default function Page() {
   async function task(fn: () => Promise<void>) {
     setBusy(true); setError(''); setNotice('');
     try { await fn(); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) {
+      if (e instanceof api.ApiError && e.status === 401) {
+        setUser(null);
+        setUsers([]);
+        setModal('auth');
+        setError('Your session expired. Sign in again.');
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    }
     finally { setBusy(false); }
   }
 
@@ -95,13 +104,12 @@ export default function Page() {
   }
 
   const guardedRequest = useCallback(async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
-    const method = init.method || 'GET';
-    if (method !== 'GET' && !(path === '/api/session' && method === 'DELETE') && !token) {
+    if (!authenticated) {
       setModal('auth');
-      throw new Error('Reconnect with operator token to run tests or edit. Saved session can read reports and logs.');
+      throw new Error('Sign in to continue.');
     }
-    return api.request<T>(path, init, token || undefined);
-  }, [token]);
+    return api.request<T>(path, init);
+  }, [authenticated]);
 
   // ─── Effects ─────────────────────────────────────────────────────────────────
   useEffect(() => { if (typeof window !== 'undefined') setCollapsed(window.innerWidth < 1000); }, []);
@@ -123,10 +131,22 @@ export default function Page() {
   // Auto-select latest stream
   useEffect(() => { setStreamId(id => id || runs[0]?.id || ''); }, [runs]);
 
-  // Try cookie auth on mount
+  // Restore the account session on mount
   useEffect(() => {
-    api.checkAuth().then(() => setAuthenticated(true)).catch(() => {});
+    api.checkAuth()
+      .then(status => setUser(status.authenticated ? status.user ?? null : null))
+      .catch(() => setUser(null));
   }, []);
+
+  // Administrators load the account list only when the Users view is open.
+  useEffect(() => {
+    if (view !== 'users' || user?.role !== 'admin') return;
+    let active = true;
+    api.listUsers()
+      .then(rows => { if (active) setUsers(rows); })
+      .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { active = false; };
+  }, [view, user?.role]);
 
   // Dirty guard
   useEffect(() => {
@@ -135,27 +155,56 @@ export default function Page() {
     return () => window.removeEventListener('beforeunload', leave);
   }, [dirty]);
 
-  // ─── Auth handlers ───────────────────────────────────────────────────────────
-  async function connect() {
-    await task(async () => {
-      await api.createSession(input.trim());
-      setToken(input.trim());
-      setAuthenticated(true);
-      setInput('');
-      setModal('');
-      setView('workspace');
-    });
+  // ─── Account handlers ────────────────────────────────────────────────────────
+  async function handleAuthenticated(nextUser: User) {
+    setUser(nextUser);
+    setModal('');
+    setView('workspace');
+    setNotice('Signed in as ' + nextUser.name + '.');
+    await refresh().catch(() => {});
   }
 
   async function disconnect() {
     if (!protectDirty()) return;
-    await task(async () => {
-      await guardedRequest('/api/session', { method: 'DELETE' });
-      setToken('');
-      setAuthenticated(false);
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await api.logout();
+    } catch (e) {
+      if (!(e instanceof api.ApiError && e.status === 401)) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setUser(null);
+      setUsers([]);
       setRuns([]);
       setStreamId('');
+      setView('workspace');
+      setBusy(false);
+    }
+  }
+
+  async function changeUserRole(target: User, role: UserRole) {
+    await task(async () => {
+      await guardedRequest('/api/users/' + target.id, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      });
+      setUsers(await api.listUsers());
+      setNotice(target.name + ' is now ' + (role === 'admin' ? 'an administrator.' : 'a member.'));
     });
+  }
+
+  async function removeUser(target: User) {
+    if (!confirm('Remove the account for ' + target.name + '? Their active sessions will be signed out.')) return;
+    await task(async () => {
+      await guardedRequest('/api/users/' + target.id, { method: 'DELETE' });
+      setUsers(await api.listUsers());
+      setNotice('Account removed.');
+    });
+  }
+
+  async function reloadUsers() {
+    await task(async () => setUsers(await api.listUsers()));
   }
 
   // ─── Suite/Case CRUD ─────────────────────────────────────────────────────────
@@ -283,7 +332,7 @@ export default function Page() {
     if (!active) return;
     await task(async () => {
       try {
-        const updated = await api.cancelRun(active.id, token || undefined);
+        const updated = await api.cancelRun(active.id);
         updateRunInList(updated);
         setNotice('Run cancelled.');
       } catch (e) {
@@ -328,11 +377,9 @@ export default function Page() {
         setView={setView}
         collapsed={collapsed}
         setCollapsed={setCollapsed}
-        authenticated={authenticated}
-        token={token}
-        onConnect={() => setModal('auth')}
-        onUnlock={() => setModal('auth')}
-        onDisconnect={disconnect}
+        user={user}
+        onSignIn={() => setModal('auth')}
+        onSignOut={disconnect}
       />
 
       <main id="main-content">
@@ -361,10 +408,10 @@ export default function Page() {
           <section className="workspace">
             <div className="section-title">
               <div>
-                <h1>{view === 'lighthouse' ? 'Lighthouse' : view === 'history' ? 'Reports' : 'Playwright'}</h1>
-                <p>{suite ? suite.name + ' · ' + suite.targetUrl : 'Select or create a suite.'}</p>
+                <h1>{view === 'lighthouse' ? 'Lighthouse' : view === 'history' ? 'Reports' : view === 'users' ? 'Users' : 'Playwright'}</h1>
+                <p>{view === 'users' ? 'Manage team access and roles.' : suite ? suite.name + ' · ' + suite.targetUrl : 'Select or create a suite.'}</p>
               </div>
-              {suite && (
+              {suite && view !== 'users' && (
                 <div className="actions">
                   <button onClick={() => openSuiteForm(true)}>Edit suite</button>
                   <button onClick={() => remove('suite')}>Delete suite</button>
@@ -419,6 +466,17 @@ export default function Page() {
                 reportUrl={reportUrl}
               />
             )}
+
+            {view === 'users' && user?.role === 'admin' && (
+              <UsersView
+                users={users}
+                currentUserId={user.id}
+                busy={busy}
+                onRoleChange={changeUserRole}
+                onDelete={removeUser}
+                onReload={reloadUsers}
+              />
+            )}
           </section>
         </div>
 
@@ -435,24 +493,15 @@ export default function Page() {
           onReconnect={reconnect}
           onCancel={cancelRun}
           authenticated={authenticated}
-          token={token}
         />
       </main>
 
       {/* Auth dialog */}
-      <Dialog open={modal === 'auth'} onClose={() => setModal('')} title="Connect workspace" id="auth-dialog">
-        <form onSubmit={e => { e.preventDefault(); connect(); }}>
-          <label>
-            Operator token
-            <input autoFocus required type="password" autoComplete="off" value={input} onChange={e => setInput(e.target.value)} />
-          </label>
-          {error && <p role="alert">{error}</p>}
-          <div className="modal-actions">
-            <button type="button" onClick={() => setModal('')}>Cancel</button>
-            <button className="primary" disabled={busy} type="submit">Connect</button>
-          </div>
-        </form>
-      </Dialog>
+      <AuthDialog
+        open={modal === 'auth'}
+        onClose={() => setModal('')}
+        onAuthenticated={handleAuthenticated}
+      />
 
       {/* Suite dialog */}
       <SuiteDialog

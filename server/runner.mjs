@@ -61,7 +61,7 @@ export class Runner extends EventEmitter {
   command(state,args,env={}) {
     return new Promise((resolvePromise,reject)=>{
       if(state.cancelled) return reject(new Error('Run cancelled'));
-      const child=spawn(process.execPath,args,{cwd:this.directory(state.run.id),shell:false,detached:process.platform!=='win32',windowsHide:!state.run.headed,env:{...process.env,OPERATOR_TOKEN:'',DATABASE_URL:'',...env}});
+      const child=spawn(process.execPath,args,{cwd:this.directory(state.run.id),shell:false,detached:process.platform!=='win32',windowsHide:!state.run.headed,env:{...process.env,DATABASE_URL:'',...env}});
       state.child=child;
       let timedOut=false;
       const timer=setTimeout(()=>{timedOut=true;this.kill(child);},this.timeout);
@@ -76,7 +76,7 @@ export class Runner extends EventEmitter {
     try {
       await mkdir(artifacts,{recursive:true}); await writeFile(join(dir,'logs.txt'),'');
       await this.status(state,{status:'running',startedAt:new Date().toISOString()});
-      await this.log(state,'system','Trusted operator execution. Submitted code has host privileges; target allowlist is not a code sandbox.\n');
+      await this.log(state,'system','Trusted account execution. Submitted code has host privileges; target allowlist is not a code sandbox.\n');
       await this.log(state,'system','[target] Checking '+run.targetUrl+'\n');
       await checkTarget(run.targetUrl,this.origins);
       let exitCode=0;

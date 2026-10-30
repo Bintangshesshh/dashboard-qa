@@ -6,7 +6,6 @@ import type { Category, Suite, Run } from './types';
 import * as api from './api';
 
 interface UseWorkspaceOptions {
-  token: string;
   authenticated: boolean;
 }
 
@@ -21,39 +20,38 @@ interface UseWorkspaceResult {
   updateRunInList: (run: Run) => void;
 }
 
-export function useWorkspace({ token, authenticated }: UseWorkspaceOptions): UseWorkspaceResult {
+export function useWorkspace({ authenticated }: UseWorkspaceOptions): UseWorkspaceResult {
   const [categories, setCategories] = useState<Category[]>([]);
   const [suites, setSuites] = useState<Suite[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [totalRuns, setTotalRuns] = useState(0);
 
   const refresh = useCallback(async () => {
-    const authToken = token || undefined;
     const [rows, history, cats] = await Promise.all([
-      api.listSuites(authToken),
-      api.listRuns({ limit: 50, offset: 0 }, authToken),
-      api.listCategories(authToken).catch(() => [] as Category[]),
+      api.listSuites(),
+      api.listRunsPage({ limit: 50, offset: 0 }),
+      api.listCategories().catch(() => [] as Category[]),
     ]);
     const all = await Promise.all(
       (rows as Suite[]).map(async s => ({
         ...s,
-        cases: await api.listCases(s.id, authToken),
+        cases: await api.listCases(s.id),
       })),
     );
     setSuites(all);
-    setRuns(history);
-    setTotalRuns(history.length >= 50 ? history.length + 1 : history.length);
+    setRuns(history.runs);
+    setTotalRuns(history.total);
     setCategories(cats);
-  }, [token]);
+  }, []);
 
   const loadMoreRuns = useCallback(async () => {
-    const more = await api.listRuns({ limit: 50, offset: runs.length }, token || undefined);
+    const page = await api.listRunsPage({ limit: 50, offset: runs.length });
     setRuns(prev => {
       const ids = new Set(prev.map(r => r.id));
-      return [...prev, ...more.filter(r => !ids.has(r.id))];
+      return [...prev, ...page.runs.filter(r => !ids.has(r.id))];
     });
-    if (more.length < 50) setTotalRuns(runs.length + more.length);
-  }, [runs.length, token]);
+    setTotalRuns(page.total);
+  }, [runs.length]);
 
   const updateRunInList = useCallback((run: Run) => {
     setRuns(prev => {
@@ -70,12 +68,13 @@ export function useWorkspace({ token, authenticated }: UseWorkspaceOptions): Use
     if (!authenticated) return;
     refresh().catch(() => {});
     const id = setInterval(() => {
-      api.listRuns({ limit: 50, offset: 0 }, token || undefined)
-        .then(latest => {
+      api.listRunsPage({ limit: 50, offset: 0 })
+        .then(page => {
+          setTotalRuns(page.total);
           setRuns(prev => {
             // Merge latest with existing (keep pagination items)
             const map = new Map(prev.map(r => [r.id, r]));
-            for (const r of latest) map.set(r.id, r);
+            for (const r of page.runs) map.set(r.id, r);
             return [...map.values()].sort((a, b) =>
               (b.createdAt || '').localeCompare(a.createdAt || ''),
             );
@@ -84,7 +83,7 @@ export function useWorkspace({ token, authenticated }: UseWorkspaceOptions): Use
         .catch(() => {});
     }, 4000);
     return () => clearInterval(id);
-  }, [authenticated, refresh, token]);
+  }, [authenticated, refresh]);
 
   return { categories, suites, runs, totalRuns, setRuns, refresh, loadMoreRuns, updateRunInList };
 }

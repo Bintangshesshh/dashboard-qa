@@ -21,14 +21,13 @@ interface ExecutionPanelProps {
   onReconnect: () => void;
   onCancel: () => void;
   authenticated: boolean;
-  token: string;
 }
 
 export default function ExecutionPanel({
   runs, active, streamId, setStreamId,
   logs, connection, pollError,
   followLogs, terminalRef, onReconnect, onCancel,
-  authenticated, token,
+  authenticated,
 }: ExecutionPanelProps) {
   const canCancel = active && ['queued', 'running'].includes(active.status);
 
@@ -81,7 +80,7 @@ export default function ExecutionPanel({
           )}
           {active.error && <p role="alert">{active.error}</p>}
           {active.docsError && <p className="muted">Docs error: {active.docsError}</p>}
-          {streamId && token && (
+          {streamId && authenticated && (
             <a href={downloadLogsUrl(streamId)} target="_blank" rel="noopener noreferrer" className="download-link">
               Download full log
             </a>
