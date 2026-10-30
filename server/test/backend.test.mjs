@@ -1,374 +1,836 @@
+// Test backend Playbook v5 (docs/PRD.md §7). Jalankan: npm test
+// Menggantikan berkas lama yang masih memakai skema v4 (suites/cases/categories).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { EventEmitter, once } from 'node:events';
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
+import { once } from 'node:events';
+import { randomUUID, randomBytes, scrypt as _scrypt } from 'node:crypto';
+import { promisify } from 'node:util';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import WebSocket from 'ws';
-import { allowlist, target, id, cursor, pagination } from '../validation.mjs';
-import { hashSessionToken, randomToken } from '../auth.mjs';
-import { createApp, attachWebSocket } from '../index.mjs';
-import { Runner, checkTarget } from '../runner.mjs';
+import { allowlist, target, id, cursor, authorized, rangeDays, isoTimestamp, bool } from '../validation.mjs';
+import { createApp } from '../index.mjs';
 import { Store, databasePath } from '../store.mjs';
+import { Runner } from '../runner.mjs';
+import { runRetention } from '../retention.mjs';
+import { backupDatabase } from '../backup.mjs';
 
-async function memoryStore(t) {
+const scrypt = promisify(_scrypt);
+const PASSWORD = 'rahasia-test-123';
+const ORIGIN = 'http://127.0.0.1:4173';
+
+async function hash(password) {
+  const N = 16384, r = 8, p = 1;
+  const salt = randomBytes(16);
+  const key = await scrypt(password, salt, 64, { N, r, p, maxmem: 128 * 1024 * 1024 });
+  return `scrypt$${N}$${r}$${p}$${salt.toString('base64')}$${key.toString('base64')}`;
+}
+
+async function fixture(t) {
   const store = new Store(':memory:');
   await store.init();
-  t.after(() => store.close());
-  return store;
-}
+  const user = { id: randomUUID(), username: 'tester', role: 'admin' };
+  store.createUser({ ...user, passwordHash: await hash(PASSWORD) });
+  store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, staging_url, local_url, origins, allow_production, active, created_at)
+    VALUES ('p1','ebh','EBH',?,?,?,'[]',0,1,?)`)
+    .run('https://ebh.test', 'https://staging.ebh.test', ORIGIN, new Date().toISOString());
 
-async function makeSession(store, { role = 'admin', email } = {}) {
-  const user = await store.createUser({
-    id: randomUUID(),
-    name: 'Test ' + role,
-    email: email ?? randomUUID() + '@example.test',
-    passwordHash: 'not-used-for-session-tests',
-    role,
-  });
-  const token = randomToken();
-  const csrf = randomToken(24);
-  const now = Date.now();
-  await store.createSession({
-    tokenHash: hashSessionToken(token),
-    userId: user.id,
-    csrfToken: csrf,
-    createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + 60 * 60 * 1000).toISOString(),
-  });
-  return { user, cookie: 'qa_session=' + token, csrf };
-}
-
-async function serve(t, app) {
+  const runner = {
+    runsDir: await mkdtemp(join(tmpdir(), 'pb-runs-')),
+    start() {},
+    async cancel() { return true; },
+  };
+  const app = createApp({ store, runner, token: null, origins: [ORIGIN, 'https://ebh.test', 'https://staging.ebh.test'] });
   const server = createServer(app);
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  t.after(() => { server.closeAllConnections(); server.close(); });
-  return { server, url: 'http://127.0.0.1:' + server.address().port };
-}
+  const base = `http://127.0.0.1:${server.address().port}`;
 
-function appFor(t, store, { origins = ['http://localhost'], allowRegistration = true } = {}) {
-  const runner = new EventEmitter();
-  runner.directory = () => tmpdir();
-  return serve(t, createApp({ store, runner, origins, allowRegistration, cookieSecure: false })).then(({ url, server }) => ({ url, server, runner }));
-}
-
-function apiFetch(url, { cookie, csrf } = {}) {
-  return (path, method = 'GET', body, withCsrf = true) => fetch(url + path, {
-    method,
-    headers: {
-      'content-type': 'application/json',
-      ...(cookie ? { cookie } : {}),
-      ...(withCsrf && csrf && !['GET', 'HEAD', 'OPTIONS'].includes(method) ? { 'x-csrf-token': csrf } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
+  t.after(async () => {
+    server.closeAllConnections();
+    server.close();
+    store.close();
+    await rm(runner.runsDir, { recursive: true, force: true });
   });
+
+  const call = async (path, { method = 'GET', cookie, body, headers = {} } = {}) => {
+    const res = await fetch(base + path, {
+      method,
+      headers: {
+        origin: base,
+        ...(body ? { 'content-type': 'application/json' } : {}),
+        ...(cookie ? { cookie } : {}),
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    let json;
+    try { json = text ? JSON.parse(text) : null; } catch { json = text; }
+    return { status: res.status, body: json, headers: res.headers };
+  };
+
+  const login = async () => {
+    const res = await fetch(base + '/api/auth/login', {
+      method: 'POST',
+      headers: { origin: base, 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'tester', password: PASSWORD }),
+    });
+    assert.equal(res.status, 200);
+    const raw = res.headers.get('set-cookie').split(';')[0];
+    return raw;
+  };
+
+  return { store, user, runner, app, server, base, call, login };
 }
 
-test('trust boundary rejects malformed IDs, origins and cursors', () => {
+test('trust boundary menolak ID, origin, cursor, timestamp, boolean ngawur', () => {
   assert.deepEqual(allowlist('http://localhost:1234,https://example.test'), ['http://localhost:1234', 'https://example.test']);
   assert.equal(databasePath(':memory:'), ':memory:');
   assert.equal(databasePath('sqlite:./data/qa.db'), resolve('data/qa.db'));
-  assert.equal(databasePath('file:/tmp/qa.db'), '/tmp/qa.db');
   assert.throws(() => databasePath(''), /DATABASE_URL is required/);
   assert.throws(() => allowlist('https://example.test/path'));
   for (const value of ['file:///etc/passwd', 'http://bad.test', 'http://user:pass@localhost']) assert.throws(() => target(value, ['http://localhost']));
   assert.equal(target('http://localhost/path', ['http://localhost']), 'http://localhost/path');
-  assert.throws(() => id('../foo')); assert.throws(() => cursor(-1)); assert.throws(() => cursor('nan'));
-  assert.deepEqual(pagination({}), { limit: 50, offset: 0 });
-  assert.deepEqual(pagination({ limit: '10', offset: '5' }), { limit: 10, offset: 5 });
-  assert.throws(() => pagination({ limit: '-1' }), /limit/);
-  assert.throws(() => pagination({ limit: '999' }), /limit/);
-  assert.throws(() => pagination({ offset: '-1' }), /offset/);
-  assert.throws(() => pagination({ offset: 'abc' }), /offset/);
+  assert.throws(() => id('../foo'));
+  assert.throws(() => cursor(-1));
+  assert.throws(() => cursor('nan'));
+  assert.throws(() => rangeDays({ range: 0 }));
+  assert.throws(() => isoTimestamp('bukan-tanggal'));
+  assert.throws(() => bool('ya', 'x'));
+  assert.equal(authorized('abc', 'abc'), true);
+  assert.equal(authorized('abc', 'abd'), false);
 });
 
-test('account registration, login, cookies, CSRF and admin roles', async t => {
-  const store = await memoryStore(t);
-  const { url } = await appFor(t, store);
-  const post = (path, body, headers = {}) => fetch(url + path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', origin: url, ...headers },
-    body: JSON.stringify(body),
+test('login, /api/me, logout, dan penolakan password salah', async t => {
+  const f = await fixture(t);
+  let r = await f.call('/api/auth/login', { method: 'POST', body: { username: 'tester', password: 'salah-sekali' } });
+  assert.equal(r.status, 401);
+  assert.equal(r.body.error, 'Username atau password salah');
+
+  const cookie = await f.login();
+  r = await f.call('/api/me', { cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.username, 'tester');
+  assert.equal(r.body.role, 'admin');
+
+  r = await f.call('/api/auth/logout', { method: 'POST', cookie });
+  assert.equal(r.status, 200);
+  r = await f.call('/api/me', { cookie });
+  assert.equal(r.status, 401);
+});
+
+test('mutasi cookie lintas origin ditolak, bearer CLI lolos', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  let r = await f.call('/api/auth/logout', { method: 'POST', cookie, headers: { origin: 'http://evil.test' } });
+  assert.equal(r.status, 403);
+
+  r = await f.call('/api/auth/logout', { method: 'POST', cookie, headers: { 'sec-fetch-site': 'cross-site' } });
+  assert.equal(r.status, 403);
+
+  r = await f.call('/api/auth/login', { method: 'POST', body: { username: 'tester', password: PASSWORD }, headers: { origin: 'http://evil.test' } });
+  assert.equal(r.status, 403);
+
+  r = await f.call('/api/auth/logout', { method: 'POST', cookie });
+  assert.equal(r.status, 200);
+});
+
+test('sesi: production diblokir tanpa flag, reuse mengembalikan 409', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'production' } });
+  assert.equal(r.status, 403);
+
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(r.status, 201);
+  const first = r.body.sessionId;
+  assert.equal(r.body.targetUrl, ORIGIN);
+
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(r.status, 409);
+  assert.equal(r.body.sessionId, first);
+  assert.equal(r.body.reuse, true);
+});
+
+test('run: 409 saat sudah ada run belum final, 429 saat antrean penuh', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+
+  let r = await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } });
+  assert.equal(r.status, 202);
+
+  r = await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } });
+  assert.equal(r.status, 409);
+
+  f.store.setSetting('max_queue_length', '0');
+  f.store.db.prepare("UPDATE runs SET status='passed'").run();
+  r = await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } });
+  assert.equal(r.status, 429);
+});
+
+test('PATCH run: status di-whitelist, finalisasi set finalized_at + stale', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  const runId = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } })).body.runId;
+  f.store.createReport({ id: 'rep1', sessionId: session, scope: 'pw', runIds: [runId], builtBy: f.user.id });
+  f.store.patchReport('rep1', { status: 'ready', path: 'index.html' });
+
+  let r = await f.call(`/api/runs/${runId}`, { method: 'PATCH', cookie, body: { status: 'ngawur' } });
+  assert.equal(r.status, 400);
+
+  r = await f.call(`/api/runs/${runId}`, { method: 'PATCH', cookie, body: { status: 'failed', exitCode: 1, results: [{ file: 'a.spec.ts', title: 'TC-1', status: 'failed' }] } });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.finalized_at);
+  assert.equal(r.body.exit_code, 1);
+  assert.equal(f.store.getReport('rep1').status, 'stale');
+  assert.equal(f.store.listPlaywrightResults(runId).length, 1);
+
+  const finalized = r.body.finalized_at;
+  r = await f.call(`/api/runs/${runId}`, { method: 'PATCH', cookie, body: { status: 'passed' } });
+  assert.equal(r.body.finalized_at, finalized, 'finalized_at tidak boleh ditimpa');
+
+  r = await f.call(`/api/runs/${runId}`, { method: 'PATCH', cookie, body: { finishedAt: 'bukan-tanggal' } });
+  assert.equal(r.status, 400);
+});
+
+test('hapus run & sesi ikut menghapus folder artifact', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  const runId = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } })).body.runId;
+
+  const runDir = join(f.runner.runsDir, runId);
+  await mkdir(join(runDir, 'artifacts'), { recursive: true });
+  await writeFile(join(runDir, 'artifacts', 'report.json'), '{}');
+
+  // run belum final → 409, folder utuh
+  let r = await f.call(`/api/runs/${runId}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+  assert.ok(existsSync(runDir));
+
+  f.store.patchRun(runId, { status: 'passed', finalized_at: new Date().toISOString() });
+  r = await f.call(`/api/runs/${runId}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(existsSync(runDir), false, 'folder run harus terhapus');
+
+  // hapus sesi dengan run baru
+  const run2 = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } })).body.runId;
+  const dir2 = join(f.runner.runsDir, run2);
+  await mkdir(dir2, { recursive: true });
+  f.store.patchRun(run2, { status: 'failed', finalized_at: new Date().toISOString() });
+  r = await f.call(`/api/sessions/${session}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(existsSync(dir2), false, 'folder run dalam sesi harus terhapus');
+});
+
+test('log per run dipotong tengah sesuai log_max_bytes', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  const runId = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } })).body.runId;
+  f.store.setSetting('log_max_bytes', '2000');
+
+  let seq = 0;
+  const push = text => f.store.log(runId, { seq: ++seq, stream: 'stdout', text, at: new Date().toISOString() });
+  push('HEAD\n');
+  for (let i = 0; i < 300; i++) push(`baris-${i}-${'x'.repeat(40)}\n`);
+  push('TAIL\n');
+
+  const text = await f.store.logsText(runId);
+  assert.ok(text.length <= 2100, `log harus terpotong, dapat ${text.length}`);
+  assert.ok(text.startsWith('HEAD'));
+  assert.ok(text.endsWith('TAIL\n'));
+  assert.match(text, /baris dipotong/);
+
+  const rows = f.store.logsRaw(runId);
+  const seqs = rows.map(r => r.seq);
+  assert.deepEqual(seqs, [...seqs].sort((a, b) => a - b));
+  assert.equal(new Set(seqs).size, seqs.length);
+
+  const page = f.store.logs(runId, 0, 5);
+  assert.equal(page.logs.length, 5);
+  assert.equal(page.hasMore, true);
+});
+
+test('quick-check: 400 tanpa projectId/env, 202 dengan 2 run, production diblokir', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const started = [];
+  f.runner.start = (runId, testFile) => { started.push({ runId, tool: testFile.tool }); return Promise.resolve(); };
+
+  let r = await f.call('/api/quick-check', { method: 'POST', cookie, body: {} });
+  assert.equal(r.status, 400);
+
+  r = await f.call('/api/quick-check', { method: 'POST', cookie, body: { projectId: 'p1', env: 'production' } });
+  assert.equal(r.status, 403);
+
+  r = await f.call('/api/quick-check', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(r.status, 202);
+  assert.equal(r.body.runIds.length, 2);
+  const runs = f.store.listRunsBySession(r.body.sessionId);
+  assert.deepEqual(runs.map(x => x.tool).sort(), ['lh', 'pw']);
+  assert.equal(runs.every(x => x.test_file_id === null), true, 'quick check tidak memakai test_files');
+  await new Promise(res => setImmediate(res));
+  assert.deepEqual(started.map(s => s.tool), ['pw', 'lh']);
+});
+
+test('CLI token: dibuat, terdaftar tanpa nilai plain, lalu dicabut', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  let r = await f.call('/api/auth/cli-token', { method: 'POST', cookie, body: { label: 'laptop-kerja' } });
+  assert.equal(r.status, 201);
+  const { id, token } = r.body;
+  assert.ok(token && token.length === 64, 'token plain hanya sekali');
+
+  r = await f.call('/api/auth/cli-token', { cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.length, 1);
+  assert.equal(r.body[0].id, id);
+  assert.equal(r.body[0].label, 'laptop-kerja');
+  assert.equal(r.body[0].revoked_at, null);
+  assert.equal(JSON.stringify(r.body).includes(token), false, 'token plain tidak boleh ikut terdaftar');
+
+  // token bisa dipakai sebagai bearer
+  r = await f.call('/api/me', { headers: { authorization: 'Bearer ' + token } });
+  assert.equal(r.status, 200);
+  r = await f.call('/api/auth/cli-token', { cookie });
+  assert.ok(r.body[0].last_used_at, 'last_used_at harus terisi setelah dipakai');
+
+  r = await f.call(`/api/auth/cli-token/${id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  r = await f.call('/api/me', { headers: { authorization: 'Bearer ' + token } });
+  assert.equal(r.status, 401, 'token yang dicabut harus ditolak');
+});
+
+test('CLI lokal: local → start → logs → upload artifact → finalisasi', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'test("x",()=>{})' });
+
+  let r = await f.call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: 'tf1', env: 'local' } });
+  assert.equal(r.status, 201);
+  const { runId, sessionId, code, targetUrl, tool } = r.body;
+  assert.equal(code, 'test("x",()=>{})');
+  assert.equal(targetUrl, ORIGIN);
+  assert.equal(tool, 'pw');
+  assert.ok(runId && sessionId);
+
+  // sesi dipakai ulang untuk project+env+user yang sama
+  r = await f.call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: 'tf1', env: 'local' } });
+  assert.equal(r.status, 409, 'sesi masih punya run belum final');
+
+  r = await f.call(`/api/runs/${runId}/start`, { method: 'POST', cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.status, 'running');
+  assert.ok(r.body.started_at);
+
+  r = await f.call(`/api/runs/${runId}/logs`, {
+    method: 'POST', cookie,
+    body: { entries: [{ seq: 1, stream: 'stdout', text: 'mulai\n', at: new Date().toISOString() }] },
   });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.inserted, 1);
 
-  assert.deepEqual(await (await fetch(url + '/api/auth')).json(), { authenticated: false });
-  assert.equal((await fetch(url + '/api/suites')).status, 401);
-  assert.equal((await post('/api/auth/register', { name: 'A', email: 'bad', password: 'long enough' })).status, 400);
-  assert.equal((await post('/api/auth/register', { name: 'A', email: 'a@example.test', password: 'short' })).status, 400);
-
-  const registered = await post('/api/auth/register', { name: 'Admin', email: 'Admin@Example.test', password: 'correct horse battery staple' });
-  assert.equal(registered.status, 201);
-  const adminBody = await registered.json();
-  assert.equal(adminBody.authenticated, true);
-  assert.equal(adminBody.user.role, 'admin');
-  assert.equal(adminBody.user.email, 'admin@example.test');
-  assert.ok(adminBody.csrfToken);
-  assert.match(registered.headers.get('set-cookie'), /HttpOnly/i);
-  assert.match(registered.headers.get('set-cookie'), /SameSite=Lax/i);
-  const adminCookie = registered.headers.get('set-cookie').split(';')[0];
-  const adminCsrf = adminBody.csrfToken;
-
-  assert.equal((await post('/api/auth/register', { name: 'Again', email: 'admin@example.test', password: 'correct horse battery staple' })).status, 409);
-  assert.equal((await post('/api/auth/register', { name: 'Cross', email: 'cross@example.test', password: 'correct horse battery staple' }, { origin: 'https://outside.invalid' })).status, 403);
-
-  const wrong = await post('/api/auth/login', { email: 'admin@example.test', password: 'wrong password' });
-  assert.equal(wrong.status, 401);
-  const login = await post('/api/auth/login', { email: 'ADMIN@example.test', password: 'correct horse battery staple' });
-  assert.equal(login.status, 200);
-  const loginBody = await login.json();
-  assert.equal(loginBody.user.id, adminBody.user.id);
-  const loginCookie = login.headers.get('set-cookie').split(';')[0];
-  const loginCsrf = loginBody.csrfToken;
-
-  const status = await fetch(url + '/api/auth', { headers: { cookie: loginCookie } });
-  assert.equal(status.status, 200);
-  const statusBody = await status.json();
-  assert.equal(statusBody.authenticated, true);
-  assert.equal(statusBody.user.role, 'admin');
-  assert.equal(statusBody.csrfToken, loginCsrf);
-
-  const admin = apiFetch(url, { cookie: loginCookie, csrf: loginCsrf });
-  assert.equal((await admin('/api/suites', 'POST', { name: 'No csrf', targetUrl: 'http://localhost' }, false)).status, 403);
-  const suite = await (await admin('/api/suites', 'POST', { name: 'Local', targetUrl: 'http://localhost' })).json();
-  assert.ok(suite.id);
-
-  const memberRegistered = await post('/api/auth/register', { name: 'Member', email: 'member@example.test', password: 'correct horse battery staple' });
-  assert.equal(memberRegistered.status, 201);
-  const memberBody = await memberRegistered.json();
-  assert.equal(memberBody.user.role, 'member');
-  const memberCookie = memberRegistered.headers.get('set-cookie').split(';')[0];
-  const memberCsrf = memberBody.csrfToken;
-  const member = apiFetch(url, { cookie: memberCookie, csrf: memberCsrf });
-  assert.equal((await member('/api/users')).status, 403);
-  assert.equal((await admin('/api/users')).status, 200);
-
-  const promoted = await (await admin('/api/users/' + memberBody.user.id, 'PATCH', { role: 'admin' })).json();
-  assert.equal(promoted.role, 'admin');
-  assert.equal((await admin('/api/users/' + adminBody.user.id, 'DELETE')).status, 409);
-
-  const logout = await admin('/api/auth/logout', 'POST');
-  assert.equal(logout.status, 204);
-  assert.match(logout.headers.get('set-cookie'), /qa_session=;/);
-  const loggedOut = await (await fetch(url + '/api/auth', { headers: { cookie: loginCookie } })).json();
-  assert.equal(loggedOut.authenticated, false);
-
-  const expiredToken = randomToken();
-  await store.createSession({
-    tokenHash: hashSessionToken(expiredToken),
-    userId: adminBody.user.id,
-    csrfToken: randomToken(),
-    createdAt: new Date(0).toISOString(),
-    expiresAt: new Date(0).toISOString(),
+  r = await f.call(`/api/runs/${runId}/artifacts?kind=pw-json&path=report.json`, {
+    method: 'PUT', cookie, body: { a: 1 },
   });
-  assert.deepEqual(await (await fetch(url + '/api/auth', { headers: { cookie: 'qa_session=' + expiredToken } })).json(), { authenticated: false });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.path, 'report.json');
+
+  r = await f.call(`/api/runs/${runId}/artifacts?kind=pw-json&path=..%2Fescape.json`, { method: 'PUT', cookie, body: { a: 1 } });
+  assert.equal(r.status, 400);
+
+  r = await f.call(`/api/runs/${runId}`, { method: 'PATCH', cookie, body: { status: 'passed', exitCode: 0 } });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.finalized_at);
+
+  const run = f.store.getRun(runId);
+  assert.equal(run.status, 'passed');
+  assert.equal(f.store.listArtifacts(runId).length, 1);
+  assert.equal((await f.store.logsText(runId)), 'mulai\n');
 });
 
-test('report index redirects once and serves authenticated assets', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'qa-report-route-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  await mkdir(join(dir, 'docs')); await writeFile(join(dir, 'docs', 'index.html'), '<h1>Failure report</h1>');
-  const store = await memoryStore(t);
-  const { cookie } = await makeSession(store);
-  const runner = new EventEmitter(), run = { id: randomUUID(), status: 'failed' };
-  runner.directory = () => dir; await store.put('runs', run);
-  const { url } = await serve(t, createApp({ store, runner, origins: [] }));
-  const path = '/reports/' + run.id + '/docs', headers = { cookie };
-  assert.equal((await fetch(url + path + '/')).status, 401);
-  const redirect = await fetch(url + path, { headers, redirect: 'manual' });
-  assert.equal(redirect.status, 308);
-  assert.equal(redirect.headers.get('location'), path + '/');
-  const page = await fetch(url + path + '/', { headers });
-  assert.equal(page.status, 200);
-  assert.match(await page.text(), /Failure report/);
+test('GET run memisahkan console & network dari logs', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  const runId = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } })).body.runId;
+
+  const at = new Date().toISOString();
+  f.store.logsBatch(runId, [
+    { seq: 1, stream: 'stdout', text: 'mulai\n', at },
+    { seq: 2, stream: 'console', text: JSON.stringify({ type: 'error', text: 'boom', location: 'app.js:1' }), at },
+    { seq: 3, stream: 'network', text: JSON.stringify({ url: '/x', method: 'GET', status: 500 }), at },
+    { seq: 4, stream: 'console', text: 'teks mentah', at },
+  ]);
+
+  const r = await f.call(`/api/runs/${runId}`, { cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.console.length, 2);
+  assert.equal(r.body.console[0].type, 'error');
+  assert.equal(r.body.console[0].text, 'boom');
+  assert.equal(r.body.console[1].text, 'teks mentah', 'baris non-JSON tetap terbaca');
+  assert.equal(r.body.network.length, 1);
+  assert.equal(r.body.network[0].status, 500);
+  assert.equal(r.body.network[0].url, '/x');
+  assert.equal(r.body.results.length, 0);
 });
 
-test('WebSocket replays ordered persisted logs and delivers live logs', async t => {
-  const store = await memoryStore(t);
-  const { cookie } = await makeSession(store);
-  const runner = new EventEmitter(), run = { id: randomUUID(), status: 'running' };
-  await store.put('runs', run);
-  await store.log(run.id, { seq: 1, stream: 'stdout', text: 'one', at: 'now' });
-  await store.log(run.id, { seq: 2, stream: 'stdout', text: 'two', at: 'now' });
-  const { server, url } = await serve(t, (req, res) => res.end());
-  const wss = attachWebSocket(server, { store, runner });
-  t.after(() => { for (const ws of wss.clients) ws.terminate(); wss.close(); });
-  const ws = new WebSocket(url.replace('http:', 'ws:') + '/ws', { headers: { Cookie: cookie } });
-  await once(ws, 'open'); t.after(() => ws.terminate());
-  const received = []; ws.on('message', data => received.push(JSON.parse(data)));
-  const replay = new Promise(resolve => ws.on('message', data => { if (JSON.parse(data).type === 'replay-complete') resolve(); }));
-  ws.send(JSON.stringify({ type: 'subscribe', runId: run.id, after: 1 })); await replay;
-  assert.deepEqual(received.filter(x => x.type === 'log').map(x => x.seq), [2]);
-  const live = once(ws, 'message'); runner.emit('log', { type: 'log', runId: run.id, seq: 3, text: 'three' });
-  assert.equal(JSON.parse((await live)[0]).seq, 3);
+test('artifact: traversal ditolak, file sah disajikan dengan header aman', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  const runId = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } })).body.runId;
+
+  const dir = join(f.runner.runsDir, runId, 'artifacts');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'report.json'), '{"ok":true}');
+
+  let r = await f.call(`/artifacts/${runId}/report.json`, { cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(r.headers.get('x-robots-tag'), 'noindex');
+
+  r = await f.call(`/artifacts/${runId}/..%2F..%2Fpackage.json`, { cookie });
+  assert.equal(r.status, 400);
+
+  r = await f.call(`/artifacts/${runId}/report.json`);
+  assert.equal(r.status, 401);
 });
 
-test('closed subscription does not attach runner listeners after database lookup', async t => {
-  const runner = new EventEmitter(); let release, entered;
-  const lookup = new Promise(r => release = r), started = new Promise(r => entered = r);
-  const store = {
-    getSession: async () => ({ csrfToken: 'csrf', expiresAt: new Date(Date.now() + 60000).toISOString(), user: { id: randomUUID(), role: 'admin' } }),
-    get: async () => { entered(); await lookup; return { id: randomUUID() }; },
-    logs: async () => ({ logs: [], hasMore: false, nextAfter: 0 }),
+test('parseLighthouse: banyak LHR URL sama → satu baris per URL', async () => {
+  const { Runner } = await import('../runner.mjs');
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-lh-'));
+  const dir = join(runsDir, 'run1');
+  const artifacts = join(dir, 'artifacts');
+  await mkdir(artifacts, { recursive: true });
+  const lhr = (perf, url) => JSON.stringify({
+    finalUrl: url,
+    categories: { performance: { score: perf }, accessibility: { score: 0.9 }, 'best-practices': { score: 0.8 }, seo: { score: 1 } },
+    audits: { 'largest-contentful-paint': { numericValue: 1200 } },
+  });
+  // numberOfRuns: 3 → tiga LHR untuk URL yang sama.
+  await writeFile(join(artifacts, 'lhr-1.json'), lhr(0.5, 'https://a.test/'));
+  await writeFile(join(artifacts, 'lhr-2.json'), lhr(0.7, 'https://a.test/'));
+  await writeFile(join(artifacts, 'lhr-3.json'), lhr(0.9, 'https://a.test/'));
+  await writeFile(join(artifacts, 'lhr-4.json'), lhr(0.4, 'https://a.test/login'));
+  await writeFile(join(artifacts, 'manifest.json'), JSON.stringify([
+    { url: 'https://a.test/', htmlPath: join(artifacts, 'lhr-1.html') },
+    { url: 'https://a.test/', htmlPath: join(artifacts, 'lhr-3.html') },
+  ]));
+
+  const runner = new Runner({}, { runsDir });
+  const rows = await runner.parseLighthouse(dir);
+
+  assert.equal(rows.length, 2, 'satu baris per URL unik');
+  const home = rows.find(r => r.url === 'https://a.test/');
+  assert.equal(home.performance, 0.9, 'run terakhir yang menang');
+  assert.equal(home.reportPath, 'lhr-3.html');
+  assert.equal(rows.find(r => r.url === 'https://a.test/login').performance, 0.4);
+  await rm(runsDir, { recursive: true, force: true });
+});
+
+test('warningLines: runWarnings LH jadi baris log system', async () => {
+  const { warningLines } = await import('../runner.mjs');
+  const rows = [
+    { url: 'https://a.test/', warnings: JSON.stringify(['warn satu', { code: 'X' }]) },
+    { url: 'https://b.test/', warnings: 'bukan json' },
+    { url: 'https://c.test/', warnings: null },
+  ];
+  const lines = warningLines(rows);
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0], '[lh] https://a.test/: warn satu\n');
+  assert.equal(lines[1], '[lh] https://a.test/: {"code":"X"}\n');
+  assert.equal(lines[2], '[lh] https://b.test/: bukan json\n');
+  assert.deepEqual(warningLines([]), []);
+  assert.deepEqual(warningLines(null), []);
+});
+
+test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async () => {
+  const { lhConfig } = await import('../runner.mjs');
+  const cfg = {
+    urls: ['https://prod.test/', 'https://staging.test/'],
+    numberOfRuns: 2,
+    budgets: { 'categories:performance': { minScore: 0.8 } },
   };
-  const { server, url } = await serve(t, (req, res) => res.end());
-  const wss = attachWebSocket(server, { store, runner }); t.after(() => wss.close());
-  const ws = new WebSocket(url.replace('http:', 'ws:') + '/ws', { headers: { Cookie: 'qa_session=test' } });
-  await once(ws, 'open');
-  ws.send(JSON.stringify({ type: 'subscribe', runId: randomUUID() })); await started;
-  const closed = once([...wss.clients][0], 'close'); ws.close(); await closed; release(); await new Promise(setImmediate);
-  assert.equal(runner.listenerCount('log'), 0);
-  assert.equal(runner.listenerCount('status'), 0);
+  const text = lhConfig(cfg, 'https://staging.test/', 'D:\\runs\\abc\\artifacts');
+  assert.match(text, /^module\.exports = /);
+  const parsed = JSON.parse(text.replace(/^module\.exports = /, '').replace(/;\n$/, ''));
+  assert.deepEqual(parsed.ci.collect.url, ['https://staging.test/', 'https://prod.test/'], 'URL sesi dulu, duplikat dibuang');
+  assert.equal(parsed.ci.collect.numberOfRuns, 2);
+  assert.deepEqual(parsed.ci.assert.assertions['categories:performance'], ['warn', { minScore: 0.8 }]);
+  assert.equal(parsed.ci.upload.outputDir, 'D:/runs/abc/artifacts', 'backslash dinormalisasi');
+
+  assert.throws(() => lhConfig({ urls: [] }, null, 'x'), /Tidak ada URL/);
+  const minimal = lhConfig(null, 'https://a.test/', 'out');
+  assert.equal(JSON.parse(minimal.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.numberOfRuns, 1);
 });
 
-test('patch updates only an existing row and rolls back invalid changes', async t => {
-  const store = await memoryStore(t);
-  const suite = { id: randomUUID(), name: 'current', createdAt: new Date().toISOString() };
-  await store.put('suites', suite);
-  assert.deepEqual(await store.patch('suites', suite.id, old => ({ ...old, name: 'new' })), { ...suite, name: 'new' });
-  assert.equal((await store.get('suites', suite.id)).name, 'new');
-  assert.equal(await store.patch('suites', randomUUID(), () => assert.fail('missing row must not transform')), undefined);
-  await assert.rejects(store.patch('suites', suite.id, () => { throw new Error('invalid'); }), /invalid/);
-  assert.equal((await store.get('suites', suite.id)).name, 'new');
+test('recover: run uploading > 24 jam dibersihkan, yang baru hanya interrupted', async t => {
+  const f = await fixture(t);
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie: await f.login(), body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  const fresh = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  for (const [id, started] of [['r-old', old], ['r-new', fresh]]) {
+    f.store.createRun({ id, sessionId: session, testFileId: 'tf1', tool: 'pw' });
+    f.store.patchRun(id, { status: 'uploading', started_at: started });
+    f.store.addArtifact({ runId: id, kind: 'pw-json', path: 'report.json', bytes: 10 });
+  }
+
+  const stale = f.store.recover();
+
+  assert.deepEqual(stale, ['r-old'], 'hanya run > 24 jam yang dilaporkan untuk hapus folder');
+  assert.equal(f.store.getRun('r-old').status, 'interrupted');
+  assert.match(f.store.getRun('r-old').error, /24 jam/);
+  assert.equal(f.store.getRun('r-new').status, 'interrupted', 'run baru tetap interrupted karena restart');
+  assert.match(f.store.getRun('r-new').error, /Server restarted/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM artifacts WHERE run_id=?').get('r-old').n, 0);
 });
 
-test('startup recovery separates execution and report interruption', async t => {
-  const store = await memoryStore(t);
-  const running = { id: randomUUID(), status: 'running', docsStatus: 'building' };
-  const generating = { id: randomUUID(), status: 'passed', docsStatus: 'building' };
-  const finished = { id: randomUUID(), status: 'passed', docsStatus: 'built' };
-  for (const run of [running, generating, finished]) await store.put('runs', run);
+test('GET /api/sessions: ringkasan run per tool, gagal, dan aktif', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-pw', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  f.store.createTestFile({ id: 'tf-lh', projectId: 'p1', tool: 'lh', path: 'lh.js', label: 'L', code: 'x' });
+
+  f.store.createRun({ id: 'r1', sessionId: session, testFileId: 'tf-pw', tool: 'pw' });
+  f.store.createRun({ id: 'r2', sessionId: session, testFileId: 'tf-pw', tool: 'pw' });
+  f.store.createRun({ id: 'r3', sessionId: session, testFileId: 'tf-lh', tool: 'lh' });
+  f.store.patchRun('r1', { status: 'passed' });
+  f.store.patchRun('r2', { status: 'failed' });
+
+  const rows = (await f.call('/api/sessions', { cookie })).body;
+  const row = rows.find(s => s.id === session);
+  assert.equal(row.run_count, 3);
+  assert.equal(row.pw_count, 2);
+  assert.equal(row.lh_count, 1);
+  assert.equal(row.failed_count, 1, 'r2 gagal + r3 masih queued');
+  assert.equal(row.active_count, 1, 'r3 queued dihitung aktif');
+  assert.ok(!('runs' in row), 'daftar sesi tidak memuat baris run penuh');
+});
+
+test('settings: GET daftar, PATCH whitelist + rentang, audit tercatat', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  let r = await f.call('/api/settings', { cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.log_max_bytes, '5242880');
+
+  // key tak dikenal diabaikan, bukan bikin baris baru
+  r = await f.call('/api/settings', { method: 'PATCH', cookie, body: { log_max_bytes: 1048576, key_ngawur: 5 } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.log_max_bytes, '1048576');
+  assert.equal(r.body.key_ngawur, undefined);
+
+  // di luar rentang ditolak, tidak ada yang tersimpan
+  r = await f.call('/api/settings', { method: 'PATCH', cookie, body: { artifact_retention_days: 0 } });
+  assert.equal(r.status, 400);
+  r = await f.call('/api/settings', { cookie });
+  assert.equal(r.body.artifact_retention_days, '7');
+
+  // body kosong ditolak
+  r = await f.call('/api/settings', { method: 'PATCH', cookie, body: {} });
+  assert.equal(r.status, 400);
+
+  const audit = f.store.listAudit({ limit: 10 });
+  assert.ok(audit.some(a => a.action === 'update_settings'), 'perubahan settings masuk audit');
+});
+
+test('A6: session_reuse_minutes membatasi sesi yang dipakai ulang', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  const first = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(first.status, 201);
+  const oldId = first.body.sessionId;
+
+  // masih di dalam jendela (default 240 menit) → dipakai ulang
+  let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(r.status, 409);
+  assert.equal(r.body.sessionId, oldId);
+
+  // dimundurkan 5 jam → lewat jendela, sesi baru dibuat
+  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(new Date(Date.now() - 5 * 3600e3).toISOString(), oldId);
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(r.status, 201, 'sesi kedaluwarsa tidak dipakai ulang');
+  assert.notEqual(r.body.sessionId, oldId);
+  assert.ok(f.store.getSession(oldId).closed_at, 'sesi lama ditutup agar index unik bebas');
+
+  // jendela diubah lewat settings → ikut dipakai
+  f.store.setSetting('session_reuse_minutes', '1');
+  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(new Date(Date.now() - 5 * 60e3).toISOString(), r.body.sessionId);
+  const third = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(third.status, 201, '5 menit > 1 menit → sesi baru');
+});
+
+test('A2: runner menolak target di luar allowlist-nya sendiri', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-a2', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  f.store.createRun({ id: 'r-a2', sessionId: session, testFileId: 'tf-a2', tool: 'pw' });
+
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-runner-a2-'));
+  t.after(() => rm(runsDir, { recursive: true, force: true }));
+  const runner = new Runner(f.store, { runsDir, origins: [ORIGIN] });
+
+  await runner.start('r-a2', f.store.getTestFile('tf-a2'), session, 'https://evil.test/');
+
+  const run = f.store.getRun('r-a2');
+  assert.equal(run.status, 'failed');
+  assert.match(run.error, /not allowlisted/);
+  assert.equal(existsSync(join(runsDir, 'r-a2')), false, 'tidak ada folder/spawn untuk target terlarang');
+});
+
+test('A3: target divalidasi terhadap projects.origins, bukan cuma TARGET_ALLOWLIST', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  f.store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, staging_url, local_url, origins, allow_production, active, created_at)
+    VALUES ('p2','p2','P2','https://p2.test',?,?,'[]',0,1,?)`)
+    .run('https://staging.p2.test', 'http://localhost:5173', new Date().toISOString());
+
+  // origin staging.p2.test tak ada di allowlist global fixture, tapi ada di projects.origins
+  let r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { origins: ['https://staging.p2.test'] } });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.origins, ['https://staging.p2.test']);
+
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p2', env: 'staging' } });
+  assert.equal(r.status, 201, 'origin dari projects.origins diterima');
+  assert.equal(r.body.targetUrl, 'https://staging.p2.test/');
+
+  // origin tak terdaftar di mana pun → ditolak
+  f.store.db.prepare("UPDATE projects SET staging_url='https://evil.test/' WHERE id='p2'").run();
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p2', env: 'staging' } });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /not allowlisted/);
+
+  // skema aneh & origins bukan array ditolak
+  r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { local_url: 'javascript:alert(1)' } });
+  assert.equal(r.status, 400);
+  r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { origins: ['https://ok.test/path'] } });
+  assert.equal(r.status, 400, 'origin tidak boleh punya path');
+  assert.deepEqual(f.store.getProject('p2').origins, ['https://staging.p2.test'], 'origins lama tidak berubah');
+});
+
+test('A5: run production menulis satu baris log system', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  f.store.db.prepare("UPDATE projects SET allow_production=1, origins='[\"https://ebh.test\"]' WHERE id='p1'").run();
+  f.store.createTestFile({ id: 'tf-a5', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+
+  // local: tidak ada baris production
+  let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  const localSession = r.body.sessionId;
+  let runId = (await f.call(`/api/sessions/${localSession}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf-a5' } })).body.runId;
+  assert.equal(f.store.logsRaw(runId).some(l => /production run by/.test(l.text)), false);
+
+  // production: satu baris, berisi username
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'production', confirm: 'EBH' } });
+  assert.equal(r.status, 201);
+  runId = (await f.call(`/api/sessions/${r.body.sessionId}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf-a5' } })).body.runId;
+
+  const lines = f.store.logsRaw(runId).filter(l => l.stream === 'system' && /production run by/.test(l.text));
+  assert.equal(lines.length, 1);
+  assert.match(lines[0].text, /production run by tester at \d{4}-\d{2}-\d{2}T/);
+
+  // runner tidak boleh mulai dari seq 0 — baris system tadi sudah pakai seq 1.
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-runner-a5-'));
+  t.after(() => rm(runsDir, { recursive: true, force: true }));
+  const runner = new Runner(f.store, { runsDir, origins: [ORIGIN] });
+  runner.execute = async state => { await mkdir(runner.directory(runId), { recursive: true }); await runner.log(state, 'system', 'mulai\n'); };
+  await runner.start(runId, f.store.getTestFile('tf-a5'), null, null);
+
+  const seqs = f.store.logsRaw(runId).map(l => l.seq);
+  assert.deepEqual(seqs, [1, 2], 'seq lanjut, tidak bentrok primary key');
+});
+
+test('CLI: batch log setelah baris system tidak hilang', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  f.store.db.prepare("UPDATE projects SET allow_production=1, origins='[\"https://ebh.test\"]' WHERE id='p1'").run();
+  f.store.createTestFile({ id: 'tf-cli', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+
+  const r = await f.call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: 'tf-cli', env: 'production', confirm: 'EBH' } });
+  assert.equal(r.status, 201);
+
+  // klien tetap mengirim seq mulai 1, seperti CLI sekarang
+  const post = await f.call(`/api/runs/${r.body.runId}/logs`, {
+    method: 'POST', cookie,
+    body: { entries: [{ seq: 1, stream: 'stdout', text: 'mulai\n', at: new Date().toISOString() }] },
+  });
+  assert.equal(post.status, 200);
+
+  const texts = f.store.logsRaw(r.body.runId).map(l => l.text);
+  assert.equal(texts.length, 2, 'baris system + baris klien');
+  assert.ok(texts.some(t => t.includes('production run by')));
+  assert.ok(texts.includes('mulai\n'), 'log klien tidak dibuang');
+});
+
+test('B7: run queued bisa dibatalkan dan tidak dijalankan runner', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-b7', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  f.store.createRun({ id: 'r-b7', sessionId: session, testFileId: 'tf-b7', tool: 'pw' });
+
+  let r = await f.call('/api/runs/r-b7/cancel', { method: 'POST', cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.status, 'cancelled');
+  assert.ok(r.body.finished_at);
+
+  // runner melewati run yang sudah cancelled
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-b7-'));
+  t.after(() => rm(runsDir, { recursive: true, force: true }));
+  const runner = new Runner(f.store, { runsDir, origins: [ORIGIN] });
+  await runner.start('r-b7', f.store.getTestFile('tf-b7'), session, ORIGIN);
+  assert.equal(f.store.getRun('r-b7').status, 'cancelled');
+  assert.equal(existsSync(join(runsDir, 'r-b7')), false, 'tidak ada proses/folder');
+
+  // run final ditolak
+  f.store.patchRun('r-b7', { status: 'passed' });
+  r = await f.call('/api/runs/r-b7/cancel', { method: 'POST', cookie });
+  assert.equal(r.status, 409);
+});
+
+test('B8: tutup sesi tidak menghapus, hapus sesi/run menghapus datanya', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-b8', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  f.store.createRun({ id: 'r-b8', sessionId: session, testFileId: 'tf-b8', tool: 'pw' });
+
+  // run aktif memblokir tutup sesi
+  let r = await f.call(`/api/sessions/${session}/close`, { method: 'POST', cookie });
+  assert.equal(r.status, 409);
+
+  f.store.patchRun('r-b8', { status: 'passed' });
+  r = await f.call(`/api/sessions/${session}/close`, { method: 'POST', cookie });
+  assert.equal(r.status, 200);
+  assert.ok(r.body.closed_at, 'sesi ditutup, bukan dihapus');
+  assert.ok(f.store.getSession(session), 'baris sesi masih ada');
+
+  // hapus run final boleh, run aktif ditolak
+  f.store.createRun({ id: 'r-b8b', sessionId: session, testFileId: 'tf-b8', tool: 'pw' });
+  r = await f.call('/api/runs/r-b8b', { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+  r = await f.call('/api/runs/r-b8', { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(f.store.getRun('r-b8'), undefined);
+
+  // hapus sesi
+  f.store.patchRun('r-b8b', { status: 'failed' });
+  r = await f.call(`/api/sessions/${session}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(f.store.getSession(session), undefined);
+});
+
+test('retensi: folder → artifacts → reports stale → run_logs, baris hasil tetap', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf-ret', projectId: 'p1', tool: 'pw', path: 'r.spec.ts', label: 'R', code: 'x' });
+
+  const old = new Date(Date.now() - 10 * 86400000).toISOString();
+  const fresh = new Date().toISOString();
+
+  for (const [id, finished] of [['r-old', old], ['r-new', fresh]]) {
+    f.store.createRun({ id, sessionId: session, testFileId: 'tf-ret', tool: 'pw' });
+    f.store.patchRun(id, { status: 'passed', finished_at: finished });
+    await mkdir(join(f.runner.runsDir, id, 'artifacts'), { recursive: true });
+    await writeFile(join(f.runner.runsDir, id, 'artifacts', 'index.html'), '<html></html>');
+    f.store.addArtifact({ runId: id, kind: 'pw-html', path: 'index.html', bytes: 13 });
+  }
+  f.store.createRun({ id: 'r-queued', sessionId: session, testFileId: 'tf-ret', tool: 'pw' });
+  f.store.db.prepare('UPDATE runs SET queued_at=? WHERE id=?').run(new Date(Date.now() - 90 * 60000).toISOString(), 'r-queued');
+
+  // log_retention_days = 30, jadi log basi harus lebih tua dari itu.
+  const oldLog = new Date(Date.now() - 40 * 86400000).toISOString();
+  f.store.log('r-old', { seq: 1, stream: 'stdout', text: 'lama\n', at: oldLog });
+  f.store.log('r-new', { seq: 1, stream: 'stdout', text: 'baru\n', at: fresh });
+
+  const reportsDir = await mkdtemp(join(tmpdir(), 'pb-reports-'));
+  t.after(() => rm(reportsDir, { recursive: true, force: true }));
+  const report = f.store.createReport({ id: randomUUID(), sessionId: session, scope: 'pw', runIds: ['r-old'] });
+  f.store.patchReport(report.id, { status: 'ready', path: 'index.html', built_at: old });
+
+  const result = await runRetention({ store: f.store, runsDir: f.runner.runsDir, reportsDir });
+
+  assert.equal(result.runs, 1, 'hanya run final > 7 hari');
+  assert.equal(existsSync(join(f.runner.runsDir, 'r-old')), false, 'folder run lama dibuang');
+  assert.equal(existsSync(join(f.runner.runsDir, 'r-new')), true, 'folder run baru tetap');
+  assert.equal(f.store.listArtifacts('r-old').length, 0, 'baris artifact run lama ikut hilang');
+  assert.equal(f.store.listArtifacts('r-new').length, 1, 'artifact run baru utuh');
+
+  assert.equal(f.store.getReport(report.id).status, 'stale', 'laporan jadi stale, bukan failed');
+  assert.equal(f.store.getReport(report.id).path, null);
+
+  assert.equal(f.store.logsRaw('r-old').length, 0, 'log lama dibuang');
+  assert.equal(f.store.logsRaw('r-new').length, 1, 'log baru tetap');
+
+  assert.equal(f.store.getRun('r-queued').status, 'interrupted', 'antre > 30 menit jadi interrupted');
+  assert.equal(f.store.getRun('r-old').status, 'passed', 'baris run tetap ada sebagai riwayat');
+  assert.ok(f.store.getRun('r-new'), 'baris run baru tetap');
+});
+
+test('backup: VACUUM INTO menyalin DB, backup lama dibuang', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'pb-backup-'));
+  const store = new Store(join(dir, 'playbook.db'));
   await store.init();
-  const interrupted = await store.get('runs', running.id);
-  assert.equal(interrupted.status, 'interrupted'); assert.equal(interrupted.docsStatus, 'interrupted');
-  assert.match(interrupted.error, /restarted/); assert.ok(interrupted.finishedAt);
-  const reportOnly = await store.get('runs', generating.id);
-  assert.equal(reportOnly.status, 'passed'); assert.equal(reportOnly.docsStatus, 'interrupted');
-  assert.match(reportOnly.docsError, /report generation/); assert.equal(reportOnly.finishedAt, undefined);
-  assert.deepEqual(await store.get('runs', finished.id), finished);
+  t.after(async () => { store.close(); await rm(dir, { recursive: true, force: true }); });
+  store.setSetting('log_retention_days', '45');
+
+  const backupDir = join(dir, 'backups');
+  const first = await backupDatabase({ store, backupDir, now: new Date('2026-01-01T02:00:00Z') });
+  assert.ok(existsSync(first.file));
+  assert.ok(first.bytes > 0);
+
+  // Salinan harus memuat data yang sama.
+  const copy = new Store(first.file);
+  assert.equal(copy.getSetting('log_retention_days'), '45');
+  copy.close();
+
+  // Backup tua (> keepDays) dibuang, yang baru dipertahankan.
+  const old = join(backupDir, 'playbook-2020-01-01T00-00-00-000Z.db');
+  await writeFile(old, 'x');
+  const second = await backupDatabase({ store, backupDir, keepDays: 7, now: new Date('2026-01-10T02:00:00Z') });
+  assert.equal(second.pruned, 2, 'backup 2026-01-01 dan file 2020 dua-duanya basi');
+  assert.equal(existsSync(second.file), true);
+  assert.equal(existsSync(old), false);
+
+  await assert.rejects(() => backupDatabase({ store: new Store(':memory:'), backupDir }), /in-memory/);
 });
 
-test('redirect preflight blocks unapproved origins without following them', async t => {
-  const { url } = await serve(t, (req, res) => { res.writeHead(302, { location: 'https://not-allowlisted.invalid' }); res.end(); });
-  await assert.rejects(checkTarget(url, [url]), /not allowlisted/);
-});
+test('CLI playbook: tanpa argumen cetak bantuan, tanpa kredensial keluar 1', async () => {
+  const { execFile } = await import('node:child_process');
+  const bin = resolve(import.meta.dirname, '..', '..', 'bin', 'playbook.mjs');
+  const runCli = args => new Promise(res => {
+    execFile(process.execPath, [bin, ...args], { env: { ...process.env, HOME: tmpdir(), USERPROFILE: tmpdir() } },
+      (err, stdout, stderr) => res({ code: err?.code ?? 0, out: stdout + stderr }));
+  });
 
-test('runner captures process output and cancellation kills child', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'qa-runner-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const store = await memoryStore(t);
-  const runner = new Runner(store, { runsDir: dir, docs: false, timeout: 5000 });
-  const run = { id: randomUUID(), status: 'running' }, state = { run, seq: 0, chain: Promise.resolve(), cancelled: false };
-  await store.put('runs', run);
-  runner.active = state;
-  await mkdir(join(dir, run.id)); await writeFile(join(dir, run.id, 'logs.txt'), '');
-  const logged = once(runner, 'log');
-  const command = runner.command(state, ['-e', 'console.log("ready");setInterval(()=>{},1000)']);
-  await logged; assert.equal(await runner.cancel(run.id), true); await command; await state.chain;
-  const result = await store.logsRaw(run.id, 0);
-  assert.match(result[0].text, /ready/); assert.equal(state.cancelled, true);
-});
+  const help = await runCli([]);
+  assert.equal(help.code, 0);
+  for (const c of ['login', 'run', 'upload', 'status']) assert.match(help.out, new RegExp(c));
 
-test('real Playwright executes generated TypeScript case and CommonJS fixture', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'qa-playwright-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const { url } = await serve(t, (req, res) => { res.setHeader('content-type', 'text/html'); res.end('<title>Local QA</title>'); });
-  const store = await memoryStore(t);
-  const runner = new Runner(store, { runsDir: dir, origins: [url], docs: false, timeout: 30000 });
-  const run = { id: randomUUID(), targetUrl: url, mode: 'pw', headed: false, status: 'queued' };
-  await store.put('runs', run);
-  await runner.start(run, [{ id: randomUUID(), code: "import {test,expect} from '@playwright/test'; test('generated fixture loads', async()=> { const n: number=2; expect(n).toBe(2); });" }]);
-  const result = await store.get('runs', run.id);
-  const allLogs = await store.logsRaw(run.id, 0);
-  assert.equal(result.status, 'passed', allLogs.map(x => x.text).join(''));
-  assert.equal(result.summary.passed, 1); assert.ok(result.artifacts.includes('playwright.json'));
-});
-
-test('SQLite data persists across connections and merges concurrent patches', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'qa-sqlite-'));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const file = join(dir, 'qa.db');
-  const first = new Store('sqlite:' + file); await first.init();
-  const suite = { id: randomUUID(), name: 'persistence', createdAt: new Date().toISOString() };
-  await first.put('suites', suite); await first.close();
-  const second = new Store('sqlite:' + file); await second.init(); t.after(() => second.close());
-  assert.deepEqual(await second.get('suites', suite.id), suite);
-  await Promise.all([second.patch('suites', suite.id, old => ({ ...old, name: 'renamed' })), second.patch('suites', suite.id, old => ({ ...old, description: 'concurrent edit' }))]);
-  const merged = await second.get('suites', suite.id);
-  assert.equal(merged.name, 'renamed'); assert.equal(merged.description, 'concurrent edit');
-  await second.delete('suites', suite.id);
-  assert.equal(await second.patch('suites', suite.id, old => ({ ...old, name: 'resurrected' })), undefined);
-  assert.equal(await second.get('suites', suite.id), undefined);
-});
-
-test('category CRUD and suite categoryId lifecycle', async t => {
-  const store = await memoryStore(t);
-  const { url } = await appFor(t, store);
-  const { cookie, csrf } = await makeSession(store);
-  const call = apiFetch(url, { cookie, csrf });
-  const cat = await (await call('/api/categories', 'POST', { name: 'Frontend', description: 'Web tests' })).json();
-  assert.ok(cat.id); assert.equal(cat.name, 'Frontend');
-  const cats = await (await call('/api/categories')).json();
-  assert.equal(cats.length, 1);
-  assert.equal((await (await call('/api/categories/' + cat.id)).json()).name, 'Frontend');
-  const updated = await (await call('/api/categories/' + cat.id, 'PATCH', { name: 'Frontend v2' })).json();
-  assert.equal(updated.name, 'Frontend v2');
-  const suite = await (await call('/api/suites', 'POST', { name: 'CatSuite', targetUrl: 'http://localhost', categoryId: cat.id })).json();
-  assert.equal(suite.categoryId, cat.id);
-  assert.equal((await call('/api/suites', 'POST', { name: 'Bad', targetUrl: 'http://localhost', categoryId: randomUUID() })).status, 400);
-  assert.equal((await call('/api/categories/' + cat.id, 'DELETE')).status, 204);
-  assert.equal((await fetch(url + '/api/categories', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Unauth' }) })).status, 401);
-});
-
-test('run pagination returns correct slices and X-Total-Count', async t => {
-  const store = await memoryStore(t);
-  const { url } = await appFor(t, store);
-  const { cookie, csrf } = await makeSession(store);
-  const call = apiFetch(url, { cookie, csrf });
-  for (let i = 0; i < 3; i++) await store.put('runs', { id: randomUUID(), status: 'passed', createdAt: new Date(Date.now() + i * 1000).toISOString() });
-  const r1 = await call('/api/runs?limit=1&offset=0');
-  const data1 = await r1.json();
-  assert.equal(data1.length, 1);
-  assert.equal(r1.headers.get('X-Total-Count'), '3');
-  const r2 = await call('/api/runs?limit=1&offset=1');
-  const data2 = await r2.json();
-  assert.equal(data2.length, 1);
-  assert.notEqual(data1[0].id, data2[0].id);
-  assert.equal((await call('/api/runs?limit=-1')).status, 400);
-  assert.equal((await call('/api/runs?offset=-1')).status, 400);
-  assert.equal((await call('/api/runs?offset=abc')).status, 400);
-});
-
-test('log limit and download endpoint', async t => {
-  const store = await memoryStore(t);
-  const run = { id: randomUUID(), status: 'passed', createdAt: new Date().toISOString() };
-  await store.put('runs', run);
-  for (let i = 1; i <= 10; i++) await store.log(run.id, { seq: i, text: 'line ' + i + '\n', stream: 'stdout', at: new Date().toISOString() });
-  const result = await store.logs(run.id, 0);
-  assert.equal(result.logs.length, 10);
-  assert.equal(result.hasMore, false);
-  const limited = await store.logs(run.id, 0, 3);
-  assert.equal(limited.logs.length, 3);
-  assert.equal(limited.hasMore, true);
-  assert.equal(limited.nextAfter, 3);
-  const text = await store.logsText(run.id);
-  assert.match(text, /line 1/);
-  assert.match(text, /line 10/);
-});
-
-test('category CRUD with real SQLite store', async t => {
-  const store = await memoryStore(t);
-  const cat = { id: randomUUID(), name: 'Backend', description: 'API tests', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  await store.put('categories', cat);
-  assert.deepEqual(await store.get('categories', cat.id), cat);
-  const suite = { id: randomUUID(), name: 'APISuite', categoryId: cat.id, createdAt: new Date().toISOString() };
-  await store.put('suites', suite);
-  assert.equal((await store.get('suites', suite.id)).categoryId, cat.id);
-  await store.deleteCategory(cat.id);
-  assert.equal(await store.get('categories', cat.id), undefined);
-  const updatedSuite = await store.get('suites', suite.id);
-  assert.equal(updatedSuite.categoryId, null);
-  assert.equal(updatedSuite.name, 'APISuite');
+  const whoami = await runCli(['whoami']);
+  assert.equal(whoami.code, 1);
+  assert.match(whoami.out, /Belum login/);
 });

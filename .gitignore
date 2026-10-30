@@ -18,6 +18,12 @@ web/out/
 web/*.tsbuildinfo
 data/
 .runs/
+.runs-*/
+.reports/
+.quick/
+.playbook-*
 .verification/
 .env.production
 
+
+docs/

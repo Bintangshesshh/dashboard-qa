@@ -1,7 +1,7 @@
 module.exports = {
   ci: {
     collect: {
-      numberOfRuns: 3,
+      numberOfRuns: 1,
       url: [
         "https://masterdiskon.com/id-id",
         "https://masterdiskon.com/id-id/login",

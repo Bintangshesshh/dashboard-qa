@@ -20,7 +20,7 @@ const upstream = req => {
 };
 const server = createServer((req, res) => {
   const path = req.url.split('?')[0];
-  if (!['/api', '/reports'].some(prefix => path === prefix || path.startsWith(prefix + '/'))) return handle(req, res);
+  if (!['/api', '/artifacts'].some(prefix => path === prefix || path.startsWith(prefix + '/'))) return handle(req, res);
   const proxy = upstream(req);
   proxy.on('response', response => {
     res.writeHead(response.statusCode, response.headers);
