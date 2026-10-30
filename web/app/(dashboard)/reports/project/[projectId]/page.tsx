@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, fmtDate, reportUrl, type Project, type Session } from "../../../../../lib/playbook";
+import { ArtifactLink } from "../../../../_components/report-link";
 
 export default function ProjectReports() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -52,8 +53,6 @@ export default function ProjectReports() {
 
   return (
     <>
-      <Link className="pb-crumb" href="/reports">← Kembali ke Reports</Link>
-
       {projectError && <div className="pb-err">{projectError}</div>}
 
       <div className="pb-head">
@@ -99,9 +98,12 @@ export default function ProjectReports() {
                       : s.reports!.map(rep => {
                         const canOpen = rep.status === "ready" || (rep.status === "stale" && !!rep.path);
                         const title = [rep.scope, rep.status, rep.mode ?? "-", fmtDate(rep.built_at)].join(" | ");
+                        // ArtifactLink mengecek file dulu: report yang sudah dibuang
+                        // retensi tampil sebagai teks, bukan tombol ke {"error":"Not found"}.
                         return canOpen
-                          ? <a key={rep.id} className="pb-btn sm" href={reportUrl(rep.id)} target="_blank" rel="noreferrer"
-                              title={title} style={{ marginRight: 6 }}>{rep.scope}</a>
+                          ? <span key={rep.id} style={{ marginRight: 6 }} title={title}>
+                              <ArtifactLink href={reportUrl(rep.id)} missing={`${rep.scope} report hilang`}>{rep.scope}</ArtifactLink>
+                            </span>
                           : <span key={rep.id} className="pb-muted mono" title={title}
                               style={{ marginRight: 6, fontSize: 11 }}>{rep.scope} {rep.status}</span>;
                       })}

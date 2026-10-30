@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -8,8 +7,14 @@ import {
   type LighthouseResult, type PlaywrightResult, type Report, type Run, type Session,
 } from "../../../../lib/playbook";
 import { RunTerminal } from "../../run-terminal";
+import { ArtifactLink, LoginAgain, useProbe } from "../../../_components/report-link";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
+
+// Backend membalas {"error":"Not found"} untuk sesi yang sudah dihapus / kena
+// retensi. Bukan pesan untuk user, jadi diterjemahkan di sini.
+const friendly = (msg: string) =>
+  /not ?found/i.test(msg) ? "Sesi tidak ditemukan - mungkin sudah dihapus atau kena retensi." : msg;
 
 // stale tanpa path = folder report sudah dibuang retensi, jangan tawarkan Buka.
 const canPublish = (rep: Report) => rep.status !== "queued" && rep.status !== "building";
@@ -46,7 +51,7 @@ export default function SessionDetail() {
   }, []);
 
   const load = useCallback(() => {
-    api.session(sessionId).then(setSession).catch(e => setError(e.message));
+    api.session(sessionId).then(setSession).catch(e => setError(friendly(e.message)));
   }, [sessionId]);
 
   useEffect(() => { load(); }, [load]);
@@ -119,12 +124,9 @@ export default function SessionDetail() {
   const active = runs.filter(r => !FINAL.includes(r.status)).length;
   const durations = runs.map(r => r.duration_ms).filter((v): v is number => v != null);
   const avgDur = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
-  const back = session.project_id ? `/reports/project/${session.project_id}` : "/reports";
 
   return (
     <>
-      <Link className="pb-crumb" href={back}>← Kembali ke project</Link>
-
       <div className="pb-sess-head">
         <div className="pb-sess-title">
           <div className="eyebrow">Sesi</div>
@@ -254,10 +256,12 @@ export default function SessionDetail() {
                     )}
                     <div className="pb-repcard-act">
                       {canOpen
-                        ? <a className="pb-btn sm primary" href={reportUrl(rep.id)} target="_blank" rel="noreferrer">Buka</a>
+                        ? <ArtifactLink className="pb-btn sm primary" href={reportUrl(rep.id)}
+                            missing="report hilang - build ulang">Buka</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>{publishNote(rep)}</span>}
                       {rep.status === "ready" && (
-                        <a className="pb-btn sm" href={reportUrl(rep.id, "report.md")} target="_blank" rel="noreferrer">Markdown</a>
+                        <ArtifactLink href={reportUrl(rep.id, "report.md")}
+                          missing="markdown tidak ada">Markdown</ArtifactLink>
                       )}
                       <button className="pb-btn sm" onClick={() => publish(rep.scope)}
                         disabled={busy === rep.scope || !canPublish(rep)}>
@@ -324,7 +328,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
                 <td className="mono">{r.budget_failed ?? "-"}</td>
                 <td style={{ textAlign: "right" }}>
                   {r.report_path
-                    ? <a className="pb-btn sm" href={artifactUrl(run.id, r.report_path)} target="_blank" rel="noreferrer">Report</a>
+                    ? <ArtifactLink href={artifactUrl(run.id, r.report_path)}>Report</ArtifactLink>
                     : <span className="pb-muted">-</span>}
                 </td>
               </tr>
@@ -356,35 +360,24 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
 // supaya tidak ada iframe kosong yang bikin dashboard terlihat rusak.
 function ReportFrame({ runId, path, jsonPath }: { runId: string; path: string; jsonPath?: string }) {
   const url = artifactUrl(runId, path);
-  const [state, setState] = useState<"checking" | "ok" | "auth" | "missing">("checking");
-
-  useEffect(() => {
-    let live = true;
-    setState("checking");
-    // Backend mati tidak boleh menggantung panel sampai proxy timeout 30 s.
-    fetch(url, { method: "HEAD", credentials: "include", signal: AbortSignal.timeout(5000) })
-      .then(r => { if (live) setState(r.ok ? "ok" : r.status === 401 ? "auth" : "missing"); })
-      .catch(() => { if (live) setState("missing"); });
-    return () => { live = false; };
-  }, [url]);
+  const state = useProbe(url);
 
   if (state === "checking") return <div className="pb-skel" style={{ height: 200, marginTop: 14 }} />;
-  if (state === "auth") {
-    const next = typeof window === "undefined" ? "" : location.pathname + location.search;
+  if (state !== "ok") {
     return (
       <p className="pb-muted" style={{ marginTop: 14, fontSize: 12 }}>
-        Sesi login habis.{" "}
-        <a className="pb-btn sm" href={"/login?next=" + encodeURIComponent(next)}>Login ulang</a>
+        {state === "auth"
+          ? <LoginAgain />
+          : "report mentah hilang - artifact sudah dibuang retensi atau belum selesai di-upload"}
       </p>
     );
   }
-  if (state === "missing") return <p className="pb-muted" style={{ marginTop: 14, fontSize: 12 }}>report tidak tersedia</p>;
 
   return (
     <div style={{ marginTop: 14 }}>
       <div className="pb-row" style={{ marginBottom: 8 }}>
         <a className="pb-btn sm" href={url} target="_blank" rel="noreferrer">Buka tab baru</a>
-        {jsonPath && <a className="pb-btn sm" href={artifactUrl(runId, jsonPath)} target="_blank" rel="noreferrer">JSON mentah</a>}
+        {jsonPath && <ArtifactLink href={artifactUrl(runId, jsonPath)}>JSON mentah</ArtifactLink>}
       </div>
       <iframe title="report mentah" src={url}
         style={{ width: "100%", height: 520, border: "1px solid var(--line)", borderRadius: 10, background: "#fff" }} />

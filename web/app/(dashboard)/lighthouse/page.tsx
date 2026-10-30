@@ -4,6 +4,7 @@
 // → test_files.config. Config lhci digenerate saat run, bukan disimpan di repo.
 // Layout menumpuk: Project → Config → Terminal → Run → Hasil.
 import Link from "next/link";
+import { ArtifactLink } from "../../_components/report-link";
 import { useEffect, useRef, useState } from "react";
 import {
   api, artifactUrl, fmtDate, fmtDur, pct,
@@ -265,7 +266,7 @@ export default function LighthousePage() {
                     <td className="mono">{r.budget_failed ?? "-"}</td>
                     <td style={{ textAlign: "right" }}>
                       {r.report_path
-                        ? <a className="pb-btn sm" href={artifactUrl(r.run_id, r.report_path)} target="_blank" rel="noreferrer">Buka report</a>
+                        ? <ArtifactLink href={artifactUrl(r.run_id, r.report_path)}>Buka report</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>-</span>}
                     </td>
                   </tr>

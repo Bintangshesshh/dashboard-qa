@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArtifactLink } from "../../_components/report-link";
 import { useEffect, useRef, useState } from "react";
 import {
   api, artifactUrl, fmtDate, fmtDur,
@@ -267,12 +268,10 @@ export default function PlaywrightPage() {
           </div>
           <div className="pb-row">
             {run.artifacts?.some(a => a.path === "playwright-report/index.html") ? (
-              <a className="pb-btn sm" href={artifactUrl(run.id, "playwright-report/index.html")}
-                target="_blank" rel="noreferrer">Buka report (tab baru)</a>
+              <ArtifactLink href={artifactUrl(run.id, "playwright-report/index.html")}>Buka report (tab baru)</ArtifactLink>
             ) : <span className="pb-muted" style={{ fontSize: 12 }}>report HTML tidak ada</span>}
             {run.artifacts?.some(a => a.path === "report.json") && (
-              <a className="pb-btn sm" href={artifactUrl(run.id, "report.json")}
-                target="_blank" rel="noreferrer">JSON</a>
+              <ArtifactLink href={artifactUrl(run.id, "report.json")} missing="JSON hilang">JSON</ArtifactLink>
             )}
             <Link className="pb-btn sm" href={`/reports/${run.session_id}`}>Detail sesi</Link>
           </div>
