@@ -11,12 +11,16 @@ const docs = join(root, 'docusaurus', 'docs');
 const artefak = join(root, 'docusaurus', 'static', 'artefak');
 const laporanDir = join(root, 'docusaurus', 'static', 'laporan');
 const waktu = data.generatedAt?.replace('T', ' ').slice(0, 16) ?? '?';
-const cap = '> Dihasilkan otomatis dari latest.json. Jangan edit manual — jalankan `npm run lapor`.';
-const esc = (s) => String(s ?? '—').replace(/\|/g, '\\|').replace(/\n/g, ' ');
-const num = (n) => (typeof n === 'number' ? n.toLocaleString('id-ID') : '—');
-const kb = (b) => (typeof b === 'number' ? `${Math.round(b / 1024).toLocaleString('id-ID')} KiB` : '—');
-const ms = (n) => (typeof n === 'number' ? `${num(Math.round(n))} ms` : '—');
-const pct = (s) => (typeof s === 'number' ? Math.round(s * 100) : '—');
+const cap = '> Dihasilkan otomatis dari latest.json. Jangan edit manual - jalankan `npm run lapor`.';
+const mdUrl = (v) => {
+  const u = String(v).replace(/\|/g, '%7C').replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/[<>]/g, '');
+  return `[${u}](${u})`;
+};
+const esc = (s) => String(s ?? '-').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+const num = (n) => (typeof n === 'number' ? n.toLocaleString('id-ID') : '-');
+const kb = (b) => (typeof b === 'number' ? `${Math.round(b / 1024).toLocaleString('id-ID')} KiB` : '-');
+const ms = (n) => (typeof n === 'number' ? `${num(Math.round(n))} ms` : '-');
+const pct = (s) => (typeof s === 'number' ? Math.round(s * 100) : '-');
 const detik = (n) => `${((n ?? 0) / 1000).toFixed(1)} s`;
 const label = {passed: 'PASS', failed: 'FAIL', timedOut: 'TIMEOUT', interrupted: 'STOP', skipped: 'SKIP'};
 
@@ -42,7 +46,7 @@ const selDetail = (headings, items) => {
       if (v && typeof v === 'object' && v.type === 'node') return sel(v);
       if (h.valueType === 'bytes') return kb(v);
       if (h.valueType === 'ms' || h.valueType === 'timespanMs') return ms(v);
-      if (h.valueType === 'url') return v ? `<${esc(v)}>` : '—';
+      if (h.valueType === 'url') return v ? mdUrl(v) : '-';
       return esc(v);
     }),
   );
@@ -58,7 +62,7 @@ const renderDetail = (d) => {
   if (d.headings?.length && d.items?.length) {
     const t = selDetail(d.headings, d.items);
     const sub = (d.items ?? [])
-      .flatMap((it) => (it?.subItems ?? []).filter((s) => s?.url).map((s) => `- \`${esc(s.url)}\` — ${ms(s.blockingTime ?? s.wastedMs)}`))
+      .flatMap((it) => (it?.subItems ?? []).filter((s) => s?.url).map((s) => `- \`${esc(s.url)}\` - ${ms(s.blockingTime ?? s.wastedMs)}`))
       .join('\n');
     return [t, sub].filter(Boolean).join('\n\n');
   }
@@ -67,15 +71,26 @@ const renderDetail = (d) => {
 
 // ---------- Lighthouse ----------
 const lh = data.lighthouse;
-let lhMd = `${cap}\n\n# Log Lighthouse\n\nDigenerate ${waktu} UTC. Skor 0–100; angka kecil = buruk.`;
+let lhMd = [
+  '---',
+  'title: "Log Lighthouse"',
+  'sidebar_position: 3',
+  '---',
+  '',
+  '# Log Lighthouse',
+  '',
+  cap,
+  '',
+  `Digenerate ${waktu} UTC. Skor 0-100; angka kecil = buruk.`,
+].join('\n');
 
 if (!lh) {
   lhMd += '\n\nBelum ada hasil Lighthouse. Jalankan `npm run cek:lh`.\n';
 } else {
   for (const [id, t] of Object.entries(lh.targets)) {
     const meta = t.target ?? {};
-    lhMd += `\n\n## ${id} — ${meta.site ?? id}\n\n${meta.dist ?? ''}\n`;
-    lhMd += `\n${t.errors} error, ${t.warnings} warning, ${t.urls.length} URL diukur${t.stale ? ' — **data lama**' : ''}.\n`;
+    lhMd += `\n\n## ${id} - ${meta.site ?? id}\n\n${meta.dist ?? ''}\n`;
+    lhMd += `\n${t.errors} error, ${t.warnings} warning, ${t.urls.length} URL diukur${t.stale ? ' - **data lama**' : ''}.\n`;
 
     for (const u of t.urls) {
       const s = u.scores ?? {};
@@ -101,7 +116,7 @@ if (!lh) {
       for (const x of (u.issues ?? []).slice(0, 5)) {
         const d = renderDetail(x.details);
         if (!d) continue;
-        lhMd += `\n\n#### \`${x.id}\` — ${esc(x.title)}\n\n`;
+        lhMd += `\n\n#### \`${x.id}\` - ${esc(x.title)}\n\n`;
         if (x.description) lhMd += `${esc(x.description)}\n\n`;
         lhMd += d;
       }
@@ -127,17 +142,28 @@ if (!lh) {
 
 // ---------- Playwright ----------
 const pw = data.playwright;
-let pwMd = `${cap}\n\n# Log Playwright\n\nDigenerate ${waktu} UTC.`;
+let pwMd = [
+  '---',
+  'title: "Log Playwright"',
+  'sidebar_position: 4',
+  '---',
+  '',
+  '# Log Playwright',
+  '',
+  cap,
+  '',
+  `Digenerate ${waktu} UTC.`,
+].join('\n');
 
 if (!pw) {
   pwMd += '\n\nBelum ada hasil Playwright. Jalankan `npm run cek:pw`.\n';
 } else {
-  pwMd += `\n\n${pw.passed} pass, ${pw.failed} gagal, ${pw.skipped} skip — total ${detik(pw.ms)}${pw.stale ? ' — **data lama**' : ''}.\n`;
+  pwMd += `\n\n${pw.passed} pass, ${pw.failed} gagal, ${pw.skipped} skip - total ${detik(pw.ms)}${pw.stale ? ' - **data lama**' : ''}.\n`;
   pwMd += `\n${tabel(['Situs', 'Host', 'Akun', 'Lulus'], (pw.targets ?? []).map((g) => [g.site, g.host, g.akun ? 'ya' : 'tidak', `${g.passed}/${g.total}`]))}\n`;
 
   for (const t of pw.tests ?? []) {
     const st = label[t.status] ?? t.status;
-    pwMd += `\n## ${esc(t.title)} — ${st}\n\n`;
+    pwMd += `\n## ${esc(t.title)} - ${st}\n\n`;
     pwMd += `\`${t.file}\` · ${esc(t.site)} · ${detik(t.ms)}\n`;
 
     if (t.steps?.length) {

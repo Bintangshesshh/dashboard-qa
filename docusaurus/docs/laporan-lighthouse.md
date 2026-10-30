@@ -1,10 +1,15 @@
-> Dihasilkan otomatis dari latest.json. Jangan edit manual — jalankan `npm run lapor`.
+---
+title: "Log Lighthouse"
+sidebar_position: 3
+---
 
 # Log Lighthouse
 
-Digenerate 2026-10-19 03:35 UTC. Skor 0–100; angka kecil = buruk.
+> Dihasilkan otomatis dari latest.json. Jangan edit manual - jalankan `npm run lapor`.
 
-## ebh — Eureka Book House
+Digenerate 2026-10-19 03:35 UTC. Skor 0-100; angka kecil = buruk.
+
+## ebh - Eureka Book House
 
 live (https://eurekabookhouse.com)
 
@@ -43,7 +48,7 @@ live (https://eurekabookhouse.com)
 | 11 | `cumulative-layout-shift` | performance | 0.123 | 4.25 |
 | 12 | `errors-in-console` | best-practices | Browser errors were logged to the console | 1.00 |
 
-#### `button-name` — Buttons do not have an accessible name
+#### `button-name` - Buttons do not have an accessible name
 
 When a button doesn't have an accessible name, screen readers announce it as "button", making it unusable for users who rely on screen readers. [Learn how to make buttons more accessible](https://dequeuniversity.com/rules/axe/4.10/button-name).
 
@@ -53,7 +58,7 @@ When a button doesn't have an accessible name, screen readers announce it as "bu
 | `nav.fixed > div.flex > div.flex > button.relative` |
 | `nav.fixed > div.flex > div.flex > button.p-1.5` |
 
-#### `color-contrast` — Background and foreground colors do not have a sufficient contrast ratio.
+#### `color-contrast` - Background and foreground colors do not have a sufficient contrast ratio.
 
 Low-contrast text is difficult or impossible for many users to read. [Learn how to provide sufficient color contrast](https://dequeuniversity.com/rules/axe/4.10/color-contrast).
 
@@ -97,7 +102,7 @@ Low-contrast text is difficult or impossible for many users to read. [Learn how 
 | 11 | `bootup-time` | performance | 2.5 s | 0.00 |
 | 12 | `third-party-summary` | performance | Third-party code blocked the main thread for 480 ms | 0.00 |
 
-#### `button-name` — Buttons do not have an accessible name
+#### `button-name` - Buttons do not have an accessible name
 
 When a button doesn't have an accessible name, screen readers announce it as "button", making it unusable for users who rely on screen readers. [Learn how to make buttons more accessible](https://dequeuniversity.com/rules/axe/4.10/button-name).
 
@@ -105,7 +110,7 @@ When a button doesn't have an accessible name, screen readers announce it as "bu
 |---|
 | `form.jsx-8a28abbff1cdd693 > div.jsx-8a28abbff1cdd693 > div.jsx-8a28abbff1cdd693 > button.jsx-8a28abbff1cdd693` |
 
-#### `color-contrast` — Background and foreground colors do not have a sufficient contrast ratio.
+#### `color-contrast` - Background and foreground colors do not have a sufficient contrast ratio.
 
 Low-contrast text is difficult or impossible for many users to read. [Learn how to provide sufficient color contrast](https://dequeuniversity.com/rules/axe/4.10/color-contrast).
 
@@ -115,7 +120,7 @@ Low-contrast text is difficult or impossible for many users to read. [Learn how 
 | `div.bg-white > form.jsx-8a28abbff1cdd693 > div.jsx-8a28abbff1cdd693 > span.jsx-8a28abbff1cdd693` |
 | `form.jsx-8a28abbff1cdd693 > div.jsx-8a28abbff1cdd693 > p.jsx-8a28abbff1cdd693 > button.jsx-8a28abbff1cdd693` |
 
-#### `target-size` — Touch targets do not have sufficient size or spacing.
+#### `target-size` - Touch targets do not have sufficient size or spacing.
 
 Touch targets with sufficient size and spacing help users who may have difficulty targeting small controls to activate the targets. [Learn more about touch targets](https://dequeuniversity.com/rules/axe/4.10/target-size).
 
@@ -132,7 +137,7 @@ Touch targets with sufficient size and spacing help users who may have difficult
 | warn | `categories` | `/` | 0.6 | 0.49 | >= |
 
 
-## jaja — Jaja.id
+## jaja - Jaja.id
 
 live (https://jaja.id)
 
@@ -171,7 +176,7 @@ live (https://jaja.id)
 | 11 | `font-size` | best-practices | 8% legible text | 1.00 |
 | 12 | `robots-txt` | seo | robots.txt is not valid | 1.00 |
 
-#### `button-name` — Buttons do not have an accessible name
+#### `button-name` - Buttons do not have an accessible name
 
 When a button doesn't have an accessible name, screen readers announce it as "button", making it unusable for users who rely on screen readers. [Learn how to make buttons more accessible](https://dequeuniversity.com/rules/axe/4.10/button-name).
 
@@ -215,7 +220,7 @@ When a button doesn't have an accessible name, screen readers announce it as "bu
 | 11 | `uses-rel-preconnect` | performance | Est savings of 310 ms | 0.00 |
 | 12 | `third-party-summary` | performance | Third-party code blocked the main thread for 890 ms | 0.00 |
 
-#### `button-name` — Buttons do not have an accessible name
+#### `button-name` - Buttons do not have an accessible name
 
 When a button doesn't have an accessible name, screen readers announce it as "button", making it unusable for users who rely on screen readers. [Learn how to make buttons more accessible](https://dequeuniversity.com/rules/axe/4.10/button-name).
 
@@ -224,7 +229,7 @@ When a button doesn't have an accessible name, screen readers announce it as "bu
 | `form.space-y-4 > div > div.relative > button.absolute` |
 | `form.space-y-2.5 > div > div.relative > button.absolute` |
 
-#### `color-contrast` — Background and foreground colors do not have a sufficient contrast ratio.
+#### `color-contrast` - Background and foreground colors do not have a sufficient contrast ratio.
 
 Low-contrast text is difficult or impossible for many users to read. [Learn how to provide sufficient color contrast](https://dequeuniversity.com/rules/axe/4.10/color-contrast).
 
@@ -234,7 +239,7 @@ Low-contrast text is difficult or impossible for many users to read. [Learn how 
 | `div.relative > div.w-full > form.space-y-4 > button.w-full` |
 | `div.relative > div.w-full > p.text-center > button.text-[#FBB338]` |
 
-#### `target-size` — Touch targets do not have sufficient size or spacing.
+#### `target-size` - Touch targets do not have sufficient size or spacing.
 
 Touch targets with sufficient size and spacing help users who may have difficulty targeting small controls to activate the targets. [Learn more about touch targets](https://dequeuniversity.com/rules/axe/4.10/target-size).
 
@@ -251,7 +256,7 @@ Touch targets with sufficient size and spacing help users who may have difficult
 | warn | `categories` | `/` | 0.6 | 0.11 | >= |
 
 
-## masdis — Masterdiskon
+## masdis - Masterdiskon
 
 live (https://masterdiskon.com)
 
@@ -290,7 +295,7 @@ live (https://masterdiskon.com)
 | 11 | `geolocation-on-start` | best-practices | Requests the geolocation permission on page load | 1.00 |
 | 12 | `max-potential-fid` | performance | 210 ms | 0.00 |
 
-#### `color-contrast` — Background and foreground colors do not have a sufficient contrast ratio.
+#### `color-contrast` - Background and foreground colors do not have a sufficient contrast ratio.
 
 Low-contrast text is difficult or impossible for many users to read. [Learn how to provide sufficient color contrast](https://dequeuniversity.com/rules/axe/4.10/color-contrast).
 
@@ -300,7 +305,7 @@ Low-contrast text is difficult or impossible for many users to read. [Learn how 
 | `div.HomePageDummy__MobileHomepageShell-sc-a875b2ab-1 > section.HomePageDummy__HeroSection-sc-a875b2ab-2 > div.HomePageDummy__HeroCopy-sc-a875b2ab-7 > h1` |
 | `div.HomePageDummy__MobileHomepageShell-sc-a875b2ab-1 > section.HomePageDummy__HeroSection-sc-a875b2ab-2 > div.HomePageDummy__HeroCopy-sc-a875b2ab-7 > p` |
 
-#### `link-name` — Links do not have a discernible name
+#### `link-name` - Links do not have a discernible name
 
 Link text (and alternate text for images, when used as links) that is discernible, unique, and focusable improves the navigation experience for screen reader users. [Learn how to make links accessible](https://dequeuniversity.com/rules/axe/4.10/link-name).
 
@@ -343,7 +348,7 @@ Link text (and alternate text for images, when used as links) that is discernibl
 | 11 | `max-potential-fid` | performance | 160 ms | 0.00 |
 | 12 | `interactive` | performance | 9.7 s | 0.00 |
 
-#### `color-contrast` — Background and foreground colors do not have a sufficient contrast ratio.
+#### `color-contrast` - Background and foreground colors do not have a sufficient contrast ratio.
 
 Low-contrast text is difficult or impossible for many users to read. [Learn how to provide sufficient color contrast](https://dequeuniversity.com/rules/axe/4.10/color-contrast).
 
@@ -353,7 +358,7 @@ Low-contrast text is difficult or impossible for many users to read. [Learn how 
 | `section.auth-shell__panel > div.auth-shell__card > form.auth-form > div.auth-form__divider` |
 | `section.auth-shell__panel > div.auth-shell__card > form.auth-form > p.auth-form__recaptcha` |
 
-#### `link-in-text-block` — Links rely on color to be distinguishable.
+#### `link-in-text-block` - Links rely on color to be distinguishable.
 
 Low-contrast text is difficult or impossible for many users to read. Link text that is discernible improves the experience for users with low vision. [Learn how to make links distinguishable](https://dequeuniversity.com/rules/axe/4.10/link-in-text-block).
 
@@ -362,14 +367,14 @@ Low-contrast text is difficult or impossible for many users to read. Link text t
 | `div.auth-shell__card > form.auth-form > p.auth-form__recaptcha > a` |
 | `div.auth-shell__card > form.auth-form > p.auth-form__recaptcha > a` |
 
-#### `third-party-cookies` — Uses third-party cookies
+#### `third-party-cookies` - Uses third-party cookies
 
 Third-party cookies may be blocked in some contexts. [Learn more about preparing for third-party cookie restrictions](https://privacysandbox.google.com/cookies/prepare/overview).
 
 | Name | URL |
 |---|---|
-| __cf_bm | <https://images.pexels.com/photos/1266831/pexels-photo-1266831.jpeg?auto=compress&cs=tinysrgb&w=800> |
-| _cfuvid | <https://images.pexels.com/photos/1266831/pexels-photo-1266831.jpeg?auto=compress&cs=tinysrgb&w=800> |
+| __cf_bm | [https://images.pexels.com/photos/1266831/pexels-photo-1266831.jpeg?auto=compress&cs=tinysrgb&w=800](https://images.pexels.com/photos/1266831/pexels-photo-1266831.jpeg?auto=compress&cs=tinysrgb&w=800) |
+| _cfuvid | [https://images.pexels.com/photos/1266831/pexels-photo-1266831.jpeg?auto=compress&cs=tinysrgb&w=800](https://images.pexels.com/photos/1266831/pexels-photo-1266831.jpeg?auto=compress&cs=tinysrgb&w=800) |
 
 [Laporan mentah](/laporan/masterdiskon_com-id_id_login-2026_10_16_08_48_36.report.json)
 
