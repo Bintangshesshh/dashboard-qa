@@ -25,5 +25,5 @@ data/
 .verification/
 .env.production
 
-
+/handbook/
 docs/
