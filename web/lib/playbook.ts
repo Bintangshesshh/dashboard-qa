@@ -193,9 +193,10 @@ export const api = {
   deleteRun: (id: string) => request<null>(`/api/runs/${id}`, { method: "DELETE" }),
 
   // PRD §10.2/A43: satu klik → smoke Playwright + Lighthouse budget default.
-  quickCheck: (projectId: string, env: string, confirm?: string) =>
+  // files="project" memakai spec/lhci milik project, bukan smoke generik.
+  quickCheck: (projectId: string, env: string, confirm?: string, files?: "project") =>
     request<{ sessionId: string; runIds: string[] }>("/api/quick-check", {
-      method: "POST", body: JSON.stringify({ projectId, env, confirm }),
+      method: "POST", body: JSON.stringify({ projectId, env, confirm, files }),
     }),
 
   createRun: (sessionId: string, testFileId: string) =>

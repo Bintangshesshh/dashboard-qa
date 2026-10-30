@@ -16,7 +16,7 @@
     "cek:lh:masdis": "node scripts/cek.mjs lh --target=masdis",
     "gabung": "node scripts/gabung.mjs",
     "lapor": "node scripts/gabung.mjs --ringkas && node scripts/doc.mjs",
-    "evaluasi": "node scripts/report-markdown.mjs",
+    "evaluasi": "node --experimental-sqlite --env-file=.env scripts/report-markdown.mjs",
     "test": "npm test --prefix server",
     "test:reports": "node scripts/test-run-docs.mjs",
     "test:md": "node scripts/test-report-md.mjs",

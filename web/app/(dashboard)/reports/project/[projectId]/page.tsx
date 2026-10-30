@@ -32,8 +32,9 @@ export default function ProjectReports() {
   const quickCheck = async () => {
     if (!project) return;
     setBusy(true); setError(""); setNotice("");
-    // Env dipilih dari URL yang tersedia; production wajib dikonfirmasi user.
-    const env = project.staging_url ? "staging" : project.local_url ? "local" : "production";
+    // Urutan env: staging, lalu production (situs asli, wajib konfirmasi user),
+    // lalu local. local_url bukan default karena biasanya menunjuk dev server dashboard.
+    const env = project.staging_url ? "staging" : project.base_url ? "production" : "local";
     let confirm: string | undefined;
     if (env === "production") {
       const typed = window.prompt(`Ketik nama project (${project.name}) untuk konfirmasi production:`);
@@ -41,7 +42,7 @@ export default function ProjectReports() {
       confirm = typed;
     }
     try {
-      const r = await api.quickCheck(projectId, env, confirm);
+      const r = await api.quickCheck(projectId, env, confirm, "project");
       setNotice(`Quick check jalan (${r.runIds.length} run).`);
       load();
     } catch (e) {

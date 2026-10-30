@@ -132,3 +132,22 @@ export function renderReportMarkdown({ session, project, report, runs, position,
   out.push(`Dibangun ${date(new Date().toISOString())} · cakupan ${cell(report.scope)} · ${runs.length} run · run_ids: ${report.run_ids ?? '[]'}`);
   return out.join('\n');
 }
+
+// Muat satu report dari DB lalu render. Dipakai server untuk report lama yang
+// foldernya belum punya report.md.
+export function reportMarkdownFor(store, reportId) {
+  const report = store.getReport(reportId);
+  if (!report) return null;
+  const session = store.getSession(report.session_id);
+  const project = session ? store.getProject(session.project_id) : null;
+  const runs = [];
+  for (const runId of JSON.parse(report.run_ids ?? '[]')) {
+    const run = store.getRun(runId);
+    if (!run) continue;
+    runs.push({
+      run: { ...run, artifacts: store.listArtifacts(run.id) },
+      results: run.tool === 'pw' ? store.listPlaywrightResults(run.id) : store.listLighthouseResults(run.id),
+    });
+  }
+  return renderReportMarkdown({ session, project, report, runs });
+}

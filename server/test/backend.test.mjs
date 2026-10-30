@@ -283,6 +283,15 @@ test('quick-check: 400 tanpa projectId/env, 202 dengan 2 run, production dibloki
   assert.equal(runs.every(x => x.test_file_id === null), true, 'quick check tidak memakai test_files');
   await new Promise(res => setImmediate(res));
   assert.deepEqual(started.map(s => s.tool), ['pw', 'lh']);
+
+  // Opt-in: files='project' memakai spec/lhci milik project (alur departemen).
+  f.store.createTestFile({ id: 'tf-pw', projectId: 'p1', tool: 'pw', path: 'specs/cart.spec.ts', label: 'Cart', code: 'x' });
+  f.store.createTestFile({ id: 'tf-lh', projectId: 'p1', tool: 'lh', path: 'lighthouserc.js', label: 'LH', code: 'x' });
+  f.store.closeSession(r.body.sessionId);
+  r = await f.call('/api/quick-check', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local', files: 'project' } });
+  assert.equal(r.status, 202);
+  const chosen = f.store.listRunsBySession(r.body.sessionId);
+  assert.deepEqual(chosen.map(x => x.test_file_id).sort(), ['tf-lh', 'tf-pw']);
 });
 
 test('CLI token: dibuat, terdaftar tanpa nilai plain, lalu dicabut', async t => {

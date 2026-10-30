@@ -10,6 +10,7 @@ import { Store } from './store.mjs';
 import { Runner } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
 import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check.mjs';
+import { reportMarkdownFor } from '../scripts/report-md.mjs';
 import { runRetention } from './retention.mjs';
 import { specPath, readSpec, writeSpec } from './spec-sync.mjs';
 import { backupDatabase } from './backup.mjs';
@@ -376,19 +377,27 @@ export function createApp({ store, runner, token, origins }) {
     }
 
     await ensureQuickFiles();
+    // Default tetap smoke generik (PRD A43: tanpa test_files). Opt-in
+    // files='project' memakai spec/lhci milik project, supaya yang diuji alur
+    // departemennya (cart, login), bukan cuma status HTTP halaman depan.
+    const useProject = req.body?.files === 'project';
+    const projectFile = tool => (useProject ? store.listTestFiles({ projectId: project.id, tool })[0] ?? null : null);
+    const pwTest = projectFile('pw');
+    const lhTest = projectFile('lh');
+
     const pwRun = randomUUID();
     const lhRun = randomUUID();
-    store.createRun({ id: pwRun, sessionId: session.id, testFileId: null, tool: 'pw' });
-    store.createRun({ id: lhRun, sessionId: session.id, testFileId: null, tool: 'lh' });
+    store.createRun({ id: pwRun, sessionId: session.id, testFileId: pwTest?.id ?? null, tool: 'pw' });
+    store.createRun({ id: lhRun, sessionId: session.id, testFileId: lhTest?.id ?? null, tool: 'lh' });
     traceProduction(pwRun, e, req.user);
     traceProduction(lhRun, e, req.user);
 
-    const pwFile = {
+    const pwFile = pwTest ?? {
       id: null, tool: 'pw', path: 'quick.spec.ts',
       label: 'Quick check smoke', config: JSON.stringify({ configPath: pwConfig }),
     };
-    const lhConfig = await writeLighthouseConfig(join(runner.runsDir, lhRun), targetUrl);
-    const lhFile = { id: null, tool: 'lh', path: lhConfig, label: 'Quick check Lighthouse' };
+    const lhFile = lhTest
+      ?? { id: null, tool: 'lh', path: await writeLighthouseConfig(join(runner.runsDir, lhRun), targetUrl), label: 'Quick check Lighthouse' };
 
     // Runner hanya menjalankan satu proses sekaligus → antre berurutan.
     runner.start(pwRun, pwFile, session.id, targetUrl)
@@ -685,10 +694,23 @@ export function createApp({ store, runner, token, origins }) {
     const rel = req.params[0];
     if (rel.includes('..')) fail('Invalid path', 400);
     const base = join(reportsDir, report.id);
-    const file = await realpath(join(base, rel));
-    if (!file.startsWith(await realpath(base))) fail('Invalid path', 400);
-    const stat = await lstat(file);
-    if (!stat.isFile()) fail('Not found', 404);
+    // Report lama tidak punya report.md; susun dari DB supaya tautan tidak 404.
+    if (rel === 'report.md') {
+      const cached = await realpath(join(base, rel)).catch(() => null);
+      if (!cached) {
+        const markdown = reportMarkdownFor(store, report.id);
+        if (!markdown) fail('Not found', 404);
+        res.type('text/markdown; charset=utf-8');
+        res.setHeader('X-Robots-Tag', 'noindex');
+        res.send(markdown);
+        return;
+      }
+    }
+    // realpath melempar ENOENT kalau file belum ada (mis. report lama tanpa report.md).
+    const file = await realpath(join(base, rel)).catch(() => null);
+    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Not found', 404);
+    const stat = await lstat(file).catch(() => null);
+    if (!stat?.isFile()) fail('Not found', 404);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
@@ -703,10 +725,10 @@ export function createApp({ store, runner, token, origins }) {
     const rel = req.params[0];
     if (rel.includes('..')) fail('Invalid path', 400);
     const base = join(runsDir, runId, 'artifacts');
-    const file = await realpath(join(base, rel));
-    if (!file.startsWith(await realpath(base))) fail('Invalid path', 400);
-    const stat = await lstat(file);
-    if (!stat.isFile()) fail('Not found', 404);
+    const file = await realpath(join(base, rel)).catch(() => null);
+    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Path tidak ada', 404);
+    const stat = await lstat(file).catch(() => null);
+    if (!stat?.isFile()) fail('Not found', 404);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
