@@ -1,6 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { creds } from "./creds";
 
+// BASE bisa diarahkan ke local/staging lewat env; fallback ke production.
+const BASE = (process.env.BASE_URL ?? "https://masterdiskon.com").replace(/\/+$/, "");
+
 // Alur masdis sampai keranjang. Nggak ada checkout, nggak ada pembayaran.
 test.describe.serial("masdis - sampai keranjang", () => {
   let page: import("@playwright/test").Page;
@@ -44,12 +47,12 @@ test.describe.serial("masdis - sampai keranjang", () => {
     page.getByRole("button", { name: "OK" }).first().click({ timeout: 5000 }).catch(() => {});
 
   test("TC-MD-C1 homepage terbuka", async () => {
-    await buka("https://masterdiskon.com/id-id");
-    await expect(page).toHaveURL(/masterdiskon\.com/);
+    await buka(BASE + "/id-id");
+    await expect(page).toHaveURL(u => u.host === new URL(BASE).host);
   });
 
   test("TC-MD-C2 login", async () => {
-    await buka("https://masterdiskon.com/id-id/login");
+    await buka(BASE + "/id-id/login");
     await page.waitForTimeout(5000);
 
     await page.getByRole("textbox", { name: "Email" }).fill(creds("MASTERDISKON_EMAIL"));

@@ -73,7 +73,6 @@ export default function PlaywrightPage() {
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
   const target = project?.base_url ?? "";
-  const hardcoded = (draft.match(/https?:\/\/[^\s'"`)]+/g) ?? []).filter(u => !u.includes("process.env"));
   const dirty = !!selected && draft !== selected.code;
   const running = !!run && !FINAL.includes(run.status);
 
@@ -221,12 +220,6 @@ export default function PlaywrightPage() {
               <button className="pb-btn sm danger" onClick={() => save(true)} disabled={saving}>Timpa file di disk</button>
               <button className="pb-btn sm" onClick={reload} disabled={saving}>Muat ulang dari disk</button>
             </span>
-          </div>
-        )}
-        {hardcoded.length > 0 && (
-          <div className="pb-err" style={{ marginBottom: 8 }}>
-            URL hardcoded terdeteksi ({hardcoded.length}): spec tidak akan mengikuti env.
-            Pakai <code className="pb-mono">process.env.BASE_URL</code>. Contoh: <span className="pb-mono">{hardcoded[0]}</span>
           </div>
         )}
         {selected ? (

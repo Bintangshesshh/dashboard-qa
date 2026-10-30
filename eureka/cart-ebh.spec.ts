@@ -1,6 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { creds } from "./creds";
 
+// BASE bisa diarahkan ke local/staging lewat env; fallback ke production.
+const BASE = (process.env.BASE_URL ?? "https://eurekabookhouse.com").replace(/\/+$/, "");
+
 // Alur ebh sampai keranjang. Nggak ada checkout, nggak ada pembayaran.
 // Dipecah per langkah biar dashboard bisa nunjukin gagal di mana.
 test.describe.serial("ebh - sampai keranjang", () => {
@@ -40,12 +43,12 @@ test.describe.serial("ebh - sampai keranjang", () => {
   };
 
   test("TC-EB-C1 homepage terbuka", async () => {
-    await buka("https://eurekabookhouse.com/");
-    await expect(page).toHaveURL(/eurekabookhouse\.com/);
+    await buka(BASE + "/");
+    await expect(page).toHaveURL(u => u.host === new URL(BASE).host);
   });
 
   test("TC-EB-C2 login", async () => {
-    await buka("https://eurekabookhouse.com/auth/login");
+    await buka(BASE + "/auth/login");
     await page.waitForTimeout(5000);
 
     await page

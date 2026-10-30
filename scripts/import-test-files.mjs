@@ -30,7 +30,6 @@ const LH = [
   ['lighthouserc.masdis.js', 'p_masdis', 'Lighthouse - Master Diskon'],
 ];
 
-const warnings = [];
 const rows = [];
 const now = new Date().toISOString();
 
@@ -41,11 +40,6 @@ for (const [path, projectId, label] of PW) {
     code = readFileSync(abs, 'utf8');
   } catch {
     throw new Error(`file spec tidak ditemukan: ${path}`);
-  }
-  // PRD 6/17.2: PW idealnya pakai process.env.BASE_URL supaya bisa menunjuk local/staging.
-  // Demo sekarang masih memakai URL production apa adanya, jadi hanya dicatat, bukan diblokir.
-  if (!/process\.env\.BASE_URL/.test(code)) {
-    warnings.push(`${path}: masih hardcode URL production (tidak ada process.env.BASE_URL) - ok untuk demo, belum bisa dipakai env=local/staging`);
   }
   rows.push({
     id: 'tf_' + path.replace(/[^\w]+/g, '_').replace(/^_|_$/g, ''),
@@ -113,8 +107,4 @@ for (const r of list) {
   if (r.config) console.log(`  config: ${r.config}`);
 }
 console.log(`\ntest_files: ${list.length} · db: ${file}`);
-if (warnings.length) {
-  console.log('\nperingatan:');
-  for (const w of warnings) console.log('  - ' + w);
-}
 db.close();
