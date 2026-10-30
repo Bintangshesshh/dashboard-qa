@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
+import { RunClock } from "../../_components/run-clock";
 import { useEffect, useRef, useState } from "react";
 import {
   api, artifactUrl, fmtDate, fmtDur,
@@ -234,8 +235,10 @@ export default function PlaywrightPage() {
         <div className="pb-card-head" style={{ marginBottom: 10 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 15 }}>Terminal</h2>
-            <div className="pb-card-sub">
-              {run ? `${run.status} · ${fmtDur(run.duration_ms)} · ${fmtDate(run.finished_at ?? run.queued_at)}` : "Belum ada run."}
+            <div className="pb-card-sub pb-row" style={{ gap: 8 }}>
+              {run
+                ? <><span>{run.status}</span><RunClock run={run} /><span>{fmtDate(run.finished_at ?? run.queued_at)}</span></>
+                : "Belum ada run."}
             </div>
           </div>
           {run && <span className={`pb-badge ${run.status}`}>{run.status}</span>}

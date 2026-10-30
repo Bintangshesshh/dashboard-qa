@@ -8,6 +8,7 @@ import {
 } from "../../../../lib/playbook";
 import { RunTerminal } from "../../run-terminal";
 import { ArtifactLink, LoginAgain, useProbe } from "../../../_components/report-link";
+import { RunClock } from "../../../_components/run-clock";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -193,8 +194,9 @@ export default function SessionDetail() {
                   <span className={`pb-tool ${r.tool}`}>{r.tool === "pw" ? "PW" : "LH"}</span>
                   <div className="pb-runrow-main">
                     <div className="pb-runrow-title">{r.tool === "pw" ? "Playwright" : "Lighthouse"}</div>
-                    <div className="pb-runrow-sub mono">
-                      {fmtDate(r.finalized_at)} · {fmtDur(r.duration_ms)} · exit {r.exit_code ?? "-"}
+                    <div className="pb-runrow-sub pb-row" style={{ gap: 6 }}>
+                      <RunClock run={r} />
+                      <span className="mono">{fmtDate(r.finalized_at ?? r.started_at ?? r.queued_at)} · exit {r.exit_code ?? "-"}</span>
                     </div>
                   </div>
                   <span className={`pb-badge ${r.status}`}>{r.status}</span>
@@ -292,7 +294,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
         <h2>Hasil run · {isPw ? "Playwright" : "Lighthouse"}</h2>
         <span className={`pb-badge ${run.status}`}>{run.status}</span>
         <span className="pb-spacer" />
-        <span className="pb-muted mono" style={{ fontSize: 12 }}>{fmtDur(run.duration_ms)}</span>
+        <RunClock run={run} />
         <button className="pb-btn sm" onClick={onClose}>Tutup</button>
       </div>
 
@@ -379,7 +381,7 @@ function ReportFrame({ runId, path, jsonPath }: { runId: string; path: string; j
         {jsonPath && <ArtifactLink href={artifactUrl(runId, jsonPath)}>JSON mentah</ArtifactLink>}
       </div>
       <iframe title="report mentah" src={url}
-        style={{ width: "100%", height: 520, border: "1px solid var(--line)", borderRadius: 10, background: "#fff" }} />
+        style={{ width: "100%", height: 520, border: "1px solid var(--line)", borderRadius: 10, background: "#fff", colorScheme: "only light" }} />
     </div>
   );
 }

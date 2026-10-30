@@ -163,11 +163,6 @@ export class Runner extends EventEmitter {
     this.arm(state);
 
     const started = Date.now();
-    // lhci/playwright senyap saat stdout bukan TTY → terminal tampak mati.
-    // ponytail: heartbeat 15 s cukup; kalau perlu progres nyata, parse output tool.
-    const beat = setInterval(() => {
-      this.log(state, 'system', `… masih berjalan ${Math.round((Date.now() - started) / 1000)}s\n`);
-    }, 15000);
     try {
       if (testFile.tool === 'pw') {
         await this.runPlaywright(state);
@@ -181,7 +176,6 @@ export class Runner extends EventEmitter {
       await this.log(state, 'stderr', `${error.message}\n`);
       await this.store.patchRun(runId, { status: 'failed', error: stripAnsi(error.message), finished_at: new Date().toISOString(), duration_ms: Date.now() - started });
     } finally {
-      clearInterval(beat);
       clearTimeout(state.timer);
     }
     this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });

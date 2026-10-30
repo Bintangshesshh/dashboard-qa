@@ -4,6 +4,7 @@
 // WS /ws → subscribe {runId, after} → log | status | replay-complete.
 import { useEffect, useRef, useState } from "react";
 import { api, type LogEntry } from "../../lib/playbook";
+import { RunClock } from "../_components/run-clock";
 
 type ConsoleLine = { seq: number; at: string; type: string; text: string; location: string | null };
 type NetworkLine = { seq: number; at: string; url: string; status: number | null; method: string | null; failure: string | null; ms: number | null };
@@ -16,6 +17,8 @@ export function RunTerminal({ runId }: { runId: string }) {
   const [networkLines, setNetworkLines] = useState<NetworkLine[]>([]);
   const [live, setLive] = useState(true);
   const [tab, setTab] = useState<"log" | "console" | "network">("log");
+  // Snapshot run untuk stopwatch + status; diperbarui oleh WS.
+  const [run, setRun] = useState<any>(null);
   const box = useRef<HTMLPreElement>(null);
 
   // Log awal (paginasi) → panel console/network → baru WS dari seq terakhir.
@@ -55,6 +58,7 @@ export function RunTerminal({ runId }: { runId: string }) {
         // Console/network lengkap (log bisa terpotong log_max_bytes).
         const run: any = await api.run(runId);
         if (!alive) return;
+        setRun(run);
         setConsoleLines(run.console ?? []);
         setNetworkLines(run.network ?? []);
         after = all.length ? all[all.length - 1].seq : 0;
@@ -71,6 +75,7 @@ export function RunTerminal({ runId }: { runId: string }) {
           pushLog({ seq: msg.seq, stream: msg.stream, text: msg.text, at: msg.at });
         } else if (msg.type === "status" && msg.run) {
           // WS yang menentukan kapan berhenti, bukan snapshot props.
+          setRun(msg.run);
           if (["passed", "failed", "cancelled", "interrupted"].includes(msg.run.status)) {
             closed = true; setLive(false); ws!.close();
           }
@@ -105,9 +110,10 @@ export function RunTerminal({ runId }: { runId: string }) {
             Network {badNetwork.length > 0 && <span className="pb-badge failed">{badNetwork.length}</span>}
           </button>
         </div>
-        <span className="pb-muted" style={{ fontSize: 12 }}>
-          {live ? "● live" : "selesai"} · {lines.length} baris
-          <a className="pb-btn sm" style={{ marginLeft: 8 }} href={`/api/runs/${runId}/logs/download`}>Unduh log</a>
+        <span className="pb-row" style={{ gap: 8, fontSize: 12 }}>
+          {run && <RunClock run={run} />}
+          <span className="pb-muted">{live ? "● live" : "selesai"} · {lines.length} baris</span>
+          <a className="pb-btn sm" href={`/api/runs/${runId}/logs/download`}>Unduh log</a>
         </span>
       </div>
 
