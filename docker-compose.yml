@@ -6,7 +6,7 @@ services:
     init: true
     environment:
       DATABASE_URL: sqlite:/data/qa.db
-      OPERATOR_TOKEN: ${OPERATOR_TOKEN:?Set OPERATOR_TOKEN}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
       TARGET_ALLOWLIST: ${TARGET_ALLOWLIST:?Set TARGET_ALLOWLIST}
       RUNS_DIR: /data/runs
       HOST: 0.0.0.0

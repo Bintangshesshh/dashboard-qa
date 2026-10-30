@@ -7,6 +7,8 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Browser extensions may add style/attributes to <html> before hydration.
+  // Suppress that extension-only mismatch; app state itself is not affected.
   return (
     <html lang="id" suppressHydrationWarning>
       <head>
