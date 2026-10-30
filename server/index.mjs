@@ -10,6 +10,7 @@ import { Store } from './store.mjs';
 import { Runner } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
 import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check.mjs';
+import { reportMarkdownFor } from '../scripts/report-md.mjs';
 import { runRetention } from './retention.mjs';
 import { specPath, readSpec, writeSpec } from './spec-sync.mjs';
 import { backupDatabase } from './backup.mjs';
@@ -256,7 +257,7 @@ export function createApp({ store, runner, token, origins }) {
   // ─── Sessions ────────────────────────────────────────────────────────────
   // PRD §7/§8.2: URL target selalu dari `projects`, tidak pernah dari input bebas.
   // Origin hasil resolve wajib ada di `projects.origins` atau TARGET_ALLOWLIST (anti-SSRF).
-  // ponytail: env local dikecualikan dari cek origin — local_url menunjuk mesin
+  // ponytail: env local dikecualikan dari cek origin - local_url menunjuk mesin
   // developer, bukan jaringan server. Kalau nanti runner jalan di server juga,
   // hapus pengecualian ini.
   const resolveTarget = (project, e) => {
@@ -376,19 +377,27 @@ export function createApp({ store, runner, token, origins }) {
     }
 
     await ensureQuickFiles();
+    // Default tetap smoke generik (PRD A43: tanpa test_files). Opt-in
+    // files='project' memakai spec/lhci milik project, supaya yang diuji alur
+    // departemennya (cart, login), bukan cuma status HTTP halaman depan.
+    const useProject = req.body?.files === 'project';
+    const projectFile = tool => (useProject ? store.listTestFiles({ projectId: project.id, tool })[0] ?? null : null);
+    const pwTest = projectFile('pw');
+    const lhTest = projectFile('lh');
+
     const pwRun = randomUUID();
     const lhRun = randomUUID();
-    store.createRun({ id: pwRun, sessionId: session.id, testFileId: null, tool: 'pw' });
-    store.createRun({ id: lhRun, sessionId: session.id, testFileId: null, tool: 'lh' });
+    store.createRun({ id: pwRun, sessionId: session.id, testFileId: pwTest?.id ?? null, tool: 'pw' });
+    store.createRun({ id: lhRun, sessionId: session.id, testFileId: lhTest?.id ?? null, tool: 'lh' });
     traceProduction(pwRun, e, req.user);
     traceProduction(lhRun, e, req.user);
 
-    const pwFile = {
+    const pwFile = pwTest ?? {
       id: null, tool: 'pw', path: 'quick.spec.ts',
       label: 'Quick check smoke', config: JSON.stringify({ configPath: pwConfig }),
     };
-    const lhConfig = await writeLighthouseConfig(join(runner.runsDir, lhRun), targetUrl);
-    const lhFile = { id: null, tool: 'lh', path: lhConfig, label: 'Quick check Lighthouse' };
+    const lhFile = lhTest
+      ?? { id: null, tool: 'lh', path: await writeLighthouseConfig(join(runner.runsDir, lhRun), targetUrl), label: 'Quick check Lighthouse' };
 
     // Runner hanya menjalankan satu proses sekaligus → antre berurutan.
     runner.start(pwRun, pwFile, session.id, targetUrl)
@@ -648,6 +657,14 @@ export function createApp({ store, runner, token, origins }) {
     max_upload_mb: [1, 1024],
     range_default_days: [1, 365],
   };
+  // Angka retensi dipakai label UI untuk semua role; sisanya tetap admin-only.
+  app.get('/api/settings/public', requireAuth, route(async (req, res) => {
+    const all = store.getSettings();
+    res.json({
+      artifact_retention_days: all.artifact_retention_days,
+      report_retention_days: all.report_retention_days,
+    });
+  }));
   app.get('/api/settings', requireAuth, requireAdmin, route(async (req, res) => {
     res.json(store.getSettings());
   }));
@@ -657,7 +674,7 @@ export function createApp({ store, runner, token, origins }) {
     for (const [key, [min, max]] of Object.entries(SETTING_LIMITS)) {
       if (body[key] === undefined) continue;
       const n = Number(body[key]);
-      if (!Number.isSafeInteger(n) || n < min || n > max) fail(`${key} harus bilangan bulat ${min}–${max}`);
+      if (!Number.isSafeInteger(n) || n < min || n > max) fail(`${key} harus bilangan bulat ${min}-${max}`);
       updates[key] = n;
     }
     if (!Object.keys(updates).length) fail('Tidak ada setting yang diubah');
@@ -674,13 +691,28 @@ export function createApp({ store, runner, token, origins }) {
   app.get('/artifacts/reports/:reportId/*', requireAuth, route(async (req, res) => {
     const report = store.getReport(id(req.params.reportId));
     if (!report) fail('Not found', 404);
-    const rel = req.params[0];
+    // Link ke folder (mis. "<runId>/") dipetakan ke index.html; link lama tetap hidup.
+    const asked = (req.params[0] ?? '').replace(/\/$/, '');
+    const rel = asked === '' || !/\.[a-z0-9]+$/i.test(asked) ? (asked ? asked + '/index.html' : 'index.html') : asked;
     if (rel.includes('..')) fail('Invalid path', 400);
     const base = join(reportsDir, report.id);
-    const file = await realpath(join(base, rel));
-    if (!file.startsWith(await realpath(base))) fail('Invalid path', 400);
-    const stat = await lstat(file);
-    if (!stat.isFile()) fail('Not found', 404);
+    // Report lama tidak punya report.md; susun dari DB supaya tautan tidak 404.
+    if (rel === 'report.md') {
+      const cached = await realpath(join(base, rel)).catch(() => null);
+      if (!cached) {
+        const markdown = reportMarkdownFor(store, report.id);
+        if (!markdown) fail('Not found', 404);
+        res.type('text/markdown; charset=utf-8');
+        res.setHeader('X-Robots-Tag', 'noindex');
+        res.send(markdown);
+        return;
+      }
+    }
+    // realpath melempar ENOENT kalau file belum ada (mis. report lama tanpa report.md).
+    const file = await realpath(join(base, rel)).catch(() => null);
+    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Not found', 404);
+    const stat = await lstat(file).catch(() => null);
+    if (!stat?.isFile()) fail('Not found', 404);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
@@ -692,13 +724,15 @@ export function createApp({ store, runner, token, origins }) {
     const runId = id(req.params.runId);
     const run = store.getRun(runId);
     if (!run) fail('Not found', 404);
-    const rel = req.params[0];
+    // Sama: folder artifact (mis. "playwright-report/") dipetakan ke index.html.
+    const asked = (req.params[0] ?? '').replace(/\/$/, '');
+    const rel = asked === '' || !/\.[a-z0-9]+$/i.test(asked) ? (asked ? asked + '/index.html' : 'index.html') : asked;
     if (rel.includes('..')) fail('Invalid path', 400);
     const base = join(runsDir, runId, 'artifacts');
-    const file = await realpath(join(base, rel));
-    if (!file.startsWith(await realpath(base))) fail('Invalid path', 400);
-    const stat = await lstat(file);
-    if (!stat.isFile()) fail('Not found', 404);
+    const file = await realpath(join(base, rel)).catch(() => null);
+    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Path tidak ada', 404);
+    const stat = await lstat(file).catch(() => null);
+    if (!stat?.isFile()) fail('Not found', 404);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");

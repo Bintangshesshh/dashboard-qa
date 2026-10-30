@@ -11,7 +11,7 @@ export function id(value) {
 }
 export function text(value, name, max = 200) {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
-    fail(`${name} must contain 1–${max} characters`);
+    fail(`${name} must contain 1-${max} characters`);
   return value.trim();
 }
 export function optionalText(value, name, max = 200) {
@@ -22,7 +22,7 @@ export function optionalText(value, name, max = 200) {
 // dan memicu status "belum disimpan" palsu di editor.
 export function code(value, max = 200000) {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
-    fail(`code must contain 1–${max} characters`);
+    fail(`code must contain 1-${max} characters`);
   return value;
 }
 // env dari PRD §6: hanya local | staging | production

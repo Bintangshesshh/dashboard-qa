@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, fmtDate, reportUrl, type Project, type Session } from "../../../../../lib/playbook";
+import { ArtifactLink } from "../../../../_components/report-link";
 
 export default function ProjectReports() {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [error, setError] = useState("");
+  const [projectError, setProjectError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -18,15 +20,30 @@ export default function ProjectReports() {
   }, [projectId]);
 
   useEffect(() => {
-    api.projects().then(ps => setProject(ps.find(p => p.id === projectId) ?? null)).catch(() => {});
+    api.projects()
+      .then(ps => {
+        const found = ps.find(p => p.id === projectId) ?? null;
+        setProject(found);
+        if (!found) setProjectError("Project tidak ditemukan");
+      })
+      .catch(e => setProjectError(e.message));
     load();
   }, [projectId, load]);
 
   const quickCheck = async () => {
     if (!project) return;
     setBusy(true); setError(""); setNotice("");
+    // Urutan env: staging, lalu production (situs asli, wajib konfirmasi user),
+    // lalu local. local_url bukan default karena biasanya menunjuk dev server dashboard.
+    const env = project.staging_url ? "staging" : project.base_url ? "production" : "local";
+    let confirm: string | undefined;
+    if (env === "production") {
+      const typed = window.prompt(`Ketik nama project (${project.name}) untuk konfirmasi production:`);
+      if (typed !== project.name) { setBusy(false); setNotice("Quick check production dibatalkan."); return; }
+      confirm = typed;
+    }
     try {
-      const r = await api.quickCheck(projectId, "production", project.name);
+      const r = await api.quickCheck(projectId, env, confirm, "project");
       setNotice(`Quick check jalan (${r.runIds.length} run).`);
       load();
     } catch (e) {
@@ -36,11 +53,10 @@ export default function ProjectReports() {
 
   return (
     <>
-      <Link className="pb-crumb" href="/reports">← Kembali ke Reports</Link>
+      {projectError && <div className="pb-err">{projectError}</div>}
 
       <div className="pb-head">
         <div>
-          <div className="eyebrow">Reports / {project?.name ?? "…"}</div>
           <h1>{project?.name ?? "Memuat…"}</h1>
           <p className="pb-muted" style={{ margin: "4px 0 0" }}>{project?.base_url}</p>
         </div>
@@ -78,10 +94,18 @@ export default function ProjectReports() {
                   <td>
                     {(s.reports?.length ?? 0) === 0
                       ? <span className="pb-muted">-</span>
-                      : s.reports!.map(rep => (
-                        <a key={rep.id} className="pb-btn sm" href={reportUrl(rep.id)} target="_blank" rel="noreferrer"
-                          title={`${rep.scope} · ${rep.status}`} style={{ marginRight: 6 }}>{rep.scope}</a>
-                      ))}
+                      : s.reports!.map(rep => {
+                        const canOpen = rep.status === "ready" || (rep.status === "stale" && !!rep.path);
+                        const title = [rep.scope, rep.status, rep.mode ?? "-", fmtDate(rep.built_at)].join(" | ");
+                        // ArtifactLink mengecek file dulu: report yang sudah dibuang
+                        // retensi tampil sebagai teks, bukan tombol ke {"error":"Not found"}.
+                        return canOpen
+                          ? <span key={rep.id} style={{ marginRight: 6 }} title={title}>
+                              <ArtifactLink href={reportUrl(rep.id)} missing={`${rep.scope} report hilang`}>{rep.scope}</ArtifactLink>
+                            </span>
+                          : <span key={rep.id} className="pb-muted mono" title={title}
+                              style={{ marginRight: 6, fontSize: 11 }}>{rep.scope} {rep.status}</span>;
+                      })}
                   </td>
                   <td className="mono">{fmtDate(s.created_at)}</td>
                   <td style={{ textAlign: "right" }}>

@@ -1,4 +1,4 @@
--- Schema v5 — Playbook QA dashboard (docs/PRD.md bagian 6)
+-- Schema v5 - Playbook QA dashboard (docs/PRD.md bagian 6)
 -- File 0001 = baseline penuh; user_version akhir = 1 (satu file migrasi diterapkan).
 
 -- 1. Login
@@ -141,7 +141,7 @@ CREATE TABLE artifacts (
 );
 CREATE INDEX artifacts_run ON artifacts(run_id);
 
--- 9. Laporan Docusaurus per sesi
+-- 9. Laporan HTML per sesi
 CREATE TABLE reports (
   id         TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,

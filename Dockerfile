@@ -22,11 +22,8 @@ COPY package*.json ./
 RUN npm ci
 COPY server/package*.json ./server/
 RUN cd server && npm ci --omit=dev
-COPY docusaurus/package*.json ./docusaurus/
-RUN cd docusaurus && npm ci
 COPY scripts/ ./scripts/
 COPY server/ ./server/
-COPY docusaurus/ ./docusaurus/
 
 FROM mcr.microsoft.com/playwright:v1.63.0-noble AS runner
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3001 RUNS_DIR=/data/runs
@@ -37,6 +34,3 @@ USER pwuser
 EXPOSE 3001
 CMD ["node", "--experimental-sqlite", "server/index.mjs"]
 
-FROM nginxinc/nginx-unprivileged:1.28-alpine AS docs
-COPY deploy/docs.conf /etc/nginx/conf.d/default.conf
-EXPOSE 8080

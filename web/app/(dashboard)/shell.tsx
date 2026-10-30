@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -11,16 +11,15 @@ const NAV = [
   { href: "/lighthouse", label: "Lighthouse" },
   { href: "/reports", label: "Reports" },
 ];
-// ponytail: menu Pengaturan disembunyikan untuk demo. Halaman /settings tetap ada,
-// buka langsung lewat URL kalau perlu. Kembalikan kalau admin panel dipakai lagi.
-const ADMIN_NAV: { href: string; label: string }[] = [];
+// Menu admin: hanya muncul untuk role admin (lihat `all` di bawah).
+const ADMIN_NAV: { href: string; label: string }[] = [{ href: "/settings", label: "Pengaturan" }];
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // PRD §10.8: backend mati → banner, halaman tetap dirender.
+  // PRD Â§10.8: backend mati â†’ banner, halaman tetap dirender.
   const [down, setDown] = useState(false);
   // Breadcrumb berlayer butuh nama project + label sesi.
   const [projects, setProjects] = useState<Project[]>([]);
@@ -85,7 +84,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="pb-brand-sub">Eureka Group</div>
           </div>
         </div>
-
         <nav className="pb-nav" aria-label="Navigasi utama">
           <div className="pb-nav-label">Ruang kerja</div>
           {NAV.map(item => (
@@ -106,6 +104,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="pb-side-foot">
+          <ThemePref />
           {user && (
             <div className="pb-user-row">
               <span className="pb-avatar" aria-hidden="true">{user.username[0].toUpperCase()}</span>
@@ -126,6 +125,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       <div className="pb-mainwrap">
         <header className="pb-topbar">
+          <div style={{ minWidth: 0 }}>
+            <div className="pb-topbar-title">{screen}</div>
+            <div className="pb-topbar-sub">Eureka Group - Playbook QA</div>
+          </div>
           <nav className="pb-crumb" aria-label="Breadcrumb">
             {crumbs.map((c, i) => {
               const last = i === crumbs.length - 1;
@@ -157,7 +160,53 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Skeleton sederhana: PRD §10.8 minta bukan layar kosong.
+// Preferensi tema: sistem / terang / gelap. Disimpan di localStorage 'pb-theme'.
+// Skrip inline di layout.tsx sudah menerapkan tema sebelum paint; ini hanya toggle.
+const PREFS = [
+  { pref: "system", label: "Sistem" },
+  { pref: "light", label: "Terang" },
+  { pref: "dark", label: "Gelap" },
+] as const;
+
+function applyTheme(pref: string) {
+  const dark = pref === "dark" || (pref === "system" &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const root = document.documentElement;
+  if (dark) root.dataset.theme = "dark"; else root.removeAttribute("data-theme");
+  root.dataset.themePref = pref;
+  try { localStorage.setItem("pb-theme", pref); } catch { /* storage diblokir */ }
+}
+
+function ThemePref() {
+  const [pref, setPref] = useState("system");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("pb-theme") || "system";
+    setPref(saved);
+    applyTheme(saved);
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onSystem = () => { if (pref === "system") applyTheme("system"); };
+    mq.addEventListener("change", onSystem);
+    return () => mq.removeEventListener("change", onSystem);
+  }, [pref]);
+
+  return (
+    <div className="pb-theme" role="group" aria-label="Preferensi tema">
+      {PREFS.map(p => (
+        <button
+          key={p.pref}
+          type="button"
+          aria-pressed={pref === p.pref}
+          onClick={() => { setPref(p.pref); applyTheme(p.pref); }}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Skeleton sederhana: PRD Â§10.8 minta bukan layar kosong.
 function Skeleton() {
   return (
     <div aria-busy="true" aria-live="polite">

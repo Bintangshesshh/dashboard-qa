@@ -41,7 +41,7 @@ export function planRetention({
   return { runs, reports, interrupted, logCutoff, artifactCutoff, reportCutoff };
 }
 
-// PRD §8.6 langkah 1–4. Baris runs/playwright_results/lighthouse_results/sessions
+// PRD §8.6 langkah 1-4. Baris runs/playwright_results/lighthouse_results/sessions
 // sengaja tidak disentuh: riwayat tetap ada walau file mentahnya hilang.
 export async function runRetention({
   store,

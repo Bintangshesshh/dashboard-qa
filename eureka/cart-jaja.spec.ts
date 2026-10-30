@@ -1,8 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { creds } from "./creds";
 
+// BASE bisa diarahkan ke local/staging lewat env; fallback ke production.
+const BASE = (process.env.BASE_URL ?? "https://jaja.id").replace(/\/+$/, "");
+
 // Alur jaja sampai keranjang. Nggak ada checkout, nggak ada pembayaran.
-test.describe.serial("jaja — sampai keranjang", () => {
+test.describe.serial("jaja - sampai keranjang", () => {
   let page: import("@playwright/test").Page;
 
   test.beforeAll(async ({ browser }) => {
@@ -42,12 +45,12 @@ test.describe.serial("jaja — sampai keranjang", () => {
     page.getByRole("button", { name: "OK" }).first().click({ timeout: 5000 }).catch(() => {});
 
   test("TC-JA-C1 homepage terbuka", async () => {
-    await buka("https://jaja.id/");
-    await expect(page).toHaveURL(/jaja\.id/);
+    await buka(BASE + "/");
+    await expect(page).toHaveURL(u => u.host === new URL(BASE).host);
   });
 
   test("TC-JA-C2 login", async () => {
-    await buka("https://jaja.id/main/auth/login");
+    await buka(BASE + "/main/auth/login");
     const form = page.locator("form").filter({ hasText: "EmailPasswordIngat sayaLupa" });
     await page.waitForTimeout(5000);
 
@@ -65,7 +68,7 @@ test.describe.serial("jaja — sampai keranjang", () => {
     await search.fill("iphone");
     await dismissOk();
 
-    await buka("https://jaja.id/Product/iphone-15-pro");
+    await buka(BASE + "/Product/iphone-15-pro");
     await dismissOk();
     await expect(
       page.getByRole("button", { name: "Beli Langsung" }),

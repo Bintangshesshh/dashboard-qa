@@ -3,7 +3,6 @@
 **/.next
 **/out
 **/build
-**/.docusaurus
 .verification
 .runs
 data
@@ -12,7 +11,6 @@ data
 !.env.example
 pw-out
 playwright-report
-latest.json
 lhci-results*
 **/*.log
 **/*.tsbuildinfo

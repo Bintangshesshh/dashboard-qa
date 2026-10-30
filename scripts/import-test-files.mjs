@@ -18,19 +18,18 @@ db.exec('PRAGMA foreign_keys = ON');
 const version = db.prepare('PRAGMA user_version').get().user_version;
 if (version < 1) throw new Error(`skema belum dimigrasi (user_version=${version}); jalankan node --experimental-sqlite scripts/migrate.mjs dulu`);
 
-// PRD 17.2 — peta file repo → test_files. Key = path relatif dari root repo.
+// PRD 17.2 - peta file repo → test_files. Key = path relatif dari root repo.
 const PW = [
-  ['eureka/cart-jaja.spec.ts', 'p_jaja', 'Cart — Jaja.id'],
-  ['eureka/cart-ebh.spec.ts', 'p_ebh', 'Cart — Eureka Bookhouse'],
-  ['eureka/cart-masdis.spec.ts', 'p_masdis', 'Demo — Master Diskon'],
+  ['eureka/cart-jaja.spec.ts', 'p_jaja', 'Cart - Jaja.id'],
+  ['eureka/cart-ebh.spec.ts', 'p_ebh', 'Cart - Eureka Bookhouse'],
+  ['eureka/cart-masdis.spec.ts', 'p_masdis', 'Demo - Master Diskon'],
 ];
 const LH = [
-  ['lighthouserc.jaja.js', 'p_jaja', 'Lighthouse — Jaja.id'],
-  ['lighthouserc.ebh.js', 'p_ebh', 'Lighthouse — Eureka Bookhouse'],
-  ['lighthouserc.masdis.js', 'p_masdis', 'Lighthouse — Master Diskon'],
+  ['lighthouserc.jaja.js', 'p_jaja', 'Lighthouse - Jaja.id'],
+  ['lighthouserc.ebh.js', 'p_ebh', 'Lighthouse - Eureka Bookhouse'],
+  ['lighthouserc.masdis.js', 'p_masdis', 'Lighthouse - Master Diskon'],
 ];
 
-const warnings = [];
 const rows = [];
 const now = new Date().toISOString();
 
@@ -41,11 +40,6 @@ for (const [path, projectId, label] of PW) {
     code = readFileSync(abs, 'utf8');
   } catch {
     throw new Error(`file spec tidak ditemukan: ${path}`);
-  }
-  // PRD 6/17.2: PW idealnya pakai process.env.BASE_URL supaya bisa menunjuk local/staging.
-  // Demo sekarang masih memakai URL production apa adanya, jadi hanya dicatat, bukan diblokir.
-  if (!/process\.env\.BASE_URL/.test(code)) {
-    warnings.push(`${path}: masih hardcode URL production (tidak ada process.env.BASE_URL) — ok untuk demo, belum bisa dipakai env=local/staging`);
   }
   rows.push({
     id: 'tf_' + path.replace(/[^\w]+/g, '_').replace(/^_|_$/g, ''),
@@ -113,8 +107,4 @@ for (const r of list) {
   if (r.config) console.log(`  config: ${r.config}`);
 }
 console.log(`\ntest_files: ${list.length} · db: ${file}`);
-if (warnings.length) {
-  console.log('\nperingatan:');
-  for (const w of warnings) console.log('  - ' + w);
-}
 db.close();

@@ -5,6 +5,7 @@ import { join, resolve, relative, isAbsolute, basename, dirname } from 'node:pat
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { target as validateTarget } from './validation.mjs';
+import { stripAnsi } from './ansi.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(join(root, 'package.json'));
@@ -116,9 +117,7 @@ export class Runner extends EventEmitter {
   }
 
   async log(state, stream, text) {
-    // ANSI colour dari Playwright/lhci tampil sebagai `[31m` di dashboard.
-    // eslint-disable-next-line no-control-regex
-    const plain = String(text).replace(/\u001b?\[[0-9;]*m/g, '');
+    const plain = stripAnsi(text);
     const entry = { seq: ++state.seq, stream, text: plain, at: new Date().toISOString() };
     state.chain = state.chain.then(async () => {
       await this.store.log(state.runId, entry);
@@ -142,7 +141,7 @@ export class Runner extends EventEmitter {
 
   async execute(state) {
     const { runId, testFile } = state;
-    // PRD §7/G11: runner tidak percaya pemanggil — target harus tetap di allowlist.
+    // PRD §7/G11: runner tidak percaya pemanggil - target harus tetap di allowlist.
     // Origin milik project (dari sesi) ikut diizinkan, sama seperti resolveTarget.
     if (state.targetUrl) {
       const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
@@ -152,7 +151,7 @@ export class Runner extends EventEmitter {
       const allowed = [...this.origins, ...(project?.origins ?? []), ...declared];
       try { state.targetUrl = validateTarget(state.targetUrl, allowed); }
       catch (error) {
-        await this.store.patchRun(runId, { status: 'failed', error: error.message, finished_at: new Date().toISOString() });
+        await this.store.patchRun(runId, { status: 'failed', error: stripAnsi(error.message), finished_at: new Date().toISOString() });
         this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
         return;
       }
@@ -164,11 +163,6 @@ export class Runner extends EventEmitter {
     this.arm(state);
 
     const started = Date.now();
-    // lhci/playwright senyap saat stdout bukan TTY → terminal tampak mati.
-    // ponytail: heartbeat 15 s cukup; kalau perlu progres nyata, parse output tool.
-    const beat = setInterval(() => {
-      this.log(state, 'system', `… masih berjalan ${Math.round((Date.now() - started) / 1000)}s\n`);
-    }, 15000);
     try {
       if (testFile.tool === 'pw') {
         await this.runPlaywright(state);
@@ -180,9 +174,8 @@ export class Runner extends EventEmitter {
       }
     } catch (error) {
       await this.log(state, 'stderr', `${error.message}\n`);
-      await this.store.patchRun(runId, { status: 'failed', error: error.message, finished_at: new Date().toISOString(), duration_ms: Date.now() - started });
+      await this.store.patchRun(runId, { status: 'failed', error: stripAnsi(error.message), finished_at: new Date().toISOString(), duration_ms: Date.now() - started });
     } finally {
-      clearInterval(beat);
       clearTimeout(state.timer);
     }
     this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
@@ -206,7 +199,7 @@ export class Runner extends EventEmitter {
     // `config` opsional: { configPath } untuk config Playwright khusus (quick check).
     let cfgPath = (() => { try { return JSON.parse(testFile.config ?? '{}')?.configPath ?? null; } catch { return null; } })();
     // Kode dari DB (editor dashboard) menang atas file di disk. Ditulis di sebelah
-    // spec aslinya karena spec eureka mengimpor `./creds` — memindahkan file ke
+    // spec aslinya karena spec eureka mengimpor `./creds` - memindahkan file ke
     // folder run akan memutus import relatif. Config ditaruh di root repo supaya
     // `@playwright/test` bisa di-resolve. Keduanya dihapus setelah run.
     let generated = null;
@@ -339,7 +332,7 @@ export class Runner extends EventEmitter {
             status: ['passed', 'failed', 'skipped'].includes(status) ? status : (t.status === 'flaky' ? 'flaky' : 'failed'),
             durationMs: last?.duration ?? null,
             retry: t.retry ?? 0,
-            error: last?.error?.message ? String(last.error.message).slice(0, 3000) : null,
+            error: last?.error?.message ? stripAnsi(last.error.message).slice(0, 3000) : null,
           });
         }
       }
@@ -399,7 +392,7 @@ export class Runner extends EventEmitter {
     return [...out.values()];
   }
 
-  // Tahap 5: snapshot run untuk pipeline Docusaurus (scripts/build-run-docs.mjs).
+  // Snapshot run untuk pipeline laporan HTML (scripts/build-report-docs.mjs).
   // Hanya fakta run; kode spec sengaja tidak ikut supaya tidak bocor ke report statis.
   async writeRunJson(state, dir, { status, exitCode, error, mode }) {
     const run = this.store.getRun(state.runId);

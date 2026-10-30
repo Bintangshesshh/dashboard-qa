@@ -72,11 +72,11 @@ async function fixture(t) {
     return { status: res.status, body: json, headers: res.headers };
   };
 
-  const login = async () => {
+  const login = async (username = 'tester', password = PASSWORD) => {
     const res = await fetch(base + '/api/auth/login', {
       method: 'POST',
       headers: { origin: base, 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'tester', password: PASSWORD }),
+      body: JSON.stringify({ username, password }),
     });
     assert.equal(res.status, 200);
     const raw = res.headers.get('set-cookie').split(';')[0];
@@ -283,6 +283,15 @@ test('quick-check: 400 tanpa projectId/env, 202 dengan 2 run, production dibloki
   assert.equal(runs.every(x => x.test_file_id === null), true, 'quick check tidak memakai test_files');
   await new Promise(res => setImmediate(res));
   assert.deepEqual(started.map(s => s.tool), ['pw', 'lh']);
+
+  // Opt-in: files='project' memakai spec/lhci milik project (alur departemen).
+  f.store.createTestFile({ id: 'tf-pw', projectId: 'p1', tool: 'pw', path: 'specs/cart.spec.ts', label: 'Cart', code: 'x' });
+  f.store.createTestFile({ id: 'tf-lh', projectId: 'p1', tool: 'lh', path: 'lighthouserc.js', label: 'LH', code: 'x' });
+  f.store.closeSession(r.body.sessionId);
+  r = await f.call('/api/quick-check', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local', files: 'project' } });
+  assert.equal(r.status, 202);
+  const chosen = f.store.listRunsBySession(r.body.sessionId);
+  assert.deepEqual(chosen.map(x => x.test_file_id).sort(), ['tf-lh', 'tf-pw']);
 });
 
 test('CLI token: dibuat, terdaftar tanpa nilai plain, lalu dicabut', async t => {
@@ -410,6 +419,30 @@ test('artifact: traversal ditolak, file sah disajikan dengan header aman', async
 
   r = await f.call(`/artifacts/${runId}/report.json`);
   assert.equal(r.status, 401);
+});
+
+test('artifact: URL folder dipetakan ke index.html, traversal tetap ditolak', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf2', projectId: 'p1', tool: 'pw', path: 'b.spec.ts', label: 'B', code: 'x' });
+  const runId = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf2' } })).body.runId;
+
+  const dir = join(f.runner.runsDir, runId, 'artifacts', 'playwright-report');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'index.html'), '<!doctype html><title>native</title>');
+  f.store.addArtifact({ runId, kind: 'pw-html', path: 'playwright-report/index.html', bytes: 27 });
+
+  // Link lama dari index.html report: folder tanpa index.html.
+  let r = await f.call(`/artifacts/${runId}/playwright-report/`, { cookie });
+  assert.equal(r.status, 200, 'folder harus dipetakan ke index.html');
+  assert.match(r.body, /native/);
+
+  r = await f.call(`/artifacts/${runId}/playwright-report`, { cookie });
+  assert.equal(r.status, 200, 'folder tanpa slash juga dipetakan');
+
+  r = await f.call(`/artifacts/${runId}/..%2F..%2Fpackage.json`, { cookie });
+  assert.equal(r.status, 400);
 });
 
 test('parseLighthouse: banyak LHR URL sama → satu baris per URL', async () => {
@@ -651,7 +684,7 @@ test('A5: run production menulis satu baris log system', async t => {
   assert.equal(lines.length, 1);
   assert.match(lines[0].text, /production run by tester at \d{4}-\d{2}-\d{2}T/);
 
-  // runner tidak boleh mulai dari seq 0 — baris system tadi sudah pakai seq 1.
+  // runner tidak boleh mulai dari seq 0 - baris system tadi sudah pakai seq 1.
   const runsDir = await mkdtemp(join(tmpdir(), 'pb-runner-a5-'));
   t.after(() => rm(runsDir, { recursive: true, force: true }));
   const runner = new Runner(f.store, { runsDir, origins: [ORIGIN] });
@@ -833,4 +866,23 @@ test('CLI playbook: tanpa argumen cetak bantuan, tanpa kredensial keluar 1', asy
   const whoami = await runCli(['whoami']);
   assert.equal(whoami.code, 1);
   assert.match(whoami.out, /Belum login/);
+});
+
+test('settings publik: viewer boleh baca retensi, penuh tetap admin-only', async t => {
+  const f = await fixture(t);
+  const viewer = { id: randomUUID(), username: 'pengamat', role: 'viewer' };
+  f.store.createUser({ ...viewer, passwordHash: await hash(PASSWORD) });
+
+  const admin = await f.login();
+  let r = await f.call('/api/settings', { cookie: admin });
+  assert.equal(r.status, 200);
+
+  const cookie = await f.login('pengamat');
+  r = await f.call('/api/settings/public', { cookie });
+  assert.equal(r.status, 200);
+  assert.deepEqual(Object.keys(r.body).sort(), ['artifact_retention_days', 'report_retention_days']);
+  assert.ok(Number(r.body.artifact_retention_days) > 0);
+
+  r = await f.call('/api/settings', { cookie });
+  assert.equal(r.status, 403);
 });

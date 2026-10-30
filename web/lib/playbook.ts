@@ -130,6 +130,8 @@ export const api = {
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   settings: () => request<Settings>("/api/settings"),
+  // Halaman sesi butuh angka retensi untuk label; viewer tidak boleh baca settings penuh.
+  publicSettings: () => request<Pick<Settings, "artifact_retention_days" | "report_retention_days">>("/api/settings/public"),
   patchSettings: (body: Partial<Record<keyof Settings, number>>) =>
     request<Settings>("/api/settings", { method: "PATCH", body: JSON.stringify(body) }),
 
@@ -191,9 +193,10 @@ export const api = {
   deleteRun: (id: string) => request<null>(`/api/runs/${id}`, { method: "DELETE" }),
 
   // PRD §10.2/A43: satu klik → smoke Playwright + Lighthouse budget default.
-  quickCheck: (projectId: string, env: string, confirm?: string) =>
+  // files="project" memakai spec/lhci milik project, bukan smoke generik.
+  quickCheck: (projectId: string, env: string, confirm?: string, files?: "project") =>
     request<{ sessionId: string; runIds: string[] }>("/api/quick-check", {
-      method: "POST", body: JSON.stringify({ projectId, env, confirm }),
+      method: "POST", body: JSON.stringify({ projectId, env, confirm, files }),
     }),
 
   createRun: (sessionId: string, testFileId: string) =>

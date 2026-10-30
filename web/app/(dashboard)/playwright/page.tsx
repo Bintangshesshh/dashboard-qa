@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { ArtifactLink } from "../../_components/report-link";
+import { RunClock } from "../../_components/run-clock";
 import { useEffect, useRef, useState } from "react";
 import {
   api, artifactUrl, fmtDate, fmtDur,
@@ -73,7 +75,6 @@ export default function PlaywrightPage() {
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
   const target = project?.base_url ?? "";
-  const hardcoded = (draft.match(/https?:\/\/[^\s'"`)]+/g) ?? []).filter(u => !u.includes("process.env"));
   const dirty = !!selected && draft !== selected.code;
   const running = !!run && !FINAL.includes(run.status);
 
@@ -170,7 +171,6 @@ export default function PlaywrightPage() {
     <>
       <div className="pb-head">
         <div>
-          <div className="eyebrow">Playwright</div>
           <h1>Jalankan test suite.</h1>
           <p className="pb-lead">Pilih project, cek spec-nya, lalu jalankan. Log muncul langsung di bawah.</p>
         </div>
@@ -223,12 +223,6 @@ export default function PlaywrightPage() {
             </span>
           </div>
         )}
-        {hardcoded.length > 0 && (
-          <div className="pb-err" style={{ marginBottom: 8 }}>
-            URL hardcoded terdeteksi ({hardcoded.length}): spec tidak akan mengikuti env.
-            Pakai <code className="pb-mono">process.env.BASE_URL</code>. Contoh: <span className="pb-mono">{hardcoded[0]}</span>
-          </div>
-        )}
         {selected ? (
           <textarea className="pb-input pb-mono" style={{ minHeight: 320, lineHeight: 1.5, resize: "vertical" }}
             value={draft} spellCheck={false} onChange={e => setDraft(e.target.value)} />
@@ -241,8 +235,10 @@ export default function PlaywrightPage() {
         <div className="pb-card-head" style={{ marginBottom: 10 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 15 }}>Terminal</h2>
-            <div className="pb-card-sub">
-              {run ? `${run.status} · ${fmtDur(run.duration_ms)} · ${fmtDate(run.finished_at ?? run.queued_at)}` : "Belum ada run."}
+            <div className="pb-card-sub pb-row" style={{ gap: 8 }}>
+              {run
+                ? <><span>{run.status}</span><RunClock run={run} /><span>{fmtDate(run.finished_at ?? run.queued_at)}</span></>
+                : "Belum ada run."}
             </div>
           </div>
           {run && <span className={`pb-badge ${run.status}`}>{run.status}</span>}
@@ -274,12 +270,10 @@ export default function PlaywrightPage() {
           </div>
           <div className="pb-row">
             {run.artifacts?.some(a => a.path === "playwright-report/index.html") ? (
-              <a className="pb-btn sm" href={artifactUrl(run.id, "playwright-report/index.html")}
-                target="_blank" rel="noreferrer">Buka report (tab baru)</a>
+              <ArtifactLink href={artifactUrl(run.id, "playwright-report/index.html")}>Buka report (tab baru)</ArtifactLink>
             ) : <span className="pb-muted" style={{ fontSize: 12 }}>report HTML tidak ada</span>}
             {run.artifacts?.some(a => a.path === "report.json") && (
-              <a className="pb-btn sm" href={artifactUrl(run.id, "report.json")}
-                target="_blank" rel="noreferrer">JSON</a>
+              <ArtifactLink href={artifactUrl(run.id, "report.json")} missing="JSON hilang">JSON</ArtifactLink>
             )}
             <Link className="pb-btn sm" href={`/reports/${run.session_id}`}>Detail sesi</Link>
           </div>

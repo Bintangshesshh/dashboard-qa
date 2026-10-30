@@ -4,9 +4,11 @@
 // → test_files.config. Config lhci digenerate saat run, bukan disimpan di repo.
 // Layout menumpuk: Project → Config → Terminal → Run → Hasil.
 import Link from "next/link";
+import { ArtifactLink } from "../../_components/report-link";
+import { RunClock } from "../../_components/run-clock";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, fmtDate, fmtDur, pct,
+  api, artifactUrl, fmtDate, pct,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
 
@@ -158,7 +160,6 @@ export default function LighthousePage() {
     <>
       <div className="pb-head">
         <div>
-          <div className="eyebrow">Lighthouse</div>
           <h1>Audit performa.</h1>
           <p className="pb-lead">Pilih project, atur skor minimum, lalu jalankan. Log muncul langsung di bawah.</p>
         </div>
@@ -219,8 +220,10 @@ export default function LighthousePage() {
         <div className="pb-card-head" style={{ marginBottom: 10 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 15 }}>Terminal</h2>
-            <div className="pb-card-sub">
-              {run ? `${run.status} · ${fmtDur(run.duration_ms)} · ${fmtDate(run.finished_at ?? run.queued_at)}` : "Belum ada run."}
+            <div className="pb-card-sub pb-row" style={{ gap: 8 }}>
+              {run
+                ? <><span>{run.status}</span><RunClock run={run} /><span>{fmtDate(run.finished_at ?? run.queued_at)}</span></>
+                : "Belum ada run."}
             </div>
           </div>
           {run && <span className={`pb-badge ${run.status}`}>{run.status}</span>}
@@ -265,7 +268,7 @@ export default function LighthousePage() {
                     <td className="mono">{r.budget_failed ?? "-"}</td>
                     <td style={{ textAlign: "right" }}>
                       {r.report_path
-                        ? <a className="pb-btn sm" href={artifactUrl(r.run_id, r.report_path)} target="_blank" rel="noreferrer">Buka report</a>
+                        ? <ArtifactLink href={artifactUrl(r.run_id, r.report_path)}>Buka report</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>-</span>}
                     </td>
                   </tr>

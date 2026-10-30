@@ -5,11 +5,8 @@ pw-out/
 test-results/
 playwright-report/
 *.log
-latest.json
 
 node_modules/
-docusaurus/build/
-docusaurus/.docusaurus/
 .lighthouseci*/
 lhci-results*/
 eureka/.auth/
@@ -25,5 +22,5 @@ data/
 .verification/
 .env.production
 
+/docs/
 /handbook/
-docs/

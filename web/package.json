@@ -5,9 +5,6 @@
     "dev": "node server.mjs --dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "test:ui": "node ui-check.mjs",
-    "test:workbench": "node workbench-check.mjs",
-    "test:proxy": "node proxy-check.mjs",
     "start": "node server.mjs"
   },
   "dependencies": {

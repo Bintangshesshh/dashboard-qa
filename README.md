@@ -1,4 +1,4 @@
-# Playbook — QA Dashboard
+# Playbook - QA Dashboard
 
 Dashboard QA internal: sesi run Playwright + Lighthouse CI, hasil per test case, log live, dan laporan sesi yang bisa diterbitkan.
 
@@ -10,20 +10,20 @@ Kontrak produk ada di `docs/PRD.md`, cara install di `docs/SETUP.md` (keduanya i
 
 ## Peta proyek
 
-- `server/index.mjs` — REST API + WebSocket log + penyajian artifact/laporan
-- `server/store.mjs` — skema SQLite v5 + migrasi + query
-- `server/runner.mjs` — eksekusi Playwright/Lighthouse, cancel, timeout, parsing hasil
-- `server/validation.mjs` — validasi request + allowlist target
-- `server/migrations/` — `0001_schema_v5.sql` s.d. `0004_reports_mode.sql`
-- `web/app/(dashboard)/` — Overview, Playwright, Lighthouse, Reports; `run-terminal.tsx` panel log live, `settings/` admin
-- `web/app/(auth)/login/` — login
-- `web/lib/playbook.ts` — klien API bertipe
-- `scripts/build-session-report.mjs` — adapter DB → HTML laporan di `.reports/<reportId>/`
-- `scripts/migrate.mjs`, `seed-projects.mjs`, `import-test-files.mjs`, `seed-user.mjs` — setup
-- `scripts/backup.mjs`, `retention.mjs` — backup DB + retensi
-- `scripts/cek.mjs`, `gabung.mjs`, `doc.mjs`, `build-report-docs.mjs`, `build-run-docs.mjs` — cek run / ringkas laporan
-- `docusaurus/`, `lighthouserc.*.js` — build laporan statis + konfigurasi Lighthouse yang dijalankan runner
-- `eureka/` — spec Playwright per target
+- `server/index.mjs` - REST API + WebSocket log + penyajian artifact/laporan
+- `server/store.mjs` - skema SQLite v5 + migrasi + query
+- `server/runner.mjs` - eksekusi Playwright/Lighthouse, cancel, timeout, parsing hasil
+- `server/validation.mjs` - validasi request + allowlist target
+- `server/migrations/` - `0001_schema_v5.sql` s.d. `0004_reports_mode.sql`
+- `web/app/(dashboard)/` - Overview, Playwright, Lighthouse, Reports; `run-terminal.tsx` panel log live, `settings/` admin
+- `web/app/(auth)/login/` - login
+- `web/lib/playbook.ts` - klien API bertipe
+- `scripts/build-session-report.mjs` - adapter DB → HTML laporan di `.reports/<reportId>/`
+- `scripts/build-report-docs.mjs`, `report-html.mjs`, `report-md.mjs` - render folder report + markdown evaluasi
+- `scripts/migrate.mjs`, `seed-projects.mjs`, `import-test-files.mjs`, `seed-user.mjs` - setup
+- `scripts/backup.mjs`, `retention.mjs` - backup DB + retensi
+- `lighthouserc.*.js` - seed konfigurasi Lighthouse per target (`import-test-files.mjs`)
+- `eureka/` - spec Playwright per target
 
 ## Jalankan
 
@@ -46,7 +46,6 @@ Perintah lain:
 ```powershell
 npm test                    # unit test backend
 npm run test:integration    # verifikasi end-to-end dashboard
-npm run test:reports        # test build laporan
 npm run backup              # backup DB ke data/backups/
 npm run retention           # jalankan retensi data
 npm run fixture             # server target lokal untuk uji
