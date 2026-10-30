@@ -10,6 +10,7 @@ export default function ProjectReports() {
   const [project, setProject] = useState<Project | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [error, setError] = useState("");
+  const [projectError, setProjectError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -18,15 +19,29 @@ export default function ProjectReports() {
   }, [projectId]);
 
   useEffect(() => {
-    api.projects().then(ps => setProject(ps.find(p => p.id === projectId) ?? null)).catch(() => {});
+    api.projects()
+      .then(ps => {
+        const found = ps.find(p => p.id === projectId) ?? null;
+        setProject(found);
+        if (!found) setProjectError("Project tidak ditemukan");
+      })
+      .catch(e => setProjectError(e.message));
     load();
   }, [projectId, load]);
 
   const quickCheck = async () => {
     if (!project) return;
     setBusy(true); setError(""); setNotice("");
+    // Env dipilih dari URL yang tersedia; production wajib dikonfirmasi user.
+    const env = project.staging_url ? "staging" : project.local_url ? "local" : "production";
+    let confirm: string | undefined;
+    if (env === "production") {
+      const typed = window.prompt(`Ketik nama project (${project.name}) untuk konfirmasi production:`);
+      if (typed !== project.name) { setBusy(false); setNotice("Quick check production dibatalkan."); return; }
+      confirm = typed;
+    }
     try {
-      const r = await api.quickCheck(projectId, "production", project.name);
+      const r = await api.quickCheck(projectId, env, confirm);
       setNotice(`Quick check jalan (${r.runIds.length} run).`);
       load();
     } catch (e) {
@@ -37,6 +52,8 @@ export default function ProjectReports() {
   return (
     <>
       <Link className="pb-crumb" href="/reports">← Kembali ke Reports</Link>
+
+      {projectError && <div className="pb-err">{projectError}</div>}
 
       <div className="pb-head">
         <div>
@@ -78,10 +95,15 @@ export default function ProjectReports() {
                   <td>
                     {(s.reports?.length ?? 0) === 0
                       ? <span className="pb-muted">-</span>
-                      : s.reports!.map(rep => (
-                        <a key={rep.id} className="pb-btn sm" href={reportUrl(rep.id)} target="_blank" rel="noreferrer"
-                          title={`${rep.scope} · ${rep.status}`} style={{ marginRight: 6 }}>{rep.scope}</a>
-                      ))}
+                      : s.reports!.map(rep => {
+                        const canOpen = rep.status === "ready" || (rep.status === "stale" && !!rep.path);
+                        const title = [rep.scope, rep.status, rep.mode ?? "-", fmtDate(rep.built_at)].join(" | ");
+                        return canOpen
+                          ? <a key={rep.id} className="pb-btn sm" href={reportUrl(rep.id)} target="_blank" rel="noreferrer"
+                              title={title} style={{ marginRight: 6 }}>{rep.scope}</a>
+                          : <span key={rep.id} className="pb-muted mono" title={title}
+                              style={{ marginRight: 6, fontSize: 11 }}>{rep.scope} {rep.status}</span>;
+                      })}
                   </td>
                   <td className="mono">{fmtDate(s.created_at)}</td>
                   <td style={{ textAlign: "right" }}>

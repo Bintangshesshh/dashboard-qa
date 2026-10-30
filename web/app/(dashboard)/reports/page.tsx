@@ -12,11 +12,18 @@ export default function ReportsPage() {
 
   useEffect(() => {
     api.projects()
-      .then(ps => {
+      .then(async ps => {
         setProjects(ps);
-        return Promise.all(ps.map(p => api.stats({ project: p.id }).then(s => [p.id, s] as const)));
+        // Satu project gagal stats tidak boleh mengosongkan kartu lainnya.
+        const rows = await Promise.allSettled(
+          ps.map(p => api.stats({ project: p.id }).then(s => [p.id, s] as const)),
+        );
+        setStats(Object.fromEntries(
+          rows.filter(r => r.status === 'fulfilled').map(r => r.value),
+        ));
+        const gagal = rows.filter(r => r.status === 'rejected').length;
+        if (gagal) setError('stats ' + gagal + ' project gagal dimuat');
       })
-      .then(rows => setStats(Object.fromEntries(rows)))
       .catch(e => setError(e.message));
   }, []);
 
@@ -47,7 +54,10 @@ export default function ReportsPage() {
                     <h3>{p.name}</h3>
                     <div className="pb-pcard-meta">{s?.sessions ?? 0} sesi · {s?.runs ?? 0} run</div>
                   </div>
-                  <span className={`pb-badge ${tone === "ok" ? "passed" : tone === "bad" ? "failed" : "queued"}`}>
+                  <span
+                    className={`pb-badge ${tone === "ok" ? "passed" : tone === "warn" ? "warn" : tone === "bad" ? "failed" : "queued"}`}
+                    title={s ? `${s.runs ?? 0} run` : "belum ada run"}
+                  >
                     {tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : rate == null ? "Belum ada" : "Waspada"}
                   </span>
                 </div>

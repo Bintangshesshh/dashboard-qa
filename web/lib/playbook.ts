@@ -130,6 +130,8 @@ export const api = {
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   settings: () => request<Settings>("/api/settings"),
+  // Halaman sesi butuh angka retensi untuk label; viewer tidak boleh baca settings penuh.
+  publicSettings: () => request<Pick<Settings, "artifact_retention_days" | "report_retention_days">>("/api/settings/public"),
   patchSettings: (body: Partial<Record<keyof Settings, number>>) =>
     request<Settings>("/api/settings", { method: "PATCH", body: JSON.stringify(body) }),
 

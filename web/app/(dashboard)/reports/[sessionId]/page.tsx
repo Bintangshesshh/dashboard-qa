@@ -11,6 +11,24 @@ import { RunTerminal } from "../../run-terminal";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
+// stale tanpa path = folder report sudah dibuang retensi, jangan tawarkan Buka.
+const canPublish = (rep: Report) => rep.status !== "queued" && rep.status !== "building";
+
+const publishNote = (rep: Report) =>
+  rep.status === "failed" ? "gagal - build ulang" : rep.status === "stale" ? "folder report hilang" : "menunggu build selesai";
+
+// Report Playwright/Lighthouse ada di index.html; screenshot HTML tidak boleh menang.
+function pickReportArtifacts(run: Run) {
+  const arts = run.artifacts ?? [];
+  const html = arts.find(a => a.kind === "pw-html" || a.kind === "lh-html")
+    ?? arts.find(a => /(^|\/)index\.html$/.test(a.path))
+    ?? arts.find(a => a.path.endsWith(".html"));
+  const dir = html ? html.path.replace(/[^/]+$/, "") : "";
+  const json = arts.find(a => a.path === dir + "report.json")
+    ?? arts.find(a => a.path.endsWith("report.json"));
+  return { html, json };
+}
+
 export default function SessionDetail() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const router = useRouter();
@@ -19,11 +37,12 @@ export default function SessionDetail() {
   const [notice, setNotice] = useState("");
   const [openRun, setOpenRun] = useState<Run | null>(null);
   const [busy, setBusy] = useState("");
-  // B9/A58: label tombol report memakai jendela retensi; viewer 403 → fallback 7.
+  // B9/A58: label tombol report memakai jendela retensi (endpoint publik, viewer boleh baca).
+  // ponytail: fallback 7 kalau request gagal - tampilkan angka default saja.
   const [retention, setRetention] = useState(7);
 
   useEffect(() => {
-    api.settings().then(s => setRetention(Number(s.artifact_retention_days) || 7)).catch(() => {});
+    api.publicSettings().then(s => setRetention(Number(s.artifact_retention_days) || 7)).catch(() => {});
   }, []);
 
   const load = useCallback(() => {
@@ -56,7 +75,8 @@ export default function SessionDetail() {
   }, [openRun]);
 
   const publish = async (scope: "pw" | "lh" | "both") => {
-    setBusy(scope); setError(""); setNotice("");
+    setError(""); setNotice("");
+    setBusy(scope);
     try {
       const r = await api.createReport(sessionId, scope);
       setNotice(`Laporan ${scope} masuk antrean (${r.reportId.slice(0, 8)}).`);
@@ -117,12 +137,12 @@ export default function SessionDetail() {
         </div>
         <div className="pb-sess-actions">
           <div className="pb-btn-group">
-            <button className="pb-btn sm" onClick={() => { setBusy("pw"); publish("pw"); }}
-              disabled={!tools.has("pw") || !!busy}>Playwright</button>
-            <button className="pb-btn sm" onClick={() => { setBusy("lh"); publish("lh"); }}
-              disabled={!tools.has("lh") || !!busy}>Lighthouse</button>
+            <button className="pb-btn sm" onClick={() => publish("pw")}
+              disabled={!tools.has("pw") || !!busy}>{busy === "pw" ? "…" : "Playwright"}</button>
+            <button className="pb-btn sm" onClick={() => publish("lh")}
+              disabled={!tools.has("lh") || !!busy}>{busy === "lh" ? "…" : "Lighthouse"}</button>
             <button className="pb-btn sm primary" onClick={() => publish("both")}
-              disabled={!tools.has("pw") || !tools.has("lh") || !!busy}>Gabungan</button>
+              disabled={!tools.has("pw") || !tools.has("lh") || !!busy}>{busy === "both" ? "…" : "Gabungan"}</button>
           </div>
           <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
         </div>
@@ -209,6 +229,8 @@ export default function SessionDetail() {
               {session.reports!.map((rep: Report) => {
                 const ids: string[] = (() => { try { return JSON.parse(rep.run_ids ?? "[]"); } catch { return []; } })();
                 const missing = ids.filter(id => !runs.some(r => r.id === id));
+                // stale tanpa path = folder report sudah dibuang retensi.
+                const canOpen = rep.status === "ready" || (rep.status === "stale" && !!rep.path);
                 const scopeLabel = rep.scope === "both" ? "Gabungan" : rep.scope === "pw" ? "Playwright" : "Lighthouse";
                 return (
                   <div className="pb-repcard" key={rep.id}>
@@ -225,17 +247,24 @@ export default function SessionDetail() {
                     {rep.status === "stale" && <div className="pb-repcard-note">ada run baru, build ulang</div>}
                     {missing.length > 0 && <div className="pb-repcard-note">run dihapus: {missing.length}</div>}
                     {rep.status === "ready" && rep.mode === "html" && (
-                      <div className="pb-repcard-note">mode HTML cadangan{rep.error ? `: ${rep.error}` : ""}</div>
+                      <div className="pb-repcard-note">mode HTML cadangan</div>
                     )}
                     {rep.status === "ready" && rep.mode === "docs" && (
                       <div className="pb-repcard-note" style={{ color: "var(--ok)" }}>mode Docusaurus</div>
                     )}
+                    {rep.status === "failed" && rep.error && (
+                      <div className="pb-repcard-note">gagal: {rep.error}</div>
+                    )}
                     <div className="pb-repcard-act">
-                      {rep.status === "ready" || rep.status === "stale"
+                      {canOpen
                         ? <a className="pb-btn sm primary" href={reportUrl(rep.id)} target="_blank" rel="noreferrer">Buka</a>
-                        : <span className="pb-muted" style={{ fontSize: 12 }}>{rep.error ?? "menunggu…"}</span>}
-                      <button className="pb-btn sm" onClick={() => publish(rep.scope)} disabled={!!busy}>
-                        {rep.status === "stale" ? "Build ulang" : "Terbitkan"}
+                        : <span className="pb-muted" style={{ fontSize: 12 }}>{publishNote(rep)}</span>}
+                      {rep.status === "ready" && (
+                        <a className="pb-btn sm" href={reportUrl(rep.id, "report.md")} target="_blank" rel="noreferrer">Markdown</a>
+                      )}
+                      <button className="pb-btn sm" onClick={() => publish(rep.scope)}
+                        disabled={busy === rep.scope || !canPublish(rep)}>
+                        {busy === rep.scope ? "…" : rep.status === "ready" || rep.status === "stale" ? "Build ulang" : "Terbitkan"}
                       </button>
                     </div>
                   </div>
@@ -254,8 +283,7 @@ export default function SessionDetail() {
 function RunPanel({ run, retention, onClose }: { run: Run; retention: number; onClose: () => void }) {
   const results = run.results ?? [];
   const isPw = run.tool === "pw";
-  const report = run.artifacts?.find(a => a.path.endsWith("report.json"));
-  const html = run.artifacts?.find(a => a.path.endsWith(".html"));
+  const { html, json: report } = pickReportArtifacts(run);
 
   return (
     <section className="pb-card pb-runpanel">
@@ -317,6 +345,12 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
           artifact dihapus (retensi {retention} hari)
         </p>
       )}
+      {!html && (run.artifacts?.length ?? 0) > 0 && (
+        <p className="pb-muted" style={{ marginTop: 12, fontSize: 12 }}>
+          run ini tidak menghasilkan HTML report{" "}
+          <button className="pb-btn sm" onClick={onClose}>Tutup</button>
+        </p>
+      )}
     </section>
   );
 }
@@ -330,7 +364,8 @@ function ReportFrame({ runId, path, jsonPath }: { runId: string; path: string; j
   useEffect(() => {
     let live = true;
     setState("checking");
-    fetch(url, { method: "HEAD", credentials: "include" })
+    // Backend mati tidak boleh menggantung panel sampai proxy timeout 30 s.
+    fetch(url, { method: "HEAD", credentials: "include", signal: AbortSignal.timeout(5000) })
       .then(r => { if (live) setState(r.ok ? "ok" : r.status === 401 ? "auth" : "missing"); })
       .catch(() => { if (live) setState("missing"); });
     return () => { live = false; };
@@ -338,10 +373,11 @@ function ReportFrame({ runId, path, jsonPath }: { runId: string; path: string; j
 
   if (state === "checking") return <div className="pb-skel" style={{ height: 200, marginTop: 14 }} />;
   if (state === "auth") {
+    const next = typeof window === "undefined" ? "" : location.pathname + location.search;
     return (
       <p className="pb-muted" style={{ marginTop: 14, fontSize: 12 }}>
         Sesi login habis.{" "}
-        <a className="pb-btn sm" href={"/login?next=" + encodeURIComponent(location.pathname + location.search)}>Login ulang</a>
+        <a className="pb-btn sm" href={"/login?next=" + encodeURIComponent(next)}>Login ulang</a>
       </p>
     );
   }

@@ -710,7 +710,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .pb-badge.passed, .pb-badge.ready { color: var(--ok); background: var(--ok-bg); }
 .pb-badge.failed, .pb-badge.failed- { color: var(--bad); background: var(--bad-bg); }
-.pb-badge.running, .pb-badge.building, .pb-badge.queued { color: var(--warn); background: var(--warn-bg); }
+.pb-badge.running, .pb-badge.building, .pb-badge.queued, .pb-badge.warn { color: var(--warn); background: var(--warn-bg); }
 .pb-badge.open, .pb-badge.closed { color: var(--muted); }
 .pb-badge.stale { color: var(--warn); background: var(--warn-bg); }
 .pb-badge.skipped, .pb-badge.flaky { color: var(--warn); background: var(--warn-bg); }
@@ -735,9 +735,6 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   margin-bottom: 14px;
   font-size: 13.5px;
 }
-/* Demo: banner error di dashboard disembunyikan. Login tetap menampilkan error.
-   ponytail: hapus satu baris ini kalau mau pesan error muncul lagi. */
-.pb-shell .pb-err { display: none; }
 /* PRD §10.8: loading pakai skeleton, bukan layar kosong. */
 @keyframes pb-shimmer { from { background-position: -400px 0; } to { background-position: 400px 0; } }
 .pb-skel {
