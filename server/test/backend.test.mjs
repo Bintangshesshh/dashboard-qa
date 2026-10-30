@@ -421,6 +421,30 @@ test('artifact: traversal ditolak, file sah disajikan dengan header aman', async
   assert.equal(r.status, 401);
 });
 
+test('artifact: URL folder dipetakan ke index.html, traversal tetap ditolak', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf2', projectId: 'p1', tool: 'pw', path: 'b.spec.ts', label: 'B', code: 'x' });
+  const runId = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf2' } })).body.runId;
+
+  const dir = join(f.runner.runsDir, runId, 'artifacts', 'playwright-report');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'index.html'), '<!doctype html><title>native</title>');
+  f.store.addArtifact({ runId, kind: 'pw-html', path: 'playwright-report/index.html', bytes: 27 });
+
+  // Link lama dari index.html report: folder tanpa index.html.
+  let r = await f.call(`/artifacts/${runId}/playwright-report/`, { cookie });
+  assert.equal(r.status, 200, 'folder harus dipetakan ke index.html');
+  assert.match(r.body, /native/);
+
+  r = await f.call(`/artifacts/${runId}/playwright-report`, { cookie });
+  assert.equal(r.status, 200, 'folder tanpa slash juga dipetakan');
+
+  r = await f.call(`/artifacts/${runId}/..%2F..%2Fpackage.json`, { cookie });
+  assert.equal(r.status, 400);
+});
+
 test('parseLighthouse: banyak LHR URL sama → satu baris per URL', async () => {
   const { Runner } = await import('../runner.mjs');
   const runsDir = await mkdtemp(join(tmpdir(), 'pb-lh-'));

@@ -60,7 +60,7 @@ function playwrightSection(run, results, logs) {
 async function lighthouseSection(run, rows, artifacts, logs) {
   if (!rows.length) return `<p class="mut">data tidak ditemukan - JSON Lighthouse hilang atau korup.</p>`;
   // manifest.json lhci: url → htmlPath/jsonPath absolut. Dipakai untuk link report & audit gagal.
-  const dir = join(root, '.runs', run.id, 'artifacts');
+  const dir = join(resolve(root, process.env.RUNS_DIR ?? '.runs'), run.id, 'artifacts');
   const manifest = await readFile(join(dir, 'manifest.json'), 'utf8').then(JSON.parse).catch(() => []);
   const byUrl = new Map();
   for (const m of Array.isArray(manifest) ? manifest : []) {
@@ -100,6 +100,13 @@ async function lighthouseSection(run, rows, artifacts, logs) {
     ${audits.length ? `<h3>Audit di bawah skor penuh</h3><ul>${audits.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
     ${warns.length ? `<h3>Peringatan</h3><ul>${warns.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
     ${logs ? `<details><summary>Log run (500 baris terakhir)</summary><pre>${esc(logs)}</pre></details>` : ''}`;
+}
+
+// Header sesi untuk index dokumen: identitas + verdict + jumlah run.
+function sessionIntro(session, project, runs) {
+  const baris = [project?.name, session?.env, session?.target_url, date(session?.created_at)]
+    .filter(Boolean).map(v => esc(v)).join(' · ');
+  return `<p class="mut">${baris}</p><div class="card">${verdict(runs)} · ${runs.length} run</div>`;
 }
 
 async function runSection(run, results, artifacts, logs) {
@@ -182,7 +189,7 @@ ${sections.join('\n')}
     let mode = 'docs';
     let fallbackError = null;
     try {
-      await buildReportDocs(runIds.map(id => join(runsDir, id)), outDir, `/artifacts/reports/${reportId}/`);
+      await buildReportDocs(runIds.map(id => join(runsDir, id)), outDir, `/artifacts/reports/${reportId}/`, sessionIntro(session, project, usedRuns));
     } catch (error) {
       mode = 'html';
       // Detail teknis cukup di log server; kartu report hanya perlu alasan singkat.

@@ -120,6 +120,9 @@ export default function SessionDetail() {
 
   const runs = session.runs ?? [];
   const tools = new Set(runs.filter(r => FINAL.includes(r.status)).map(r => r.tool));
+  const hasPw = tools.has("pw");
+  const hasLh = tools.has("lh");
+  const hasBoth = hasPw && hasLh;
   const passed = runs.filter(r => r.status === "passed").length;
   const failed = runs.filter(r => r.status === "failed").length;
   const active = runs.filter(r => !FINAL.includes(r.status)).length;
@@ -139,12 +142,17 @@ export default function SessionDetail() {
         </div>
         <div className="pb-sess-actions">
           <div className="pb-btn-group">
-            <button className="pb-btn sm" onClick={() => publish("pw")}
-              disabled={!tools.has("pw") || !!busy}>{busy === "pw" ? "…" : "Playwright"}</button>
-            <button className="pb-btn sm" onClick={() => publish("lh")}
-              disabled={!tools.has("lh") || !!busy}>{busy === "lh" ? "…" : "Lighthouse"}</button>
-            <button className="pb-btn sm primary" onClick={() => publish("both")}
-              disabled={!tools.has("pw") || !tools.has("lh") || !!busy}>{busy === "both" ? "…" : "Gabungan"}</button>
+            <button className="pb-btn sm primary" onClick={() => publish(hasBoth ? "both" : hasPw ? "pw" : "lh")}
+              disabled={(!hasPw && !hasLh) || !!busy}>
+              {busy ? "…" : hasBoth ? "Buat dokumen (Gabungan)" : hasPw ? "Buat dokumen (Playwright)" : "Buat dokumen (Lighthouse)"}
+            </button>
+            {/* Scope tunggal hanya relevan kalau dua-duanya punya run final. */}
+            {hasBoth && (
+              <>
+                <button className="pb-btn sm" onClick={() => publish("pw")} disabled={!!busy}>PW saja</button>
+                <button className="pb-btn sm" onClick={() => publish("lh")} disabled={!!busy}>LH saja</button>
+              </>
+            )}
           </div>
           <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
         </div>
@@ -264,6 +272,8 @@ export default function SessionDetail() {
                         <ArtifactLink href={reportUrl(rep.id, "report.md")}
                           missing="markdown tidak ada">Markdown</ArtifactLink>
                       )}
+                      {/* Teks polos bahan tempel ke AI agent; isi sama dengan tabel HTML. */}
+                      {canOpen && <CopyRingkas reportId={rep.id} runIds={ids} />}
                       <button className="pb-btn sm" onClick={() => publish(rep.scope)}
                         disabled={busy === rep.scope || !canPublish(rep)}>
                         {busy === rep.scope ? "…" : rep.status === "ready" || rep.status === "stale" ? "Build ulang" : "Terbitkan"}
@@ -340,7 +350,12 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
 
       <RunTerminal runId={run.id} />
 
-      {html && <ReportFrame runId={run.id} path={html.path} jsonPath={report?.path} />}
+      {html && (
+        <p style={{ marginTop: 14 }}>
+          <NativeReportLink runId={run.id} path={html.path} label={`Report asli ${isPw ? "Playwright" : "Lighthouse"}`} />
+          {report?.path && <ArtifactLink href={artifactUrl(run.id, report.path)}>JSON mentah</ArtifactLink>}
+        </p>
+      )}
       {!html && !(run.artifacts?.length) && FINAL.includes(run.status) && (
         <p className="pb-muted" style={{ marginTop: 12, fontSize: 12 }}>
           <button className="pb-btn sm" disabled>Report mentah</button>{" "}
@@ -357,31 +372,38 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
   );
 }
 
-// PRD §10.8: cek artifact dulu. 401 → tombol login ulang, selain itu → pesan jelas,
-// supaya tidak ada iframe kosong yang bikin dashboard terlihat rusak.
-function ReportFrame({ runId, path, jsonPath }: { runId: string; path: string; jsonPath?: string }) {
-  const url = artifactUrl(runId, path);
-  const state = useProbe(url);
-
-  if (state === "checking") return <div className="pb-skel" style={{ height: 200, marginTop: 14 }} />;
-  if (state !== "ok") {
-    return (
-      <p className="pb-muted" style={{ marginTop: 14, fontSize: 12 }}>
-        {state === "auth"
-          ? <LoginAgain />
-          : "report mentah hilang - artifact sudah dibuang retensi atau belum selesai di-upload"}
-      </p>
-    );
-  }
-
+// Report asli Playwright/Lighthouse berat (2 MB + script sendiri). Iframe di dalam
+// panel bikin scroll bertingkat, jadi cukup dibuka di tab baru atau diunduh.
+function NativeReportLink({ runId, path, label }: { runId: string; path: string; label: string }) {
+  const state = useProbe(artifactUrl(runId, path));
+  if (state === "checking") return <span className="pb-muted" style={{ fontSize: 12 }}>cek report…</span>;
+  if (state === "auth") return <LoginAgain />;
+  if (state !== "ok") return <span className="pb-muted" style={{ fontSize: 12 }}>report asli hilang - dibuang retensi</span>;
   return (
-    <div style={{ marginTop: 14 }}>
-      <div className="pb-row" style={{ marginBottom: 8 }}>
-        <a className="pb-btn sm" href={url} target="_blank" rel="noreferrer">Buka tab baru</a>
-        {jsonPath && <ArtifactLink href={artifactUrl(runId, jsonPath)}>JSON mentah</ArtifactLink>}
-      </div>
-      <iframe title="report mentah" src={url}
-        style={{ width: "100%", height: 520, border: "1px solid var(--line)", borderRadius: 10, background: "#fff", colorScheme: "only light" }} />
-    </div>
+    <>
+      <a className="pb-btn sm" href={artifactUrl(runId, path)} target="_blank" rel="noreferrer">{label}</a>{" "}
+      {/* download attribute hanya berlaku same-origin, dan /artifacts memang same-origin. */}
+      <a className="pb-btn sm" href={artifactUrl(runId, path)} download>Unduh</a>
+    </>
   );
+}
+
+// Salin ringkas.txt (teks polos untuk agent/tiket) tanpa membuka tab baru.
+function CopyRingkas({ reportId, runIds }: { reportId: string; runIds: string[] }) {
+  const [label, setLabel] = useState("Salin ringkas");
+  const copy = async () => {
+    try {
+      // ringkas.txt ada per run; gabungkan semua run di report ini.
+      const parts = await Promise.all(runIds.map(async id => {
+        const res = await fetch(reportUrl(reportId, id + "/ringkas.txt"), { credentials: "include" });
+        return res.ok ? await res.text() : "";
+      }));
+      await navigator.clipboard.writeText(parts.filter(Boolean).join("\n\n"));
+      setLabel("Tersalin");
+      setTimeout(() => setLabel("Salin ringkas"), 2000);
+    } catch {
+      setLabel("Gagal salin");
+    }
+  };
+  return <button className="pb-btn sm" onClick={copy}>{label}</button>;
 }

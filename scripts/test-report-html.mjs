@@ -50,14 +50,14 @@ try {
   assert.equal(index[1].status, 'missing');
 
   const html = await readFile(join(outDir, 'synthetic/index.html'), 'utf8');
-  assert(html.includes('Failure-first summary'));
+  assert(html.includes('Ringkasan kegagalan lebih dulu'));
   assert(html.includes('locator.click nested'));
   assert(html.includes('nested.spec.ts:17:3'));
   assert(html.includes('Nested API error'));
   assert(html.includes('60/100'));
-  assert(html.includes('Prioritized audit failures'));
-  assert(html.includes('<details><summary>Show native runner logs</summary>'));
-  assert(html.includes('Failed step: '));
+  assert(html.includes('Audit prioritas'));
+  assert(html.includes('<details><summary>Tampilkan log runner asli</summary>'));
+  assert(html.includes('Langkah gagal: '));
   assert(html.includes('Click checkout'));
   assert(html.includes('Locator not visible'));
   assert(html.includes('Contrast failure'));
@@ -68,8 +68,8 @@ try {
   assert(html.includes('artifacts/pw/screen%20shot.png'));
   assert(html.includes('artifacts/artifacts/pw/report/index.html'.replace(/^artifacts\//, '')) || html.includes('artifacts/pw/report/index.html'));
   assert(html.includes('playwright show-trace'));
-  assert(html.includes('Native HTML report downloads'));
-  assert(html.includes('interactive native viewers may not work here'));
+  assert(html.includes('Report HTML asli'));
+  assert(html.includes('viewer interaktif mungkin tidak jalan'));
   assert(html.includes('<style>'));
   assert(html.includes('broken.json'));
   assert(!/<img\b/i.test(html));
@@ -82,6 +82,18 @@ try {
   assert(page.includes('Laporan run'));
   assert(page.includes('Run dihapus'));
   assert(!/<script\b/i.test(page));
+  // Link folder tanpa index.html dibalas {"error":"Not found"} oleh route artifact.
+  assert(page.includes('href="synthetic/index.html"'));
+  assert(!/href="synthetic\/"/.test(page));
+  // Kolom teks: jalur cepat ambil ringkas.txt dari index.
+  assert(page.includes('synthetic/ringkas.txt'));
+  // Report asli harus bisa dibuka di tab baru, bukan hanya diunduh.
+  assert(/target="_blank" rel="noopener">buka</.test(html));
+  // ringkas.txt untuk tempel ke agent, satu sumber dengan tabel.
+  const ringkas = await readFile(join(outDir, 'synthetic/ringkas.txt'), 'utf8');
+  assert(ringkas.includes('status failed'));
+  assert(ringkas.includes('Nested API error'));
+  assert(ringkas.includes('locator.click nested'));
 
   // baseUrl tidak valid harus ditolak.
   await assert.rejects(buildReportDocs([runDir], join(work, 'bad'), '/x/y'), /baseUrl/);

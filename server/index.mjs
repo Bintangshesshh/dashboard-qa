@@ -691,7 +691,9 @@ export function createApp({ store, runner, token, origins }) {
   app.get('/artifacts/reports/:reportId/*', requireAuth, route(async (req, res) => {
     const report = store.getReport(id(req.params.reportId));
     if (!report) fail('Not found', 404);
-    const rel = req.params[0];
+    // Link ke folder (mis. "<runId>/") dipetakan ke index.html; link lama tetap hidup.
+    const asked = (req.params[0] ?? '').replace(/\/$/, '');
+    const rel = asked === '' || !/\.[a-z0-9]+$/i.test(asked) ? (asked ? asked + '/index.html' : 'index.html') : asked;
     if (rel.includes('..')) fail('Invalid path', 400);
     const base = join(reportsDir, report.id);
     // Report lama tidak punya report.md; susun dari DB supaya tautan tidak 404.
@@ -722,7 +724,9 @@ export function createApp({ store, runner, token, origins }) {
     const runId = id(req.params.runId);
     const run = store.getRun(runId);
     if (!run) fail('Not found', 404);
-    const rel = req.params[0];
+    // Sama: folder artifact (mis. "playwright-report/") dipetakan ke index.html.
+    const asked = (req.params[0] ?? '').replace(/\/$/, '');
+    const rel = asked === '' || !/\.[a-z0-9]+$/i.test(asked) ? (asked ? asked + '/index.html' : 'index.html') : asked;
     if (rel.includes('..')) fail('Invalid path', 400);
     const base = join(runsDir, runId, 'artifacts');
     const file = await realpath(join(base, rel)).catch(() => null);

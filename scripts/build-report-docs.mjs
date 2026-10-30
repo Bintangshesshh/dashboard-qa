@@ -5,7 +5,7 @@
 import { readdir, readFile, writeFile, mkdir, rm, copyFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { spawn } from 'node:child_process';
-import { runReportHtml, indexHtml } from './report-html.mjs';
+import { runReportHtml, indexHtml, ringkasTeks } from './report-html.mjs';
 
 const RUN_KEYS = ['id', 'suiteName', 'targetUrl', 'mode', 'status', 'startedAt', 'finishedAt', 'exitCode', 'error'];
 
@@ -60,7 +60,8 @@ async function tarDir(staging, archive) {
 }
 
 // Bangun satu folder report berisi semua run. Mengembalikan daftar slug yang dibuat.
-export async function buildReportDocs(runDirs, outDir, baseUrl) {
+// intro: HTML ringkasan sesi yang disisipkan di index (verdict, target, KPI).
+export async function buildReportDocs(runDirs, outDir, baseUrl, intro = '') {
   if (!baseUrl?.startsWith('/') || !baseUrl.endsWith('/') || /[?#\\]/.test(baseUrl)) {
     throw new Error('baseUrl harus path absolut yang diakhiri /');
   }
@@ -96,13 +97,15 @@ export async function buildReportDocs(runDirs, outDir, baseUrl) {
     const bundle = await tarDir(staging, join(pageDir, 'downloads/artifacts.tar.gz'));
     await writeFile(join(pageDir, 'index.html'),
       runReportHtml({ run: entry.run, logs: entry.logs, files: entry.files, reports: entry.reports, warnings: entry.warnings, bundle }));
+    // Teks polos siap tempel ke agent/tiket; satu sumber dengan tabel di index.html.
+    await writeFile(join(pageDir, 'ringkas.txt'), ringkasTeks(entry) + '\n');
     index.push({
       id: entry.run.id, slug: name, suiteName: entry.run.suiteName ?? null,
       mode: entry.run.mode ?? null, status: entry.run.status ?? null,
       targetUrl: entry.run.targetUrl ?? null, finishedAt: entry.run.finishedAt ?? null,
     });
   }
-  await writeFile(join(outDir, 'index.html'), indexHtml(index));
+  await writeFile(join(outDir, 'index.html'), indexHtml(index, intro));
   return index;
 }
 
