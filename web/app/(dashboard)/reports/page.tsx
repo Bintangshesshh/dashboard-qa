@@ -31,7 +31,6 @@ export default function ReportsPage() {
     <>
       <div className="pb-head">
         <div>
-          <div className="eyebrow">Reports</div>
           <h1>Laporan per project.</h1>
           <p className="pb-lead">Pilih project untuk melihat sesi, run, dan laporannya.</p>
         </div>

@@ -159,7 +159,6 @@ export default function LighthousePage() {
     <>
       <div className="pb-head">
         <div>
-          <div className="eyebrow">Lighthouse</div>
           <h1>Audit performa.</h1>
           <p className="pb-lead">Pilih project, atur skor minimum, lalu jalankan. Log muncul langsung di bawah.</p>
         </div>

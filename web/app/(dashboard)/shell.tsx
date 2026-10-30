@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -19,7 +19,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // PRD §10.8: backend mati → banner, halaman tetap dirender.
+  // PRD Â§10.8: backend mati â†’ banner, halaman tetap dirender.
   const [down, setDown] = useState(false);
   // Breadcrumb berlayer butuh nama project + label sesi.
   const [projects, setProjects] = useState<Project[]>([]);
@@ -84,7 +84,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="pb-brand-sub">Eureka Group</div>
           </div>
         </div>
-
         <nav className="pb-nav" aria-label="Navigasi utama">
           <div className="pb-nav-label">Ruang kerja</div>
           {NAV.map(item => (
@@ -126,6 +125,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       <div className="pb-mainwrap">
         <header className="pb-topbar">
+          <div style={{ minWidth: 0 }}>
+            <div className="pb-topbar-title">{screen}</div>
+            <div className="pb-topbar-sub">Eureka Group - Playbook QA</div>
+          </div>
           <nav className="pb-crumb" aria-label="Breadcrumb">
             {crumbs.map((c, i) => {
               const last = i === crumbs.length - 1;
@@ -203,7 +206,7 @@ function ThemePref() {
   );
 }
 
-// Skeleton sederhana: PRD §10.8 minta bukan layar kosong.
+// Skeleton sederhana: PRD Â§10.8 minta bukan layar kosong.
 function Skeleton() {
   return (
     <div aria-busy="true" aria-live="polite">

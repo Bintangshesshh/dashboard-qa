@@ -129,7 +129,6 @@ export default function SessionDetail() {
     <>
       <div className="pb-sess-head">
         <div className="pb-sess-title">
-          <div className="eyebrow">Sesi</div>
           <h1>{session.label}</h1>
           <div className="pb-sess-meta">
             <span className={`pb-badge ${session.status}`}>{session.status}</span>

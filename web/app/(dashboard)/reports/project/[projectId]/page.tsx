@@ -57,7 +57,6 @@ export default function ProjectReports() {
 
       <div className="pb-head">
         <div>
-          <div className="eyebrow">Reports / {project?.name ?? "…"}</div>
           <h1>{project?.name ?? "Memuat…"}</h1>
           <p className="pb-muted" style={{ margin: "4px 0 0" }}>{project?.base_url}</p>
         </div>

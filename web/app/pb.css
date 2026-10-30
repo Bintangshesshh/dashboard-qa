@@ -1,82 +1,82 @@
-/* Playbook - design system v7 (Apple-inspired) */
+﻿/* Playbook - palet navy/biru "Agentic" (ikut referensi desain) */
 :root {
-  /* Surface: Pale Apple Gray → Pure White → Graphite */
-  --bg: #f5f5f7;
+  color-scheme: light;
+
+  --bg: #f8fafc;
   --bg-soft: #ffffff;
   --card: #ffffff;
-  --card-hi: #fbfbfd;
-  --surface-warm: #f5f5f7;
+  --card-hi: #f1f5f9;
+  --surface-warm: #f1f5f9;
 
-  /* Foreground ramp - neutral Apple gray scale */
-  --text: #1d1d1f;
-  --fg-2: #1d1d1f;
-  --muted: #6e6e73;
-  --meta: #86868b;
+  /* Foreground ramp - slate */
+  --text: #0f172a;
+  --fg-2: #1e293b;
+  --muted: #64748b;
+  --meta: #64748b;
 
   /* Border */
-  --line: #d2d2d7;
-  --border: #e8e8ed;
-  --border-soft: #d2d2d7;
+  --line: #e2e8f0;
+  --border: #e2e8f0;
+  --border-soft: #cbd5e1;
 
-  /* Accent - Apple Action Blue */
-  --accent: #0071e3;
+  /* Accent - sinyal biru */
+  --accent: #2563eb;
   --accent-on: #ffffff;
-  --accent-soft: #e8f2fd;
+  --accent-soft: rgba(37, 99, 235, .1);
 
-  --ok: #248a3d;
-  --warn: #bf4800;
-  --bad: #d70015;
-  --ok-bg: rgba(36, 138, 61, .1);
-  --warn-bg: rgba(178, 80, 0, .12);
-  --bad-bg: rgba(215, 0, 21, .08);
+  --ok: #16a34a;
+  --warn: #d97706;
+  --bad: #e11d48;
+  --ok-bg: rgba(22, 163, 74, .1);
+  --warn-bg: rgba(217, 119, 6, .12);
+  --bad-bg: rgba(225, 29, 72, .08);
 
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius: var(--radius-md);
+  --card-pad: 20px;
 
-  /* Ring shadow, bukan drop shadow */
-  --shadow: rgba(0, 0, 0, .06) 0 4px 24px;
-  --elev-raised: rgba(0, 0, 0, .08) 0 8px 28px;
-  --focus-ring: 0 0 0 4px rgba(0, 113, 227, .3);
+  --shadow: rgba(15, 23, 42, .06) 0 4px 24px;
+  --elev-raised: 0 8px 28px rgba(15, 23, 42, .08);
+  --focus-ring: 0 0 0 4px rgba(37, 99, 235, .28);
 
-  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Inter, system-ui, sans-serif;
-  --font: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Inter, system-ui, sans-serif;
+  --font-display: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+  --font: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
   --font-body: var(--font);
-  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   --motion-fast: 150ms;
   --motion-base: 200ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-
-  color-scheme: light;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #000000;
-  --bg-soft: #1d1d1f;
-  --card: #1d1d1f;
-  --card-hi: #272729;
-  --surface-warm: #1d1d1f;
-  --text: #f5f5f7;
-  --fg-2: #f5f5f7;
-  --muted: #a1a1a6;
-  --meta: #86868b;
-  --line: #2a2a2c;
-  --border: #272729;
-  --border-soft: #2a2a2c;
-  --accent: #2997ff;
-  --accent-on: #ffffff;
-  --accent-soft: #0a2540;
-  --ok: #30d158;
-  --warn: #ff9f0a;
-  --bad: #ff453a;
-  --ok-bg: rgba(48, 209, 88, .14);
-  --warn-bg: rgba(255, 159, 10, .14);
-  --bad-bg: rgba(255, 69, 58, .14);
-  --shadow: rgba(0, 0, 0, .5) 0 8px 28px;
-  --elev-raised: rgba(0, 0, 0, .5) 0 8px 28px;
+  --bg: #0b1020;
+  --bg-soft: #131b2f;
+  --card: #131b2f;
+  --card-hi: #182343;
+  --surface-warm: #182343;
+  --text: #f8fafc;
+  --fg-2: #cbd5e1;
+  --muted: #8ea0b8;
+  --meta: #8ea0b8;
+  --line: #293653;
+  --border: #1e2a43;
+  --border-soft: #293653;
+  --accent: #60a5fa;
+  --accent-on: #06111f;
+  --accent-soft: rgba(96, 165, 250, .16);
+  --ok: #22c55e;
+  --warn: #fbbf24;
+  --bad: #fb7185;
+  --ok-bg: rgba(34, 197, 94, .12);
+  --warn-bg: rgba(251, 191, 36, .12);
+  --bad-bg: rgba(251, 113, 133, .12);
+  --shadow: 0 0 0 1px #293653;
+  --elev-raised: 0 24px 72px rgba(0, 0, 0, .36);
+  --focus-ring: 0 0 0 4px rgba(96, 165, 250, .28);
 }
 
 * { box-sizing: border-box; }
@@ -108,7 +108,7 @@ button { cursor: pointer; }
 ::selection { background: color-mix(in oklab, var(--accent) 24%, var(--card)); color: var(--text); }
 :focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
 
-/* ─── Login ─────────────────────────────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Login ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 /* Satu kartu di tengah: brand, form. */
 .pb-login {
   min-height: 100vh;
@@ -167,79 +167,81 @@ button { cursor: pointer; }
   .pb-login-card { padding: 28px 22px; border-radius: var(--radius-md); }
 }
 
-/* ─── Shell ─────────────────────────────────────────────── */
-.pb-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+/* â”€â”€â”€ Shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.pb-shell { display: flex; min-height: 100vh; }
 
 .pb-side {
-  border-right: 1px solid var(--border-soft);
-  background: var(--surface-warm);
-  padding: 22px 14px 16px;
+  width: 256px;
+  flex: none;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-right: 1px solid var(--border);
+  background: var(--card);
   display: flex;
   flex-direction: column;
-  position: sticky;
-  top: 0;
-  height: 100vh;
   overflow-y: auto;
-  z-index: 60;
+  scrollbar-gutter: stable;
+  z-index: 100;
 }
 
-.pb-brand { padding: 4px 10px 26px; }
+.pb-brand {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 .pb-brand-name {
   font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 24px;
-  line-height: 1;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -.01em;
+  line-height: 1.15;
 }
-.pb-brand-sub {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: .18em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-top: 6px;
+.pb-topbar-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--text);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.pb-topbar-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.pb-brand-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 
-.pb-nav { display: flex; flex-direction: column; gap: 2px; }
+.pb-nav { padding: 12px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .pb-nav-label {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: .16em;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .1em;
   text-transform: uppercase;
-  color: var(--muted);
-  padding: 0 12px;
-  margin: 4px 0 10px;
+  color: var(--meta);
+  padding: 8px 10px 6px;
 }
-.pb-nav-label-gap { margin-top: 16px; }
+.pb-nav-label-gap { margin-top: 14px; }
 .pb-nav a {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  min-height: 40px;
-  padding: 0 12px;
-  border-radius: 9px;
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 400;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-2);
+  font-size: 13.5px;
+  font-weight: 500;
   transition: background var(--motion-fast) var(--ease-standard),
               color var(--motion-fast) var(--ease-standard);
 }
-.pb-nav a:hover { background: color-mix(in oklab, var(--text) 6%, transparent); color: var(--text); }
+.pb-nav a:hover { background: var(--surface-warm); color: var(--text); }
 .pb-nav a[aria-current="page"] {
-  background: var(--card);
+  background: var(--surface-warm);
   color: var(--text);
-  box-shadow: 0 0 0 1px var(--border-soft);
-}
-.pb-nav a[aria-current="page"]::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 10px;
-  bottom: 10px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 0 var(--accent);
 }
 
 .pb-side-foot {
@@ -247,34 +249,23 @@ button { cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 0 4px;
+  padding: 12px;
+  border-top: 1px solid var(--border-soft);
 }
-.pb-user-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: 9px;
-}
+.pb-user-row { display: flex; align-items: center; gap: 10px; padding: 2px 4px; }
 .pb-avatar {
-  width: 29px; height: 29px;
+  width: 30px; height: 30px;
   border-radius: 50%;
   display: grid; place-items: center;
-  background: var(--card);
-  border: 1px solid var(--border-soft);
-  font-family: var(--font-display);
-  font-size: 13px;
+  background: var(--accent);
+  color: var(--accent-on);
+  font-size: 12px;
+  font-weight: 700;
   flex: none;
 }
 .pb-user-meta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
-.pb-user-meta strong { font-size: 12.5px; font-weight: 500; }
-.pb-user-meta span {
-  font-family: var(--mono);
-  font-size: 9.5px;
-  color: var(--meta);
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
+.pb-user-meta strong { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.pb-user-meta span { font-size: 11px; color: var(--muted); text-transform: capitalize; }
 .pb-logout {
   display: flex;
   align-items: center;
@@ -282,7 +273,7 @@ button { cursor: pointer; }
   min-height: 34px;
   padding: 0 10px;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   font-size: 12.5px;
@@ -297,14 +288,14 @@ button { cursor: pointer; }
   grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   padding: 3px;
-  background: var(--card);
+  background: var(--bg);
   border: 1px solid var(--border-soft);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
 }
 .pb-theme button {
   height: 26px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
   color: var(--meta);
   font-family: var(--font);
@@ -313,40 +304,42 @@ button { cursor: pointer; }
   transition: background var(--motion-fast) var(--ease-standard),
               color var(--motion-fast) var(--ease-standard);
 }
-.pb-theme button:hover { color: var(--text); background: color-mix(in oklab, var(--text) 6%, transparent); }
+.pb-theme button:hover { color: var(--text); }
 .pb-theme button[aria-pressed="true"] {
-  background: var(--bg);
+  background: var(--surface-warm);
   color: var(--text);
-  box-shadow: 0 0 0 1px var(--border-soft);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--border);
 }
 
-/* ─── Topbar + main ─────────────────────────────────────── */
-.pb-mainwrap { min-width: 0; display: flex; flex-direction: column; }
+/* â”€â”€â”€ Topbar + main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.pb-mainwrap {
+  margin-left: 256px;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
 .pb-topbar {
   position: sticky;
   top: 0;
-  z-index: 40;
+  z-index: 90;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 18px;
-  min-height: 68px;
-  padding: 0 28px;
+  height: 64px;
+  padding: 0 24px;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in oklab, var(--bg) 90%, transparent);
-  backdrop-filter: blur(14px);
+  background: var(--card);
 }
-.pb-crumb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--meta);
-}
-.pb-crumb strong { color: var(--fg-2); font-weight: 500; }
+.pb-crumb { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--meta); min-width: 0; overflow: hidden; }
+.pb-crumb strong { color: var(--text); font-weight: 600; }
 /* Nav berlayer di topbar: tiap level bisa diklik. */
 .pb-crumb-item { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .pb-crumb-item a {
-  color: var(--meta);
+  color: var(--muted);
   border-radius: 4px;
   padding: 1px 2px;
   transition: color var(--motion-fast) var(--ease-standard);
@@ -357,22 +350,20 @@ button { cursor: pointer; }
 }
 .pb-crumb-item a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .pb-crumb-item strong {
-  color: var(--text);
-  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 38ch;
 }
 .pb-crumb-sep { color: var(--border-soft); user-select: none; }
-.pb-main { padding: 28px 28px 56px; max-width: 1500px; width: 100%; margin: 0 auto; }
+.pb-main { padding: 24px 24px 56px; max-width: 1600px; width: 100%; margin: 0 auto; }
 .pb-head {
   display: flex; align-items: flex-end; justify-content: space-between;
-  gap: 24px; flex-wrap: wrap; margin-bottom: 24px;
+  gap: 16px 24px; flex-wrap: wrap; margin-bottom: 20px;
 }
-.pb-head h1 { font-size: clamp(30px, 3.1vw, 42px); line-height: 1.08; max-width: 22ch; }
-.pb-head .pb-lead { margin-top: 10px; }
-.pb-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-bottom: 4px; }
+.pb-head h1 { font-size: 26px; line-height: 1.16; max-width: 32ch; letter-spacing: -.02em; }
+.pb-head .pb-lead { margin-top: 6px; }
+.pb-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-left: auto; }
 .pb-lead { font-size: 15px; line-height: 1.6; color: var(--muted); max-width: 68ch; }
 
 
@@ -380,11 +371,11 @@ button { cursor: pointer; }
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 22px;
+  padding: var(--card-pad);
 }
 .pb-grid { display: grid; gap: 16px; }
 /* 4 KPI di overview, sesuai grid-4 prototype. */
-.pb-grid.kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pb-grid.kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; }
 .pb-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 .pb-grid.chart-2-1 { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); align-items: start; }
 
@@ -392,8 +383,8 @@ button { cursor: pointer; }
   min-height: 132px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 18px 18px 16px;
+  justify-content: flex-start;
+  padding: var(--card-pad);
   transition: border-color var(--motion-base) var(--ease-standard),
               box-shadow var(--motion-base) var(--ease-standard);
 }
@@ -419,7 +410,8 @@ button { cursor: pointer; }
 .pb-kpi-foot {
   font-size: 11.5px;
   color: var(--muted);
-  margin-top: 10px;
+  margin-top: auto;
+  padding-top: 10px;
   line-height: 1.4;
 }
 .pb-kpi-foot strong { color: var(--fg-2); font-weight: 500; }
@@ -434,10 +426,9 @@ button { cursor: pointer; }
 .pb-kpi-foot .dot.ok { background: var(--ok); }
 .pb-kpi-foot .dot.bad { background: var(--bad); }
 
-/* Donut pass rate - 2πr = 314 untuk r=50. */
-.pb-kpi-donut { justify-content: flex-start; }
+/* Donut pass rate - 2ÃƒÂÃ¢â€šÂ¬r = 314 untuk r=50. */
 .pb-donut-wrap { display: flex; justify-content: center; margin: 6px 0 2px; }
-.pb-donut { width: 104px; height: 104px; transform: rotate(-90deg); }
+.pb-donut { width: 88px; height: 88px; transform: rotate(-90deg); }
 .pb-donut-track { fill: none; stroke: var(--surface-warm); stroke-width: 9; }
 .pb-donut-val {
   fill: none;
@@ -456,7 +447,7 @@ button { cursor: pointer; }
   transform-origin: center;
 }
 
-/* Score ring LHCI - 2πr = 188.5 untuk r=30. */
+/* Score ring LHCI - 2ÃƒÂÃ¢â€šÂ¬r = 188.5 untuk r=30. */
 .pb-score-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -494,15 +485,15 @@ button { cursor: pointer; }
 }
 
 
-/* ─── Chart batang ──────────────────────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Chart batang ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 .pb-card-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
-.pb-card-head h2 { font-size: 21px; line-height: 1.2; }
+.pb-card-head h2 { font-size: 17px; line-height: 1.25; }
 .pb-card-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
 .pb-legend { display: flex; align-items: center; gap: 14px; font-size: 10.5px; color: var(--muted); flex-wrap: wrap; }
 .pb-legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -556,7 +547,7 @@ button { cursor: pointer; }
   color: var(--meta);
 }
 
-/* ─── Daftar kegagalan ──────────────────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Daftar kegagalan ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 .pb-fail-list { display: flex; flex-direction: column; }
 .pb-fail-item {
   display: grid;
@@ -597,7 +588,7 @@ button { cursor: pointer; }
 }
 .pb-link-muted:hover { color: var(--text); border-color: var(--meta); }
 
-/* ─── Kartu project ─────────────────────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Kartu project ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 .pb-section-title {
   display: flex;
   align-items: center;
@@ -605,7 +596,7 @@ button { cursor: pointer; }
   gap: 16px;
   margin: 24px 0 12px;
 }
-.pb-section-title h2 { font-size: 21px; }
+.pb-section-title h2 { font-size: 17px; }
 .pb-project-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .pb-pcard {
   display: flex;
@@ -635,7 +626,7 @@ button { cursor: pointer; }
 }
 .pb-pcard-foot strong { font-weight: 400; color: var(--fg-2); }
 
-/* ─── Controls ──────────────────────────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Controls ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 .pb-input, .pb-select {
   background: var(--card);
   border: 1px solid var(--border-soft);
@@ -694,7 +685,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-icon-btn { width: 30px; padding: 0; flex: none; }
 .pb-icon-btn svg { display: block; }
 
-/* ─── Table ─────────────────────────────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Table ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 .pb-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .pb-table th {
   text-align: left;
@@ -712,7 +703,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-table tbody tr:hover { background: color-mix(in oklab, var(--text) 3%, transparent); }
 .pb-table td.mono, .mono { font-family: var(--mono); font-size: 12px; color: var(--muted); }
 
-/* ─── Badge ─────────────────────────────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Badge ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 .pb-badge {
   display: inline-flex; align-items: center; gap: 5px;
   height: 22px; padding: 0 8px; border-radius: 999px;
@@ -730,7 +721,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-badge.stale { color: var(--warn); background: var(--warn-bg); }
 .pb-badge.skipped, .pb-badge.flaky { color: var(--warn); background: var(--warn-bg); }
 
-/* ─── Misc ──────────────────────────────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Misc ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 .eyebrow {
   font-family: var(--mono);
   font-size: 10px;
@@ -750,7 +741,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   margin-bottom: 14px;
   font-size: 13.5px;
 }
-/* PRD §10.8: loading pakai skeleton, bukan layar kosong. */
+/* PRD Ãƒâ€šÃ‚Â§10.8: loading pakai skeleton, bukan layar kosong. */
 @keyframes pb-shimmer { from { background-position: -400px 0; } to { background-position: 400px 0; } }
 .pb-skel {
   border-radius: var(--radius-md);
@@ -762,7 +753,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-spacer { flex: 1; }
 .pb-mono { font-family: var(--mono); font-size: 12px; }
 .pb-term {
-  background: #000000;
+  background: #0b1020;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   padding: 14px;
@@ -772,15 +763,15 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   max-height: 340px;
   overflow: auto;
   white-space: pre-wrap;
-  color: #f5f5f7;
+  color: #cbd5e1;
 }
 .pb-term > div { white-space: pre-wrap; }
-.pb-log-err { color: #ff453a; }
+.pb-log-err { color: #fb7185; }
 .pb-iframe {
   width: 100%; height: 640px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: #fff;
+  background: var(--card);
 }
 
 @media (max-width: 1100px) {
@@ -792,23 +783,25 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 }
 
 @media (max-width: 860px) {
-  .pb-shell { grid-template-columns: 1fr; }
   .pb-side {
-    position: static; height: auto;
+    position: static; width: 100%; height: auto;
     flex-direction: row; flex-wrap: wrap; align-items: center;
-    padding: 14px;
+    border-right: 0; border-bottom: 1px solid var(--border);
   }
-  .pb-brand { padding: 0 8px; width: 100%; }
-  .pb-nav { flex-direction: row; flex-wrap: wrap; width: 100%; }
+  .pb-mainwrap { margin-left: 0; }
+  .pb-brand { border-bottom: 0; padding: 12px 16px; width: auto; }
+  .pb-nav { flex-direction: row; flex-wrap: wrap; padding: 0 16px 10px; width: 100%; flex: none; }
   .pb-nav-label { display: none; }
   .pb-side-foot {
     margin: 0; flex-direction: row; align-items: center; gap: 8px;
-    padding: 8px 0 0; width: 100%;
+    border-top: 0; padding: 0 16px 14px; width: 100%;
   }
-  .pb-topbar { padding: 0 18px; min-height: 56px; }
-  .pb-main { padding: 18px; }
+  .pb-theme { width: 200px; }
+  .pb-topbar { padding: 0 16px; height: 56px; }
+  .pb-main { padding: 16px 16px 40px; }
   .pb-head { flex-direction: column; align-items: flex-start; gap: 14px; }
-  .pb-head h1 { font-size: 28px; }
+  .pb-filters { margin-left: 0; }
+  .pb-head h1 { font-size: 22px; }
 }
 
 @media (max-width: 620px) {
@@ -818,7 +811,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   .pb-project-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ─── Detail sesi ───────────────────────────────────────── */
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Detail sesi ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
 .pb-sess-head {
   display: flex;
   align-items: flex-end;
@@ -828,7 +821,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   margin: 14px 0 22px;
 }
 .pb-sess-title h1 {
-  font-size: clamp(26px, 2.6vw, 36px);
+  font-size: 26px;
   line-height: 1.1;
   margin-top: 2px;
   max-width: 34ch;
@@ -934,7 +927,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-repcard {
   display: grid;
   gap: 8px;
-  padding: 12px;
+  padding: calc(var(--card-pad) - 6px);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--bg-soft);

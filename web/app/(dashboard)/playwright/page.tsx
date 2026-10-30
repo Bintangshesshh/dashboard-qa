@@ -170,7 +170,6 @@ export default function PlaywrightPage() {
     <>
       <div className="pb-head">
         <div>
-          <div className="eyebrow">Playwright</div>
           <h1>Jalankan test suite.</h1>
           <p className="pb-lead">Pilih project, cek spec-nya, lalu jalankan. Log muncul langsung di bawah.</p>
         </div>

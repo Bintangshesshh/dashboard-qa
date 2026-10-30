@@ -51,7 +51,6 @@ export default function OverviewPage() {
     <>
       <div className="pb-head">
         <div>
-          <div className="eyebrow">Overview · {range} hari terakhir</div>
           <h1>Kondisi QA hari ini.</h1>
           <p className="pb-lead">
             {stats

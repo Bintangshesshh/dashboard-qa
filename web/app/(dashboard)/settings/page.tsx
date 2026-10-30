@@ -83,7 +83,6 @@ export default function SettingsPage() {
     <>
       <div className="pb-head">
         <div>
-          <div className="eyebrow">Pengaturan</div>
           <h1>Konfigurasi Playbook.</h1>
           <p className="pb-lead">Retensi, token CLI, project, dan audit log.</p>
         </div>
