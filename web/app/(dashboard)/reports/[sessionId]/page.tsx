@@ -247,10 +247,7 @@ export default function SessionDetail() {
                     {rep.status === "stale" && <div className="pb-repcard-note">ada run baru, build ulang</div>}
                     {missing.length > 0 && <div className="pb-repcard-note">run dihapus: {missing.length}</div>}
                     {rep.status === "ready" && rep.mode === "html" && (
-                      <div className="pb-repcard-note">mode HTML cadangan</div>
-                    )}
-                    {rep.status === "ready" && rep.mode === "docs" && (
-                      <div className="pb-repcard-note" style={{ color: "var(--ok)" }}>mode Docusaurus</div>
+                      <div className="pb-repcard-note">HTML cadangan (satu file)</div>
                     )}
                     {rep.status === "failed" && rep.error && (
                       <div className="pb-repcard-note">gagal: {rep.error}</div>

@@ -398,7 +398,7 @@ export class Runner extends EventEmitter {
     return [...out.values()];
   }
 
-  // Tahap 5: snapshot run untuk pipeline Docusaurus (scripts/build-run-docs.mjs).
+  // Snapshot run untuk pipeline laporan HTML (scripts/build-report-docs.mjs).
   // Hanya fakta run; kode spec sengaja tidak ikut supaya tidak bocor ke report statis.
   async writeRunJson(state, dir, { status, exitCode, error, mode }) {
     const run = this.store.getRun(state.runId);

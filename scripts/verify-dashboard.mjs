@@ -27,7 +27,7 @@ socket.close();
 console.log(JSON.stringify(latest,null,2));
 assert.equal(latest.status,'passed');
 assert.ok(logs.length>0,'WebSocket must stream native logs');
-assert.ok(latest.reportUrl,'Docusaurus report must exist');
+assert.ok(latest.reportUrl,'Static report must exist');
 const session=await fetch(base+'/api/session',{method:'POST',headers:{Authorization:'Bearer '+token}});
 const cookie=session.headers.get('set-cookie').split(';')[0];
 const report=await fetch(base+latest.reportUrl,{headers:{Cookie:cookie}});
@@ -37,4 +37,4 @@ const persisted=await api('/runs/'+run.id+'/logs');assert.ok(persisted.logs.leng
 await api('/cases/'+test.id,'DELETE');
 assert.equal((await api('/suites/'+suite.id+'/cases')).length,0);
 await api('/suites/'+suite.id,'DELETE');
-console.log('PASS: authentication, suite/case CRUD, SQLite, execution, live logs, persisted replay, Docusaurus report');
+console.log('PASS: authentication, suite/case CRUD, SQLite, execution, live logs, persisted replay, static report');

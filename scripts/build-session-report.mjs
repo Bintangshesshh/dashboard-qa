@@ -1,6 +1,6 @@
 // Adapter JSON → HTML untuk satu report sesi (PRD §9, H3-1).
-// ponytail: HTML statis satu file + CSS inline, bukan `docusaurus build`.
-// Kalau nanti butuh navigasi antar halaman/navbar, ganti ke pipeline Docusaurus.
+// Halaman utama: index + satu halaman per run dari build-report-docs.mjs.
+// Fallback: HTML satu file (variabel `html` di bawah) kalau render folder gagal.
 import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -158,8 +158,8 @@ ${sections.join('\n')}
 </main></body></html>`;
     await mkdir(outDir, { recursive: true });
 
-    // Jalur utama: Docusaurus (halaman index + satu halaman per run).
-    // Fallback: HTML statis di atas, kalau build gagal laporan tetap ada.
+    // Jalur utama: folder HTML statis (index + halaman per run).
+    // Fallback: HTML satu file di atas, kalau render folder gagal laporan tetap ada.
     const runsDir = resolve(root, process.env.RUNS_DIR ?? '.runs');
     // Run lama belum punya run.json; lengkapi dari baris DB supaya pipeline
     // tidak menganggapnya run yang sudah dihapus.
@@ -186,7 +186,7 @@ ${sections.join('\n')}
     } catch (error) {
       mode = 'html';
       // Detail teknis cukup di log server; kartu report hanya perlu alasan singkat.
-      fallbackError = 'build Docusaurus gagal, memakai HTML cadangan';
+      fallbackError = 'render folder report gagal, memakai HTML cadangan';
       console.error('[report] fallback html', reportId, error.message ?? String(error));
       await writeFile(join(outDir, 'index.html'), html);
     }

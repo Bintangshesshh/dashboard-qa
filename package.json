@@ -3,23 +3,13 @@
   "version": "1.0.0",
   "description": "QA dashboard - Playwright + Lighthouse CI (Eureka Group: jaja, masdis, ebh)",
   "main": "index.js",
-  "bin": { "playbook": "bin/playbook.mjs" },
+  "bin": {
+    "playbook": "bin/playbook.mjs"
+  },
   "scripts": {
-    "cek": "node scripts/cek.mjs all",
-    "cek:pw": "node scripts/cek.mjs pw",
-    "cek:pw:jaja": "node scripts/cek.mjs pw eureka/cart-jaja.spec.ts",
-    "cek:pw:ebh": "node scripts/cek.mjs pw eureka/cart-ebh.spec.ts",
-    "cek:pw:masdis": "node scripts/cek.mjs pw eureka/cart-masdis.spec.ts",
-    "cek:lh": "node scripts/cek.mjs lh",
-    "cek:lh:jaja": "node scripts/cek.mjs lh --target=jaja",
-    "cek:lh:ebh": "node scripts/cek.mjs lh --target=ebh",
-    "cek:lh:masdis": "node scripts/cek.mjs lh --target=masdis",
-    "gabung": "node scripts/gabung.mjs",
-    "lapor": "node scripts/gabung.mjs --ringkas && node scripts/doc.mjs",
-    "evaluasi": "node --experimental-sqlite --env-file=.env scripts/report-markdown.mjs",
     "test": "npm test --prefix server",
-    "test:reports": "node scripts/test-run-docs.mjs",
     "test:md": "node scripts/test-report-md.mjs",
+    "test:report": "node scripts/test-report-html.mjs",
     "test:integration": "node scripts/verify-dashboard.mjs",
     "fixture": "node scripts/local-fixture.mjs",
     "dev:web": "npm run dev --prefix web",
@@ -32,9 +22,6 @@
   "keywords": [],
   "type": "commonjs",
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "^3.10.2",
-    "@docusaurus/tsconfig": "^3.10.2",
-    "@docusaurus/types": "^3.10.2",
     "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.63.0",
     "typescript": "^7.0.2"

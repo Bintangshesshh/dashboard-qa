@@ -1,8 +1,6 @@
 // Markdown bahan evaluasi untuk satu report sesi (PRD §9).
-// Dipakai dua tempat:
-//   - scripts/build-session-report.mjs  -> <reportDir>/report.md
-//   - scripts/report-markdown.mjs       -> docusaurus/docs/evaluasi/*.md
-// Tanpa dependency: markdown dirakit manual, Docusaurus yang merender.
+// Dipakai server + scripts/build-session-report.mjs -> <reportDir>/report.md
+// Tanpa dependency: markdown dirakit manual, dirender apa adanya oleh klien.
 
 const cell = v => String(v ?? '-').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim() || '-';
 
@@ -59,7 +57,7 @@ function runBlock({ run, results }) {
   return out.join('\n');
 }
 
-// Frontmatter Docusaurus; `position` dipakai katalog supaya urutan stabil.
+// Frontmatter YAML sederhana supaya urutan blok stabil saat digabung.
 export function renderReportMarkdown({ session, project, report, runs, position, frontmatter = false }) {
   const gagal = runs.filter(r => !['passed'].includes(r.run.status));
   const judul = `${session?.label ?? 'Laporan'} - ${scopeLabel(report.scope)}`;

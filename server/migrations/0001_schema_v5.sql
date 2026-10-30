@@ -141,7 +141,7 @@ CREATE TABLE artifacts (
 );
 CREATE INDEX artifacts_run ON artifacts(run_id);
 
--- 9. Laporan Docusaurus per sesi
+-- 9. Laporan HTML per sesi
 CREATE TABLE reports (
   id         TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
