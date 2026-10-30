@@ -11,14 +11,14 @@ Halaman ini buat yang **belum pernah** bikin tes otomatis sama sekali. Dibaca ur
 
 Playwright = tools buat **tes website secara otomatis**.
 
-Coba bayangin: lu login ke jaja.id manual sekarang — buka browser, isi email, isi password, klik tombol, liat hasilnya. Sekarang ulangi itu **50x setiap hari**. Capek kan?
+Coba bayangin: lu login ke jaja.id manual sekarang - buka browser, isi email, isi password, klik tombol, liat hasilnya. Sekarang ulangi itu **50x setiap hari**. Capek kan?
 
 Playwright nggak capek. Dia:
 
-1. **Buka browser beneran** (Chromium/Firefox/WebKit — mesin asli kayak Chrome)
-2. **Klik-klik sendiri** — buka halaman, isi form, tekan tombol
-3. **Cek hasilnya** — "setelah klik login, dasbornya kebuka nggak?"
-4. **Cetak laporan** — hijau = lulus, merah = gagal + screenshot + video
+1. **Buka browser beneran** (Chromium/Firefox/WebKit - mesin asli kayak Chrome)
+2. **Klik-klik sendiri** - buka halaman, isi form, tekan tombol
+3. **Cek hasilnya** - "setelah klik login, dasbornya kebuka nggak?"
+4. **Cetak laporan** - hijau = lulus, merah = gagal + screenshot + video
 
 Yang sama dengan tes manual: dia buka browser asli ke situs asli. Bedanya: konsisten, bisa diulang 50x, kelar dalam hitungan detik, nggak lupa langkah.
 
@@ -97,7 +97,7 @@ Chrome for Testing downloaded to
 C:\Users\Lenovo\AppData\Local\ms-playwright\chromium-1243
 ```
 
-Kalau FFmpeg timeout, Playwright otomatis pindah ke mirror Microsoft — biarkan aja jalan.
+Kalau FFmpeg timeout, Playwright otomatis pindah ke mirror Microsoft - biarkan aja jalan.
 
 ---
 
@@ -123,11 +123,11 @@ export default defineConfig({
 
 **Penjelasan:**
 
-- `testDir: "./eureka"` — folder tempat spec tes (file `.spec.ts`)
-- `fullyParallel: true` — jalanin tes paralel (lebih cepat)
-- `reporter: "html"` — laporan HTML setelah tes jalan
-- `trace: "on-first-retry"` — rekam trace (video + screenshot) kalau tes gagal
-- `projects` — browser yang dipake. Di sini cuma Chromium dulu.
+- `testDir: "./eureka"` - folder tempat spec tes (file `.spec.ts`)
+- `fullyParallel: true` - jalanin tes paralel (lebih cepat)
+- `reporter: "html"` - laporan HTML setelah tes jalan
+- `trace: "on-first-retry"` - rekam trace (video + screenshot) kalau tes gagal
+- `projects` - browser yang dipake. Di sini cuma Chromium dulu.
 
 ---
 
@@ -159,7 +159,7 @@ Running 1 test using 1 worker
  1 passed (1.7s)
 ```
 
-Kalau hijau ✓ — **lu resmi bisa Playwright.**
+Kalau hijau ✓ - **lu resmi bisa Playwright.**
 
 ---
 
@@ -179,8 +179,8 @@ npx playwright codegen https://eurekabookhouse.com/auth/login
 
 Nanti muncul 2 window:
 
-1. **Browser** (kiri) — situ login manual di sini
-2. **Inspector** (kanan) — kode otomatis muncul di sini
+1. **Browser** (kiri) - situ login manual di sini
+2. **Inspector** (kanan) - kode otomatis muncul di sini
 
 Lakukan:
 
@@ -207,7 +207,7 @@ test('test', async ({ page }) => {
 
 ### 5.2. Rapikan Kode
 
-Codegen suka ngasih `.click()` sebelum `.fill()` — nggak perlu. Hapus yang `.click()` buat form:
+Codegen suka ngasih `.click()` sebelum `.fill()` - nggak perlu. Hapus yang `.click()` buat form:
 
 ```ts
 import { test, expect } from "@playwright/test";
@@ -231,7 +231,7 @@ Contoh: "setelah login, URL-nya **bukan** `/login` lagi (pindah ke dashboard)".
 await expect(page).not.toHaveURL(/login/);
 ```
 
-**Full code** — simpan sebagai `eureka/login-eurekabookhouse.spec.ts`:
+**Full code** - simpan sebagai `eureka/login-eurekabookhouse.spec.ts`:
 
 ```ts
 import { test, expect } from "@playwright/test";
@@ -269,7 +269,7 @@ Running 1 test using 1 worker
 
 ## 6. Command Bawaan Playwright
 
-Semua command di sini **bawaan Playwright resmi** — bukan bikinan repo ini.
+Semua command di sini **bawaan Playwright resmi** - bukan bikinan repo ini.
 
 | Command | Fungsi |
 |---------|--------|
@@ -283,8 +283,8 @@ Semua command di sini **bawaan Playwright resmi** — bukan bikinan repo ini.
 
 **Paling ngebantu pemula:**
 
-- `--headed` — liat browser jalan pas debug
-- `show-report` — buka laporan HTML (ada screenshot + video + trace tiap tes gagal)
+- `--headed` - liat browser jalan pas debug
+- `show-report` - buka laporan HTML (ada screenshot + video + trace tiap tes gagal)
 
 ---
 
@@ -305,9 +305,9 @@ npx playwright show-report
 
 Klik tes yang merah → keliatan:
 
-- **Screenshot** — halaman pas gagal
-- **Video** — rekaman browser dari awal sampai gagal
-- **Trace** — timeline lengkap: klik apa, isi form apa, DOM-nya gimana
+- **Screenshot** - halaman pas gagal
+- **Video** - rekaman browser dari awal sampai gagal
+- **Trace** - timeline lengkap: klik apa, isi form apa, DOM-nya gimana
 
 ---
 
@@ -337,7 +337,7 @@ npx playwright test eureka/co-ebh.spec.ts
 
 ## 9. Akun & Kredensial
 
-Tes login butuh email & password. **Jangan hardcode di spec** — simpan di `.env`.
+Tes login butuh email & password. **Jangan hardcode di spec** - simpan di `.env`.
 
 Contoh `.env`:
 
@@ -346,15 +346,15 @@ EBH_EMAIL=yessir120@gmail.com
 EBH_PASSWORD=Password
 ```
 
-File `.env` **jangan di-commit** — taro di `.gitignore`.
+File `.env` **jangan di-commit** - taro di `.gitignore`.
 
 ---
 
 ## 10. Next Steps
 
-1. **Baca spec asli** — `eureka/co-ebh.spec.ts`, liat gimana tes checkout (login → search → cart → checkout → bayar → cancel)
-2. **Bikin spec sendiri** — coba rekam dengan `codegen`, rapikan, tambahin assertions
-3. **Pelajarin selector** — `.getByRole()`, `.getByText()`, `.locator()` — baca [docs Playwright](https://playwright.dev/docs/locators)
-4. **Pelajarin assertions** — `toBeVisible()`, `toHaveText()`, `toHaveURL()` — baca [docs expect](https://playwright.dev/docs/test-assertions)
+1. **Baca spec asli** - `eureka/co-ebh.spec.ts`, liat gimana tes checkout (login → search → cart → checkout → bayar → cancel)
+2. **Bikin spec sendiri** - coba rekam dengan `codegen`, rapikan, tambahin assertions
+3. **Pelajarin selector** - `.getByRole()`, `.getByText()`, `.locator()` - baca [docs Playwright](https://playwright.dev/docs/locators)
+4. **Pelajarin assertions** - `toBeVisible()`, `toHaveText()`, `toHaveURL()` - baca [docs expect](https://playwright.dev/docs/test-assertions)
 
 Kalau udah nyaman, baca **Lighthouse CI** buat audit performa & aksesibilitas.

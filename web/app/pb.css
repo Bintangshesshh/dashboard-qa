@@ -1,4 +1,4 @@
-/* Playbook — design system v7 (Apple-inspired) */
+/* Playbook - design system v7 (Apple-inspired) */
 :root {
   /* Surface: Pale Apple Gray → Pure White → Graphite */
   --bg: #f5f5f7;
@@ -7,7 +7,7 @@
   --card-hi: #fbfbfd;
   --surface-warm: #f5f5f7;
 
-  /* Foreground ramp — neutral Apple gray scale */
+  /* Foreground ramp - neutral Apple gray scale */
   --text: #1d1d1f;
   --fg-2: #1d1d1f;
   --muted: #6e6e73;
@@ -18,7 +18,7 @@
   --border: #e8e8ed;
   --border-soft: #d2d2d7;
 
-  /* Accent — Apple Action Blue */
+  /* Accent - Apple Action Blue */
   --accent: #0071e3;
   --accent-on: #ffffff;
   --accent-soft: #e8f2fd;
@@ -419,7 +419,7 @@ a.pb-crumb:hover { color: var(--text); background: var(--card-hi); }
 .pb-kpi-foot .dot.ok { background: var(--ok); }
 .pb-kpi-foot .dot.bad { background: var(--bad); }
 
-/* Donut pass rate — 2πr = 314 untuk r=50. */
+/* Donut pass rate - 2πr = 314 untuk r=50. */
 .pb-kpi-donut { justify-content: flex-start; }
 .pb-donut-wrap { display: flex; justify-content: center; margin: 6px 0 2px; }
 .pb-donut { width: 104px; height: 104px; transform: rotate(-90deg); }
@@ -441,7 +441,7 @@ a.pb-crumb:hover { color: var(--text); background: var(--card-hi); }
   transform-origin: center;
 }
 
-/* Score ring LHCI — 2πr = 188.5 untuk r=30. */
+/* Score ring LHCI - 2πr = 188.5 untuk r=30. */
 .pb-score-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

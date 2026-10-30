@@ -53,8 +53,8 @@ Yang dihitung failed = tiga yang pertama + timedOut/interrupted.
 
 ## Arti stale
 
-- stale: false — sumber ini dijalankan di run terakhir.
-- stale: true — datanya dari run lama, sumbernya nggak ikut dijalankan. Contoh:
+- stale: false - sumber ini dijalankan di run terakhir.
+- stale: true - datanya dari run lama, sumbernya nggak ikut dijalankan. Contoh:
   node scripts/gabung.mjs --only=pw bikin blok Lighthouse jadi stale, karena cuma
   Playwright yang di-refresh.
 - Key target **nggak ada** = target itu belum pernah dijalankan. Bukan error.
@@ -73,4 +73,4 @@ Tabel terminal di-print sesuai isi --only: blok Playwright disembunyikan kalau c
 Lighthouse yang jalan, dan sebaliknya. --ringkas dipakai cek.mjs di dalam loop per
 target supaya tabelnya nggak dicetak berulang.
 
-latest.json masuk .gitignore — file hasil, bukan sumber.
+latest.json masuk .gitignore - file hasil, bukan sumber.

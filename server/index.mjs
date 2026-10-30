@@ -257,7 +257,7 @@ export function createApp({ store, runner, token, origins }) {
   // ─── Sessions ────────────────────────────────────────────────────────────
   // PRD §7/§8.2: URL target selalu dari `projects`, tidak pernah dari input bebas.
   // Origin hasil resolve wajib ada di `projects.origins` atau TARGET_ALLOWLIST (anti-SSRF).
-  // ponytail: env local dikecualikan dari cek origin — local_url menunjuk mesin
+  // ponytail: env local dikecualikan dari cek origin - local_url menunjuk mesin
   // developer, bukan jaringan server. Kalau nanti runner jalan di server juga,
   // hapus pengecualian ini.
   const resolveTarget = (project, e) => {
@@ -674,7 +674,7 @@ export function createApp({ store, runner, token, origins }) {
     for (const [key, [min, max]] of Object.entries(SETTING_LIMITS)) {
       if (body[key] === undefined) continue;
       const n = Number(body[key]);
-      if (!Number.isSafeInteger(n) || n < min || n > max) fail(`${key} harus bilangan bulat ${min}–${max}`);
+      if (!Number.isSafeInteger(n) || n < min || n > max) fail(`${key} harus bilangan bulat ${min}-${max}`);
       updates[key] = n;
     }
     if (!Object.keys(updates).length) fail('Tidak ada setting yang diubah');

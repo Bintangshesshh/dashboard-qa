@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { creds } from "./creds";
 
 // Alur masdis sampai keranjang. Nggak ada checkout, nggak ada pembayaran.
-test.describe.serial("masdis — sampai keranjang", () => {
+test.describe.serial("masdis - sampai keranjang", () => {
   let page: import("@playwright/test").Page;
 
   test.beforeAll(async ({ browser }) => {
@@ -63,13 +63,13 @@ test.describe.serial("masdis — sampai keranjang", () => {
     const cari = page.getByRole("textbox", { name: "Pencarian kota, hotel, tempat" });
     await cari.click();
     await cari.fill("bandung");
-    // Tombol submit dicari di form yang sama dengan textbox-nya — masdis punya
+    // Tombol submit dicari di form yang sama dengan textbox-nya - masdis punya
     // beberapa <form> di satu halaman.
     await cari.locator("xpath=ancestor::form").getByRole("button").first().click();
     await tutupDialog();
 
     // Kartu hasil pencarian ngarah ke detail hotel. Locator-nya jangan pakai nama
-    // kartu — namanya memuat harga yang berubah tiap hari.
+    // kartu - namanya memuat harga yang berubah tiap hari.
     const kartu = page.locator('a[href*="/product/hotel/detail"]').first();
     await expect(kartu, "hasil pencarian hotel kosong").toBeVisible({ timeout: 60000 });
 

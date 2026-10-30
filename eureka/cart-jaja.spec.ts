@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { creds } from "./creds";
 
 // Alur jaja sampai keranjang. Nggak ada checkout, nggak ada pembayaran.
-test.describe.serial("jaja — sampai keranjang", () => {
+test.describe.serial("jaja - sampai keranjang", () => {
   let page: import("@playwright/test").Page;
 
   test.beforeAll(async ({ browser }) => {

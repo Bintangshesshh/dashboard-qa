@@ -148,7 +148,7 @@ const bacaLhr = async (target) => {
     const lhr = await readJsonOrNull(join(dir, f));
     if (lhr?.finalUrl) lhrs.push({...lhr, file: join(dir, f)});
   }
-  // Terbaru per finalUrl — file run lama suka ikut keupload.
+  // Terbaru per finalUrl - file run lama suka ikut keupload.
   const newest = new Map();
   for (const l of lhrs) {
     const k = l.finalUrl;

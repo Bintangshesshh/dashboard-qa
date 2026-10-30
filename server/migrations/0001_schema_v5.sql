@@ -1,4 +1,4 @@
--- Schema v5 — Playbook QA dashboard (docs/PRD.md bagian 6)
+-- Schema v5 - Playbook QA dashboard (docs/PRD.md bagian 6)
 -- File 0001 = baseline penuh; user_version akhir = 1 (satu file migrasi diterapkan).
 
 -- 1. Login

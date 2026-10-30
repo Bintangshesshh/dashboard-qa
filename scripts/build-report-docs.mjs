@@ -59,8 +59,8 @@ export default function Index() {
         <td><a href={r.slug + '/'}>{r.suiteName || r.id.slice(0, 8)}</a></td>
         <td>{r.mode === 'lh' ? 'Lighthouse' : 'Playwright'}</td>
         <td>{r.status}</td>
-        <td>{r.targetUrl || '—'}</td>
-        <td>{r.finishedAt || '—'}</td>
+        <td>{r.targetUrl || '-'}</td>
+        <td>{r.finishedAt || '-'}</td>
       </tr>)}</tbody>
     </table>
   </main></Layout>;

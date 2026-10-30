@@ -13,14 +13,14 @@ Buka Chrome sekarang, tekan **F12** (DevTools), cari tab **Lighthouse**, tekan *
 
 Chrome bakal ngukur halaman yang lagi kebuka, terus ngasih **4 skor**:
 
-1. **Performance** — halaman kebuka secepat apa
-2. **Accessibility** — gampang dipakai nggak (pembaca layar, kontras warna, label tombol)
-3. **Best Practices** — ngikut standar web modern nggak (HTTPS, gambar aman, API nggak usang)
-4. **SEO** — gampang ditemuin mesin pencari nggak
+1. **Performance** - halaman kebuka secepat apa
+2. **Accessibility** - gampang dipakai nggak (pembaca layar, kontras warna, label tombol)
+3. **Best Practices** - ngikut standar web modern nggak (HTTPS, gambar aman, API nggak usang)
+4. **SEO** - gampang ditemuin mesin pencari nggak
 
 Itu **Lighthouse**.
 
-**Lighthouse CI (lhci)** = Lighthouse yang sama, tapi jalan dari **terminal** — jadi bisa otomatis, bisa diulang, dan hasilnya **file**, bukan tampilan di browser.
+**Lighthouse CI (lhci)** = Lighthouse yang sama, tapi jalan dari **terminal** - jadi bisa otomatis, bisa diulang, dan hasilnya **file**, bukan tampilan di browser.
 
 Bedanya cuma satu: yang satu lu klik sendiri, yang satu dijalankan script. **Mesin pengukurnya identik.**
 
@@ -46,11 +46,11 @@ Bukan tebakan. Performance dihitung dari **5 metrik**, masing-masing punya bobot
 
 | Metrik | Artinya | Bobot |
 |--------|---------|-------|
-| **FCP** — First Contentful Paint | Kapan konten pertama muncul | 10% |
-| **LCP** — Largest Contentful Paint | Kapan elemen terbesar selesai muncul | 25% |
-| **TBT** — Total Blocking Time | Berapa lama halaman nggak bisa dibalas klik | 30% |
-| **CLS** — Cumulative Layout Shift | Berapa banyak layout lompat-lompat pas loading | 25% |
-| **SI** — Speed Index | Seberapa cepat halaman kelihatan jadi | 10% |
+| **FCP** - First Contentful Paint | Kapan konten pertama muncul | 10% |
+| **LCP** - Largest Contentful Paint | Kapan elemen terbesar selesai muncul | 25% |
+| **TBT** - Total Blocking Time | Berapa lama halaman nggak bisa dibalas klik | 30% |
+| **CLS** - Cumulative Layout Shift | Berapa banyak layout lompat-lompat pas loading | 25% |
+| **SI** - Speed Index | Seberapa cepat halaman kelihatan jadi | 10% |
 
 **TBT** bobotnya paling gede (30%). Makanya situs yang banyak JavaScript biasanya skor performance-nya jatuh walau halamannya keliatan cepat.
 
@@ -92,9 +92,9 @@ npx lhci autorun --config=lighthouserc.ebh.js
 
 **Penjelasan:**
 
-- `npx lhci` — jalanin Lighthouse CI dari package yang ke-install di repo
-- `autorun` — mode otomatis: collect (ukur) → assert (cek threshold) → upload (simpan hasil)
-- `--config=lighthouserc.ebh.js` — file konfigurasi buat Eureka Book House
+- `npx lhci` - jalanin Lighthouse CI dari package yang ke-install di repo
+- `autorun` - mode otomatis: collect (ukur) → assert (cek threshold) → upload (simpan hasil)
+- `--config=lighthouserc.ebh.js` - file konfigurasi buat Eureka Book House
 
 **Config lain:**
 
@@ -156,7 +156,7 @@ Kolom:
 - **bp** = Best Practices
 - **seo** = SEO
 
-Tapi **wrapper itu bukan LHCI** — cuma buat ngerapihin output. Command asli LHCI tetap `npx lhci autorun`.
+Tapi **wrapper itu bukan LHCI** - cuma buat ngerapihin output. Command asli LHCI tetap `npx lhci autorun`.
 
 ---
 
@@ -173,7 +173,7 @@ lhci-results-ebh/
 
 **Yang paling berguna buat pemula: file `.report.html`.**
 
-Dobel-klik, kebuka di browser, tampilannya **persis** kayak Lighthouse di DevTools — lengkap sama penjelasan kenapa skornya segini dan cara benerinnya. Nggak perlu baca JSON.
+Dobel-klik, kebuka di browser, tampilannya **persis** kayak Lighthouse di DevTools - lengkap sama penjelasan kenapa skornya segini dan cara benerinnya. Nggak perlu baca JSON.
 
 File `.report.json` isinya data yang sama tapi mentah. Itu yang dibaca `scripts/gabung.mjs` buat bikin `latest.json`.
 
@@ -223,8 +223,8 @@ collect: {
 },
 ```
 
-- **`numberOfRuns: 1`** — tiap URL diukur **sekali**. Kalau `3`, diukur 3x terus diambil median. Lebih akurat, tapi 3x lebih lama. Sekarang 1 dulu, cukup buat lihat tren.
-- **`url`** — daftar halaman yang diukur. Sekarang isinya **homepage + login** doang. Kenapa? Homepage = halaman yang paling banyak dikunjungin. Login = halaman yang semua orang lewatin sebelum bisa transaksi. Halaman lain (produk, kategori, cart) bisa ditambah nanti — tinggal tambah baris. Tapi makin banyak URL, makin lama jalannya: tiap URL butuh sekitar **20-40 detik**.
+- **`numberOfRuns: 1`** - tiap URL diukur **sekali**. Kalau `3`, diukur 3x terus diambil median. Lebih akurat, tapi 3x lebih lama. Sekarang 1 dulu, cukup buat lihat tren.
+- **`url`** - daftar halaman yang diukur. Sekarang isinya **homepage + login** doang. Kenapa? Homepage = halaman yang paling banyak dikunjungin. Login = halaman yang semua orang lewatin sebelum bisa transaksi. Halaman lain (produk, kategori, cart) bisa ditambah nanti - tinggal tambah baris. Tapi makin banyak URL, makin lama jalannya: tiap URL butuh sekitar **20-40 detik**.
 
 ### Bagian `assert`
 
@@ -241,9 +241,9 @@ assert: {
 
 - **Format:** `['warn', {minScore: 0.6}]` → kalau skornya **di bawah 0.6** (60 dari 100), kasih **peringatan**. Bukan error.
 - **Pilihan level:**
-  - `'off'` — diam
-  - `'warn'` — peringatan, run tetap hijau
-  - `'error'` — run jadi merah/gagal
+  - `'off'` - diam
+  - `'warn'` - peringatan, run tetap hijau
+  - `'error'` - run jadi merah/gagal
 - **Kenapa `warn` bukan `error`?** Situs live skornya naik-turun tiap run. Kalau `error`, run-nya merah cuma gara-gara skor lewat 1 poin, dan lama-lama peringatannya diabaikan orang. Sekarang dua-duanya tetap dicatat (errors dan warnings di `latest.json`), tapi nggak ngeblok.
 
 ### Bagian `upload`
@@ -257,8 +257,8 @@ upload: {
 },
 ```
 
-- **`target: 'filesystem'`** — simpan ke folder lokal, bukan upload ke server LHCI.
-- **`outputDir: './lhci-results-ebh'`** — folder per target. **Wajib beda** tiap target, kalau nggak run target A nimpa target B.
+- **`target: 'filesystem'`** - simpan ke folder lokal, bukan upload ke server LHCI.
+- **`outputDir: './lhci-results-ebh'`** - folder per target. **Wajib beda** tiap target, kalau nggak run target A nimpa target B.
 
 ---
 
@@ -266,7 +266,7 @@ upload: {
 
 ### Error: `EPERM: operation not permitted, unlink '.lighthouseci/lhr-*.html'`
 
-Masih ada proses yang megang file itu — Chrome atau lhci yang belum mati. **Tutup Chrome dulu**, terus hapus foldernya:
+Masih ada proses yang megang file itu - Chrome atau lhci yang belum mati. **Tutup Chrome dulu**, terus hapus foldernya:
 
 ```bash
 rm -rf .lighthouseci                          # git-bash
@@ -298,7 +298,7 @@ npm install -D @lhci/cli
 | `npx lhci assert --config=<file>` | Cek threshold aja (tanpa collect) |
 | `npx lhci open` | Buka hasil terakhir di browser |
 
-Tapi **99% use case cukup `autorun`** — dia jalanin collect + assert + upload sekaligus.
+Tapi **99% use case cukup `autorun`** - dia jalanin collect + assert + upload sekaligus.
 
 ---
 
@@ -321,9 +321,9 @@ npm run cek:lh:ebh      # satu aja
 
 ## 12. Next Steps
 
-1. **Baca `.report.html`** — dobel-klik file hasil, liat penjelasan kenapa skornya segini
-2. **Tambahin URL** — edit `lighthouserc.*.js`, tambahin halaman produk/kategori
-3. **Naikin threshold** — kalau skornya udah stabil di atas 70, ganti `minScore: 0.7`
-4. **Pelajarin metrik** — baca [Web Vitals](https://web.dev/vitals/) buat LCP, TBT, CLS
+1. **Baca `.report.html`** - dobel-klik file hasil, liat penjelasan kenapa skornya segini
+2. **Tambahin URL** - edit `lighthouserc.*.js`, tambahin halaman produk/kategori
+3. **Naikin threshold** - kalau skornya udah stabil di atas 70, ganti `minScore: 0.7`
+4. **Pelajarin metrik** - baca [Web Vitals](https://web.dev/vitals/) buat LCP, TBT, CLS
 
 Kalau udah nyaman, gabungin sama **Playwright** buat tes end-to-end + audit performa sekaligus.

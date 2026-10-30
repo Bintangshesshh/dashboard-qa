@@ -1,5 +1,5 @@
 // Peta target: satu tempat buat nama situs, host, status akun, dan URL Lighthouse.
-export const RUNS = 3; // numberOfRuns Lighthouse per URL — median dari 3, biar nggak goyang
+export const RUNS = 3; // numberOfRuns Lighthouse per URL - median dari 3, biar nggak goyang
 
 export const SITES = {
   jaja: {

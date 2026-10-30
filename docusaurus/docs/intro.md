@@ -48,7 +48,7 @@ Playwright jalurnya sama, cuma beda alat: `pw-out/hasil.json` -> `latest.json`.
 
 ## Mulai dari mana
 
-1. [Playwright](./playwright.md) — apa itu, cara jalanin, cara baca laporannya.
-2. [Lighthouse CI](./lighthouse.md) — ini yang bikin bingung. Mulai dari nol:
+1. [Playwright](./playwright.md) - apa itu, cara jalanin, cara baca laporannya.
+2. [Lighthouse CI](./lighthouse.md) - ini yang bikin bingung. Mulai dari nol:
    apa yang diukur, arti angkanya, cara jalanin, cara baca.
-3. [latest.json](./hasil.md) — bentuk file hasil gabungan.
+3. [latest.json](./hasil.md) - bentuk file hasil gabungan.

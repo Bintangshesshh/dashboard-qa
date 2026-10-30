@@ -14,7 +14,7 @@ db.exec('PRAGMA foreign_keys = ON');
 const version = db.prepare('PRAGMA user_version').get().user_version;
 if (version < 1) throw new Error(`skema belum dimigrasi (user_version=${version}); jalankan node --experimental-sqlite scripts/migrate.mjs dulu`);
 
-// PRD 6.2 — staging_url sengaja NULL: env=staging belum bisa dipakai sampai diisi manual.
+// PRD 6.2 - staging_url sengaja NULL: env=staging belum bisa dipakai sampai diisi manual.
 const now = new Date().toISOString();
 const projects = [
   ['p_jaja', 'jaja-id', 'Jaja.id', 'https://jaja.id', '["https://jaja.id"]'],

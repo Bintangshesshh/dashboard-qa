@@ -3,7 +3,7 @@ import { creds } from "./creds";
 
 // Alur ebh sampai keranjang. Nggak ada checkout, nggak ada pembayaran.
 // Dipecah per langkah biar dashboard bisa nunjukin gagal di mana.
-test.describe.serial("ebh — sampai keranjang", () => {
+test.describe.serial("ebh - sampai keranjang", () => {
   let page: import("@playwright/test").Page;
 
   test.beforeAll(async ({ browser }) => {
