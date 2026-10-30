@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripAnsi } from './ansi.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const migrationsDir = join(root, 'server', 'migrations');
@@ -213,7 +214,12 @@ export class Store {
       .run(id, sessionId, testFileId ?? null, tool, 'queued', new Date().toISOString(), new Date().toISOString());
     return this.getRun(id);
   }
-  getRun(id) { return this.db.prepare('SELECT * FROM runs WHERE id=?').get(id); }
+  getRun(id) {
+    const row = this.db.prepare('SELECT * FROM runs WHERE id=?').get(id);
+    if (!row?.error) return row;
+    const clean = stripAnsi(row.error);
+    return clean === row.error ? row : { ...row, error: clean };
+  }
   listRunsBySession(sessionId) { return this.db.prepare('SELECT * FROM runs WHERE session_id=? ORDER BY queued_at').all(sessionId); }
   listRuns({ projectId, tool, limit = 10 } = {}) {
     let sql = `SELECT r.*, s.label AS session_label, s.env AS env,
@@ -331,7 +337,11 @@ export class Store {
       this.db.exec('COMMIT');
     } catch (e) { this.db.exec('ROLLBACK'); throw e; }
   }
-  listPlaywrightResults(runId) { return this.db.prepare('SELECT * FROM playwright_results WHERE run_id=? ORDER BY file, title').all(runId); }
+  listPlaywrightResults(runId) {
+    // Baris lama menyimpan ANSI mentah; bersihkan saat dibaca.
+    return this.db.prepare('SELECT * FROM playwright_results WHERE run_id=? ORDER BY file, title').all(runId)
+      .map(r => (r.error ? { ...r, error: stripAnsi(r.error) } : r));
+  }
 
   // ─── Lighthouse results ──────────────────────────────────────────────────
   addLighthouseResults(runId, rows) {
