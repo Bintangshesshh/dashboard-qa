@@ -6,15 +6,16 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Store } from '../server/store.mjs';
 import { buildReportDocs } from './build-report-docs.mjs';
+import { renderReportMarkdown } from './report-md.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const n = v => (v == null ? '—' : String(v));
-const score = v => (v == null ? '—' : Math.round(v * 100));
-const ms = v => (v == null ? '—' : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`);
-const dur = v => (v == null ? '—' : v >= 60000 ? `${Math.floor(v / 60000)}m ${Math.round((v % 60000) / 1000)}s` : `${(v / 1000).toFixed(1)}s`);
-const date = v => (v ? new Date(v).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : '—');
+const n = v => (v == null ? '-' : String(v));
+const score = v => (v == null ? '-' : Math.round(v * 100));
+const ms = v => (v == null ? '-' : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`);
+const dur = v => (v == null ? '-' : v >= 60000 ? `${Math.floor(v / 60000)}m ${Math.round((v % 60000) / 1000)}s` : `${(v / 1000).toFixed(1)}s`);
+const date = v => (v ? new Date(v).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : '-');
 const link = (href, label) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
 
 const css = `
@@ -41,7 +42,7 @@ function statusBadge(status) {
 }
 
 function playwrightSection(run, results, logs) {
-  if (!results.length) return `<p class="mut">data tidak ditemukan — JSON Playwright hilang atau korup. Run tidak dianggap lulus.</p>`;
+  if (!results.length) return `<p class="mut">data tidak ditemukan - JSON Playwright hilang atau korup. Run tidak dianggap lulus.</p>`;
   const passed = results.filter(r => r.status === 'passed').length;
   const failed = results.filter(r => r.status === 'failed').length;
   const flaky = results.filter(r => r.status === 'flaky').length;
@@ -57,7 +58,7 @@ function playwrightSection(run, results, logs) {
 }
 
 async function lighthouseSection(run, rows, artifacts, logs) {
-  if (!rows.length) return `<p class="mut">data tidak ditemukan — JSON Lighthouse hilang atau korup.</p>`;
+  if (!rows.length) return `<p class="mut">data tidak ditemukan - JSON Lighthouse hilang atau korup.</p>`;
   // manifest.json lhci: url → htmlPath/jsonPath absolut. Dipakai untuk link report & audit gagal.
   const dir = join(root, '.runs', run.id, 'artifacts');
   const manifest = await readFile(join(dir, 'manifest.json'), 'utf8').then(JSON.parse).catch(() => []);
@@ -71,11 +72,11 @@ async function lighthouseSection(run, rows, artifacts, logs) {
   }
   const body = rows.map(r => {
     const m = byUrl.get(r.url);
-    const report = m?.html ? link(`/artifacts/${run.id}/${m.html}`, 'report') : '—';
+    const report = m?.html ? link(`/artifacts/${run.id}/${m.html}`, 'report') : '-';
     return `<tr>
       <td class="mono">${esc(r.url)}</td><td>${score(r.performance)}</td><td>${score(r.accessibility)}</td>
       <td>${score(r.best_practices)}</td><td>${score(r.seo)}</td><td class="mono">${ms(r.lcp_ms)}</td>
-      <td class="mono">${r.cls == null ? '—' : Number(r.cls).toFixed(3)}</td><td class="mono">${ms(r.tbt_ms)}</td>
+      <td class="mono">${r.cls == null ? '-' : Number(r.cls).toFixed(3)}</td><td class="mono">${ms(r.tbt_ms)}</td>
       <td>${report}</td></tr>`;
   }).join('');
   // Audit yang skornya < 1 → daftar penyebab, dengan displayValue dari JSON.
@@ -86,13 +87,13 @@ async function lighthouseSection(run, rows, artifacts, logs) {
     const lhr = await readFile(join(dir, file), 'utf8').then(JSON.parse).catch(() => null);
     for (const [id, a] of Object.entries(lhr?.audits ?? {})) {
       if (a.score == null || a.score >= 1 || a.scoreDisplayMode === 'notApplicable') continue;
-      audits.push(`${r.url} · ${a.title ?? id}${a.displayValue ? ` — ${a.displayValue}` : ''}`);
+      audits.push(`${r.url} · ${a.title ?? id}${a.displayValue ? ` - ${a.displayValue}` : ''}`);
     }
   }
   const warns = rows.flatMap(r => {
     const list = [];
     try { list.push(...(JSON.parse(r.warnings ?? '[]') || []).map(w => `${r.url}: ${w}`)); } catch { /* bukan JSON, abaikan */ }
-    if (r.budget_failed) list.push(`${r.url}: budget gagal — ${r.budget_failed}`);
+    if (r.budget_failed) list.push(`${r.url}: budget gagal - ${r.budget_failed}`);
     return list;
   });
   return `<table><thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>CLS</th><th>TBT</th><th /></tr></thead><tbody>${body}</tbody></table>
@@ -148,9 +149,9 @@ export async function buildSessionReport(store, reportId) {
     }
     const html = `<!doctype html><html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>${esc(session?.label ?? 'Laporan')} — Playbook</title><style>${css}</style></head><body><main>
+<title>${esc(session?.label ?? 'Laporan')} - Playbook</title><style>${css}</style></head><body><main>
 <h1>${esc(session?.label ?? 'Laporan')}</h1>
-<p class="mut">${esc(project?.name ?? '—')} · ${esc(session?.env ?? '—')} · ${esc(session?.target_url ?? '—')} · ${date(session?.created_at)}</p>
+<p class="mut">${esc(project?.name ?? '-')} · ${esc(session?.env ?? '-')} · ${esc(session?.target_url ?? '-')} · ${date(session?.created_at)}</p>
 ${report.scope === 'both' ? `<div class="card">${verdict(usedRuns)}</div>` : ''}
 ${sections.join('\n')}
 <p class="mut" style="margin-top:28px;font-size:12px">Dibangun ${date(new Date().toISOString())} · cakupan ${esc(report.scope)} · ${runIds.length} run</p>
@@ -184,10 +185,19 @@ ${sections.join('\n')}
       await buildReportDocs(runIds.map(id => join(runsDir, id)), outDir, `/artifacts/reports/${reportId}/`);
     } catch (error) {
       mode = 'html';
-      fallbackError = error.message ?? String(error);
-      console.error('[report] fallback html', reportId, fallbackError);
+      // Detail teknis cukup di log server; kartu report hanya perlu alasan singkat.
+      fallbackError = 'build Docusaurus gagal, memakai HTML cadangan';
+      console.error('[report] fallback html', reportId, error.message ?? String(error));
       await writeFile(join(outDir, 'index.html'), html);
     }
+    // Bahan evaluasi teks, sejajar dengan index.html di folder report yang sama.
+    const runsForMd = usedRuns.map(run => ({
+      run,
+      results: run.tool === 'pw' ? store.listPlaywrightResults(run.id) : store.listLighthouseResults(run.id),
+    }));
+    await writeFile(join(outDir, 'report.md'), renderReportMarkdown({ session, project, report, runs: runsForMd }))
+      .catch(error => console.error('[report] markdown gagal', reportId, error.message));
+
     store.patchReport(reportId, { status: 'ready', path: 'index.html', mode, error: fallbackError, built_at: new Date().toISOString() });
     return { ok: true, dir: outDir, mode };
   } catch (error) {

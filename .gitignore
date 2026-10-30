@@ -26,4 +26,5 @@ data/
 .env.production
 
 
-docs/
+/docs/
+docusaurus/docs/evaluasi/
