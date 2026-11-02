@@ -44,10 +44,26 @@ export function RunClock({ run }: { run: RunClockInput }) {
   }, [live, run.started_at]);
 
   const ms = runElapsed(run, now);
+  const value = ms == null ? "--:--" : clock(ms);
+  // Pisahkan digit supaya detik bisa diberi aksen seperti jarum stopwatch.
+  const parts = value.split(":");
 
   return (
-    <span className={"pb-clock" + (live ? " live" : "")} title={live ? "sedang berjalan" : "durasi eksekusi"}>
-      {ms == null ? "--:--" : clock(ms)}
+    <span
+      className={"pb-clock" + (live ? " live" : "")}
+      role="timer"
+      aria-label={live ? `Durasi berjalan ${value}` : `Durasi ${value}`}
+      title={live ? "sedang berjalan" : "durasi eksekusi"}
+    >
+      <span className="pb-clock-led" aria-hidden="true" />
+      <span className="pb-clock-digits" aria-hidden="true">
+        {parts.map((part, i) => (
+          <span key={i} className="pb-clock-part">
+            {i > 0 && <span className="pb-clock-colon">:</span>}
+            <span className={i === parts.length - 1 ? "pb-clock-sec" : undefined}>{part}</span>
+          </span>
+        ))}
+      </span>
     </span>
   );
 }

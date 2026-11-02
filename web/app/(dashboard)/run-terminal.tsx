@@ -112,7 +112,10 @@ export function RunTerminal({ runId }: { runId: string }) {
         </div>
         <span className="pb-row" style={{ gap: 8, fontSize: 12 }}>
           {run && <RunClock run={run} />}
-          <span className="pb-muted">{live ? "● live" : "selesai"} · {lines.length} baris</span>
+          <span className="pb-live-state">
+            <span className={"pb-live-dot" + (live ? " on" : "")} aria-hidden="true" />
+            {live ? "live" : "selesai"} · {lines.length} baris
+          </span>
           <a className="pb-btn sm" href={`/api/runs/${runId}/logs/download`}>Unduh log</a>
         </span>
       </div>
