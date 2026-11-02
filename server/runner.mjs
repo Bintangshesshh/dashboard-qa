@@ -14,6 +14,7 @@ const require = createRequire(join(root, 'package.json'));
 const binDir = pkg => dirname(require.resolve(pkg + '/package.json'));
 const lhciBin = join(binDir('@lhci/cli'), 'src/cli.js');
 const pwBin = join(binDir('@playwright/test'), 'cli.js');
+const pwCapture = require.resolve('./scripts/pw-capture.cjs').replaceAll('\\', '/');
 
 // Config Playwright untuk spec yang datang dari database. testDir = folder spec
 // asli supaya import relatif (`./creds`) tetap jalan.
@@ -210,6 +211,8 @@ export class Runner extends EventEmitter {
       ...process.env,
       ...(targetUrl ? { BASE_URL: targetUrl } : {}),
       PLAYBOOK_CAPTURE_FILE: captureFile,
+      // Preload: page events are only reachable from inside the worker.
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require ${pwCapture}`].filter(Boolean).join(' '),
       PLAYWRIGHT_JSON_OUTPUT_NAME: join(dir, 'artifacts', 'report.json'),
       // Report HTML ditulis ke folder run supaya bisa disajikan sebagai artifact.
       PLAYWRIGHT_HTML_OUTPUT_DIR: join(dir, 'artifacts', 'playwright-report'),

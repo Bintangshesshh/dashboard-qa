@@ -127,13 +127,13 @@ export function RunTerminal({ runId }: { runId: string }) {
 
       {tab === "console" && (
         consoleLines.length === 0
-          ? <p className="pb-empty">Tidak ada console error atau page error.</p>
+          ? <p className="pb-empty">Belum ada pesan console yang terekam.</p>
           : <table className="pb-table">
             <thead><tr><th>Tipe</th><th>Pesan</th><th>Lokasi</th></tr></thead>
             <tbody>
               {consoleLines.map(c => (
                 <tr key={c.seq}>
-                  <td><span className={"pb-badge " + (c.type === "error" || c.type === "pageerror" ? "failed" : "passed")}>{c.type}</span></td>
+                  <td><span className={"pb-badge " + (c.type === "error" || c.type === "pageerror" ? "failed" : c.type === "warning" ? "warn" : "")}>{c.type}</span></td>
                   <td className="mono">{c.text}</td>
                   <td className="pb-muted mono" style={{ fontSize: 11 }}>{c.location ?? "-"}</td>
                 </tr>
@@ -144,7 +144,7 @@ export function RunTerminal({ runId }: { runId: string }) {
 
       {tab === "network" && (
         networkLines.length === 0
-          ? <p className="pb-empty">Tidak ada request gagal.</p>
+          ? <p className="pb-empty">Belum ada request yang terekam.</p>
           : <table className="pb-table">
             <thead><tr><th>Status</th><th>Method</th><th>URL</th><th>Gagal</th><th>Durasi</th></tr></thead>
             <tbody>
