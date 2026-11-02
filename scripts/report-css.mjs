@@ -71,13 +71,14 @@ h4{font-size:13px;line-height:1.4;margin:var(--s3) 0 var(--s1);color:var(--fg-2)
   border-bottom:1px solid var(--border);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .top-nav-inner{display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
   flex-wrap:wrap;min-height:61px;padding-block:var(--s2)}
-.nav-brand{display:flex;align-items:center;gap:10px;min-width:0}
-.brand-mark{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:9px;
-  background:var(--surface-warm);border:1px solid var(--border);color:var(--accent)}
+.nav-brand{display:flex;align-items:center;min-width:0;flex:1 1 auto}
 .brand-text{min-width:0}
-.brand-title{font-size:14.5px;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
-.brand-subtitle{font:var(--fs-xs)/1.4 var(--mono);color:var(--muted);overflow-wrap:anywhere}
-.nav-actions{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;justify-content:flex-end}
+.brand-title{font-size:14.5px;font-weight:600;line-height:1.25;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.brand-subtitle{font:var(--fs-xs)/1.4 var(--mono);color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.nav-actions{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;
+  justify-content:flex-end;flex:0 0 auto}
 
 /* ---------- buttons + badges ---------- */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;
@@ -116,6 +117,9 @@ h1{font-size:clamp(28px,3.6vw,42px);line-height:1.08;letter-spacing:-.025em;font
 .meta-item strong{color:var(--fg);font-weight:600}
 .meta-divider{width:1px;height:15px;background:var(--border);flex:none}
 @media (max-width:640px){
+  .top-nav-inner{gap:8px;padding-block:10px}
+  .nav-brand{flex-basis:100%}
+  .nav-actions{flex-basis:100%;justify-content:flex-start}
   .meta-strip{gap:8px 16px;padding:10px 12px}
   .meta-item{padding:0}
   .meta-divider{display:none}

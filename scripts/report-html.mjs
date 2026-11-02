@@ -19,8 +19,7 @@ export const doc = ({ title, brand, sub = '', actions = '', hero = '', body = ''
 <title>${esc(title)}</title><style>${reportCss}</style></head><body>
 <a class="skip" href="#main">Lewati ke konten</a>
 <header class="top-nav"><div class="container top-nav-inner">
-<div class="nav-brand"><span class="brand-mark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg></span>
-<div class="brand-text"><div class="brand-title">${esc(brand)}</div>${sub ? `<div class="brand-subtitle">${esc(sub)}</div>` : ''}</div></div>
+<div class="nav-brand"><div class="brand-text"><div class="brand-title">${esc(brand)}</div>${sub ? `<div class="brand-subtitle">${esc(sub)}</div>` : ''}</div></div>
 <div class="nav-actions">${actions}</div>
 </div></header>
 <main class="container" id="main">${hero}${body}</main></body></html>`;
