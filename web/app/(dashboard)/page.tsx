@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, fmtDate, fmtDur, type Project, type Session, type Stats } from "../../lib/playbook";
+import {
+  api, fmtAuditAction, fmtAuditUser, fmtDate, fmtDur,
+  type AuditRow, type Project, type Session, type Stats,
+} from "../../lib/playbook";
 
 const RANGES = [7, 14, 30];
 
@@ -14,10 +17,13 @@ export default function OverviewPage() {
   const [perProject, setPerProject] = useState<Record<string, Stats>>({});
   const [projectId, setProjectId] = useState("");
   const [range, setRange] = useState(14);
+  const [audit, setAudit] = useState<AuditRow[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     api.projects().then(setProjects).catch(e => setError(e.message));
+    // Ringkasan audit hanya untuk admin; viewer 403 → panel disembunyikan.
+    api.audit(8).then(setAudit).catch(() => setAudit(null));
     // B11: range awal ikut settings `range_default_days`; viewer 403 → tetap 14.
     api.settings()
       .then(s => { const d = Number(s.range_default_days); if (d > 0) setRange(d); })
@@ -214,6 +220,34 @@ export default function OverviewPage() {
             );
           })}
         </div>
+      )}
+
+      {audit !== null && (
+        <section className="pb-card pb-audit" style={{ marginTop: 16 }}>
+          <div className="pb-card-head">
+            <div>
+              <h2>Audit terakhir</h2>
+              <div className="pb-card-sub">Aktivitas admin terbaru. Detail lengkap ada di Settings.</div>
+            </div>
+            <Link className="pb-link-muted" href="/settings">Lihat semua</Link>
+          </div>
+          {audit.length === 0 ? (
+            <p className="pb-empty">Belum ada aktivitas.</p>
+          ) : (
+            <div className="pb-audit-list">
+              {audit.map(a => (
+                <div className="pb-audit-row" key={a.id}>
+                  <span className="pb-audit-what">
+                    <span className="pb-audit-action">{fmtAuditAction(a.action)}</span>
+                    <span className="pb-audit-ent">{a.entity}</span>
+                  </span>
+                  <span className="pb-audit-user">{fmtAuditUser(a)}</span>
+                  <span className="pb-audit-time">{fmtDate(a.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       <section className="pb-card pb-lh" style={{ marginTop: 16 }}>

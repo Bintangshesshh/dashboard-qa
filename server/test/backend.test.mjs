@@ -629,13 +629,16 @@ test('settings: GET daftar, PATCH whitelist + rentang, audit tercatat', async t 
   assert.equal(r.status, 400);
   r = await f.call('/api/settings', { cookie });
   assert.equal(r.body.artifact_retention_days, '7');
+  assert.equal(r.body.log_max_bytes, '1048576', 'nilai tersimpan tetap ada saat dibaca ulang');
 
   // body kosong ditolak
   r = await f.call('/api/settings', { method: 'PATCH', cookie, body: {} });
   assert.equal(r.status, 400);
 
   const audit = f.store.listAudit({ limit: 10 });
-  assert.ok(audit.some(a => a.action === 'update_settings'), 'perubahan settings masuk audit');
+  const change = audit.find(a => a.action === 'update_settings');
+  assert.ok(change, 'perubahan settings masuk audit');
+  assert.equal(change.username, 'tester', 'audit menyertakan username pelaku');
 });
 
 test('A6: session_reuse_minutes membatasi sesi yang dipakai ulang', async t => {

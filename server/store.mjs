@@ -481,9 +481,13 @@ export class Store {
       .run(randomUUID(), userId ?? null, action, entity, entityId ?? null, detail ?? null, new Date().toISOString());
   }
   listAudit({ limit = 50, entity } = {}) {
-    let sql = 'SELECT * FROM audit_log'; const vals = [];
-    if (entity) { sql += ' WHERE entity=?'; vals.push(entity); }
-    sql += ' ORDER BY created_at DESC LIMIT ?';
+    // Username di-join supaya UI bisa menampilkan siapa pelakunya, bukan id mentah.
+    let sql = `SELECT a.id, a.user_id, a.action, a.entity, a.entity_id, a.detail, a.created_at,
+      COALESCE(u.username, 'sistem') AS username
+      FROM audit_log a LEFT JOIN users u ON u.id = a.user_id`;
+    const vals = [];
+    if (entity) { sql += ' WHERE a.entity=?'; vals.push(entity); }
+    sql += ' ORDER BY a.created_at DESC LIMIT ?';
     vals.push(Math.min(Math.max(Number(limit) || 50, 1), 200));
     return this.db.prepare(sql).all(...vals);
   }

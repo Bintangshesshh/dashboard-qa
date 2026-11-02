@@ -85,9 +85,29 @@ export type CliToken = {
   last_used_at: string | null; revoked_at: string | null;
 };
 export type AuditRow = {
-  id: string; user_id: string | null; action: string; entity: string;
+  id: string; user_id: string | null; username?: string | null; action: string; entity: string;
   entity_id: string | null; detail: string | null; created_at: string;
 };
+
+// Label audit dalam bahasa manusia; dipakai halaman Settings dan ringkasan Overview.
+const AUDIT_LABELS: Record<string, string> = {
+  login: "Masuk",
+  logout: "Keluar",
+  update_settings: "Ubah settings",
+  update_project: "Ubah project",
+  create_test_file: "Tambah test",
+  update_test_file: "Ubah test",
+  reload_test_file: "Muat ulang test",
+  close_session: "Tutup sesi",
+  delete_session: "Hapus sesi",
+  quick_check: "Quick check",
+  run_local: "Jalankan lokal",
+  delete_run: "Hapus run",
+};
+export const fmtAuditAction = (action: string) =>
+  AUDIT_LABELS[action] ?? action.replace(/_/g, " ");
+export const fmtAuditUser = (row: Pick<AuditRow, "username" | "user_id">) =>
+  row.username || (row.user_id ? row.user_id.slice(0, 8) : "sistem");
 
 
 export class ApiError extends Error {
