@@ -75,6 +75,9 @@ try {
   assert(html.includes('prefers-color-scheme:dark'));
   assert(html.includes('<meta name="color-scheme" content="light dark">'));
   assert(html.includes('class="tbl"') || html.includes('class="scores"'));
+  // Layout: KPI tiles + one panel per block, not a bare document.
+  assert(html.includes('class="tile"') && html.includes('class="panel"'));
+  assert(html.includes('class="score"'));
   assert(!/^\.plain\{/m.test(html));
   assert(html.includes('broken.json'));
   assert(!/<img\b/i.test(html));

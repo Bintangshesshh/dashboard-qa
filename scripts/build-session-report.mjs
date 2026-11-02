@@ -1,5 +1,4 @@
-// Adapter JSON → HTML untuk satu report sesi (PRD §9, H3-1).
-// Halaman utama: index + satu halaman per run dari build-report-docs.mjs.
+// Adapter JSON → HTML untuk satu report sesi: index + satu halaman per run.
 // Fallback: HTML satu file (variabel `html` di bawah) kalau render folder gagal.
 import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -7,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Store } from '../server/store.mjs';
 import { buildReportDocs } from './build-report-docs.mjs';
 import { renderReportMarkdown } from './report-md.mjs';
-import { reportCss } from './report-css.mjs';
+import { doc, panel, tiles, statusBadge } from './report-html.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
@@ -21,11 +20,6 @@ const date = v => (v ? new Date(v).toLocaleString('id-ID', { timeZone: 'Asia/Jak
 const tone = v => (typeof v !== 'number' ? 'mut2' : v >= 0.9 ? 'ok' : v >= 0.5 ? 'warn' : 'bad');
 const link = (href, label) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
 
-function statusBadge(status) {
-  const cls = status === 'passed' ? 'ok' : ['failed', 'cancelled', 'interrupted'].includes(status) ? 'bad' : status === 'flaky' ? 'warn' : 'mut2';
-  return `<span class="b ${cls}">${esc(status)}</span>`;
-}
-
 function playwrightSection(run, results, logs) {
   if (!results.length) return `<p class="mut">data tidak ditemukan - JSON Playwright hilang atau korup. Run tidak dianggap lulus.</p>`;
   const passed = results.filter(r => r.status === 'passed').length;
@@ -35,14 +29,16 @@ function playwrightSection(run, results, logs) {
       <td class="mono">${esc(n(r.tc_id))}</td><td>${esc(r.title)}</td><td class="mono">${esc(r.file)}</td>
       <td>${statusBadge(r.status)}</td><td class="mono">${dur(r.duration_ms)}</td><td class="mono">${r.retry || 0}</td></tr>`).join('');
   const errors = results.filter(r => r.error).map(r => `<h3>${esc(r.tc_id ?? r.title)}</h3><p class="mono mut">${esc(r.file)}</p><pre>${esc(r.error)}</pre>`).join('');
-  return `<div class="kpi"><div><b>${passed}</b><span class="mut">lulus</span></div><div><b>${failed}</b><span class="mut">gagal</span></div>
-    <div><b>${flaky}</b><span class="mut">flaky</span></div><div><b>${dur(run.duration_ms)}</b><span class="mut">durasi</span></div></div>
+  return `${tiles([['Lulus', String(passed), 'test case passed', passed && !failed ? 'success' : ''],
+    ['Gagal', String(failed), 'perlu diperiksa', failed ? 'danger' : ''],
+    ['Flaky', String(flaky), 'tidak dihitung lulus', flaky ? 'warn' : ''],
+    ['Durasi', dur(run.duration_ms), `exit ${n(run.exit_code)}`]])}
     <div class="tbl"><table><thead><tr><th>TC</th><th>Judul</th><th>File</th><th>Status</th><th>Durasi</th><th>Retry</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${errors}
     ${logs ? `<details><summary>Log run (500 baris terakhir)</summary><pre>${esc(logs)}</pre></details>` : ''}`;
 }
 
-async function lighthouseSection(run, rows, artifacts, logs) {
+async function lighthouseSection(run, rows, logs) {
   if (!rows.length) return `<p class="mut">data tidak ditemukan - JSON Lighthouse hilang atau korup.</p>`;
   // manifest.json lhci: url → htmlPath/jsonPath absolut. Dipakai untuk link report & audit gagal.
   const dir = join(resolve(root, process.env.RUNS_DIR ?? '.runs'), run.id, 'artifacts');
@@ -87,28 +83,6 @@ async function lighthouseSection(run, rows, artifacts, logs) {
     ${logs ? `<details><summary>Log run (500 baris terakhir)</summary><pre>${esc(logs)}</pre></details>` : ''}`;
 }
 
-// Header sesi untuk index dokumen: identitas + verdict + jumlah run.
-function sessionIntro(session, project, runs) {
-  const baris = [project?.name, session?.env, session?.target_url, date(session?.created_at)]
-    .filter(Boolean).map(v => esc(v)).join(' · ');
-  return `<p class="mut">${baris}</p><div class="card">${verdict(runs)} · ${runs.length} run</div>`;
-}
-
-async function runSection(run, results, artifacts, logs) {
-  const raw = run.tool === 'pw' ? 'playwright-report/index.html' : null;
-  const files = raw ? [link(`/artifacts/${run.id}/${raw}`, 'report mentah Playwright')] : [];
-  const body = run.tool === 'pw'
-    ? playwrightSection(run, results, logs)
-    : await lighthouseSection(run, results, artifacts, logs);
-  return `<section class="card">
-    <h2>${run.tool === 'pw' ? 'Playwright' : 'Lighthouse'} · ${statusBadge(run.status)}</h2>
-    <p class="mut">Mulai ${date(run.started_at)} · selesai ${date(run.finished_at)} · durasi ${dur(run.duration_ms)} · exit ${n(run.exit_code)}</p>
-    ${run.error ? `<p class="b bad">${esc(run.error)}</p>` : ''}
-    ${body}
-    <p class="mut">${[files.length ? files.join(' · ') : '', link(`/api/runs/${run.id}/logs/download`, 'unduh log penuh')].filter(Boolean).join(' · ')}</p>
-  </section>`;
-}
-
 function verdict(runs) {
   const failed = runs.filter(r => r.status !== 'passed');
   const pw = runs.find(r => r.tool === 'pw');
@@ -117,6 +91,29 @@ function verdict(runs) {
   if (pw) parts.push(`Playwright: ${pw.status}`);
   if (lh) parts.push(`Lighthouse: ${lh.status}`);
   return `<p class="b ${failed.length ? 'bad' : 'ok'}">${failed.length ? 'Gagal' : 'Lulus'}</p> <span class="mut">${esc(parts.join(' · '))}</span>`;
+}
+
+// Header sesi: identitas + verdict + jumlah run. Dipasang di dalam hero oleh pemanggil.
+function sessionIntro(session, project, runs) {
+  const baris = [project?.name, session?.env, session?.target_url, date(session?.created_at)]
+    .filter(Boolean).map(v => esc(v)).join(' · ');
+  return `<div class="eyebrow">Laporan sesi</div>
+<h1>${esc(session?.label ?? 'Laporan')}</h1>
+<p class="lead">${baris}</p>
+<div class="meta-strip"><div class="meta-item"><span class="mut">Verdict</span>${verdict(runs)}</div>
+<div class="meta-divider"></div><div class="meta-item"><span class="mut">Run</span><strong>${runs.length}</strong></div></div>`;
+}
+
+async function runSection(run, results, logs) {
+  const raw = run.tool === 'pw' ? 'playwright-report/index.html' : null;
+  const files = raw ? [link(`/artifacts/${run.id}/${raw}`, 'report mentah Playwright')] : [];
+  const body = run.tool === 'pw'
+    ? playwrightSection(run, results, logs)
+    : await lighthouseSection(run, results, logs);
+  const head = `<h2>${run.tool === 'pw' ? 'Playwright' : 'Lighthouse'} ${statusBadge(run.status)}</h2>
+<p>Mulai ${date(run.started_at)} · selesai ${date(run.finished_at)} · durasi ${dur(run.duration_ms)} · exit ${n(run.exit_code)}</p>`;
+  return panel(head, `${run.error ? `<p class="b bad">${esc(run.error)}</p>` : ''}${body}
+    <p class="mut">${[files.length ? files.join(' · ') : '', link(`/api/runs/${run.id}/logs/download`, 'unduh log penuh')].filter(Boolean).join(' · ')}</p>`);
 }
 
 export async function buildSessionReport(store, reportId) {
@@ -132,28 +129,27 @@ export async function buildSessionReport(store, reportId) {
     const usedRuns = [];
     for (const runId of runIds) {
       const run = store.getRun(runId);
-      if (!run) { sections.push(`<section class="card"><p class="mut">run dihapus pada ${date(new Date().toISOString())} (${esc(runId)})</p></section>`); continue; }
+      if (!run) { sections.push(panel('Run dihapus', `<p class="mut">run dihapus pada ${date(new Date().toISOString())} (${esc(runId)})</p>`)); continue; }
       usedRuns.push(run);
       const results = run.tool === 'pw' ? store.listPlaywrightResults(run.id) : store.listLighthouseResults(run.id);
-      const artifacts = store.listArtifacts(run.id);
       const logs = (await store.logsText(run.id)).split('\n').slice(-500).join('\n');
-      sections.push(await runSection(run, results, artifacts, logs));
+      sections.push(await runSection(run, results, logs));
     }
-    const html = `<!doctype html><html lang="id"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>${esc(session?.label ?? 'Laporan')} - Playbook</title><meta name="color-scheme" content="light dark"><style>${reportCss}</style></head><body><main>
-<h1>${esc(session?.label ?? 'Laporan')}</h1>
-<p class="mut">${esc(project?.name ?? '-')} · ${esc(session?.env ?? '-')} · ${esc(session?.target_url ?? '-')} · ${date(session?.created_at)}</p>
-${report.scope === 'both' ? `<div class="card">${verdict(usedRuns)}</div>` : ''}
-${sections.join('\n')}
-<p class="mut" style="margin-top:28px;font-size:12px">Dibangun ${date(new Date().toISOString())} · cakupan ${esc(report.scope)} · ${runIds.length} run</p>
-</main></body></html>`;
+    const html = doc({
+      title: `${session?.label ?? 'Laporan'} - Playbook`,
+      brand: session?.label ?? 'Laporan',
+      sub: [project?.name, session?.env].filter(Boolean).join(' · '),
+      actions: verdict(usedRuns),
+      hero: `<section class="hero">${sessionIntro(session, project, usedRuns)}</section>`,
+      body: sections.join('\n') + `<p class="mut" style="margin-top:28px;font-size:12px">Dibangun ${date(new Date().toISOString())} · cakupan ${esc(report.scope)} · ${runIds.length} run</p>`,
+    });
     await mkdir(outDir, { recursive: true });
 
     // Jalur utama: folder HTML statis (index + halaman per run).
     // Fallback: HTML satu file di atas, kalau render folder gagal laporan tetap ada.
     const runsDir = resolve(root, process.env.RUNS_DIR ?? '.runs');
-    // Run lama belum punya run.json; lengkapi dari baris DB supaya pipeline
+    // run.json: identitas run untuk halaman report. DB bisa saja sudah tidak punya
+    // run.json; lengkapi dari baris DB supaya pipeline
     // tidak menganggapnya run yang sudah dihapus.
     for (const run of usedRuns) {
       const file = join(runsDir, run.id, 'run.json');
