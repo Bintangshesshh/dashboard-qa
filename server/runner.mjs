@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdir, writeFile, appendFile, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, appendFile, readdir, readFile, rm, copyFile } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute, basename, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,11 @@ import { stripAnsi } from './ansi.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(join(root, 'package.json'));
+// Resolve installed CLIs by path: `npx` resolves against cwd, and lhci runs with
+// cwd inside .runs/<id>, where npx pulled an unrelated package from the registry.
+const binDir = pkg => dirname(require.resolve(pkg + '/package.json'));
+const lhciBin = join(binDir('@lhci/cli'), 'src/cli.js');
+const pwBin = join(binDir('@playwright/test'), 'cli.js');
 
 // Config Playwright untuk spec yang datang dari database. testDir = folder spec
 // asli supaya import relatif (`./creds`) tetap jalan.
@@ -29,11 +34,19 @@ export default defineConfig({
 });
 `;
 
-// Config LH dari test_files.config (PRD §8.3): URL sesi + urls tambahan, budget, numberOfRuns.
-// Dipisah dari runLighthouse supaya bisa diuji tanpa menjalankan lhci.
+// Each URL is a full Lighthouse pass; past this a run times out before
+// lhci uploads, which leaves no scores and no report on disk.
+export const MAX_LH_URLS = 3;
+const MIN_LH_TIMEOUT_MS = 900_000;
+
+export function lhUrls(cfg, targetUrl) {
+  return [...new Set([...(targetUrl ? [targetUrl] : []), ...(cfg?.urls ?? [])])];
+}
+
 export function lhConfig(cfg, targetUrl, outDir) {
-  const urls = [...new Set([...(targetUrl ? [targetUrl] : []), ...(cfg?.urls ?? [])])];
+  const urls = lhUrls(cfg, targetUrl);
   if (!urls.length) throw new Error('Tidak ada URL untuk diaudit: sesi tanpa targetUrl dan config tanpa urls');
+  if (urls.length > MAX_LH_URLS) throw new Error(`Maksimal ${MAX_LH_URLS} URL per run Lighthouse (diminta ${urls.length})`);
   const assertions = Object.fromEntries(
     Object.entries(cfg?.budgets ?? {}).map(([k, v]) => [k, ['warn', { minScore: v?.minScore ?? 0.6 }]]),
   );
@@ -58,6 +71,11 @@ export function warningLines(results) {
     }
   }
   return out;
+}
+
+function parseJsonArray(raw) {
+  if (!raw) return [];
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v : [v]; } catch { return []; }
 }
 
 export async function filesBelow(dir, base = dir) {
@@ -127,12 +145,12 @@ export class Runner extends EventEmitter {
     return state.chain;
   }
 
-  // Bunuh proses saat melewati timeout; PRD §8.3.
-  arm(state) {
+  // Killing lhci mid-run throws away the report, so Lighthouse gets a floor.
+  arm(state, timeout = this.timeout) {
     state.timer = setTimeout(() => {
       state.timedOut = true;
       if (state.child) this.killTree(state.child);
-    }, this.timeout);
+    }, timeout);
   }
 
   async status(patch) {
@@ -160,7 +178,7 @@ export class Runner extends EventEmitter {
     await mkdir(dir, { recursive: true });
     await this.store.patchRun(runId, { status: 'running', started_at: new Date().toISOString() });
     this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
-    this.arm(state);
+    this.arm(state, testFile.tool === 'lh' ? Math.max(this.timeout, MIN_LH_TIMEOUT_MS) : this.timeout);
 
     const started = Date.now();
     try {
@@ -216,10 +234,10 @@ export class Runner extends EventEmitter {
     }
     // `--output` (test-results) harus terpisah dari folder report HTML; kalau
     // bersarang, Playwright menolak karena reporter HTML menghapus foldernya.
-    const args = ['playwright', 'test', specPath, `--output=${join(dir, 'artifacts', 'test-results')}`];
+    const args = [pwBin, 'test', specPath, `--output=${join(dir, 'artifacts', 'test-results')}`];
     if (cfgPath) args.push('--config=' + cfgPath);
     else args.push('--reporter=json,html');
-    const child = spawn('npx', args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
+    const child = spawn(process.execPath, args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
     state.child = child;
     child.stdout.on('data', d => this.log(state, 'stdout', d));
     child.stderr.on('data', d => this.log(state, 'stderr', d));
@@ -265,11 +283,11 @@ export class Runner extends EventEmitter {
     if (cfg) {
       configPath = join(dir, 'lighthouserc.cjs');
       await writeFile(configPath, lhConfig(cfg, targetUrl, outDir));
-      const audited = new Set([...(targetUrl ? [targetUrl] : []), ...(cfg.urls ?? [])]);
-      await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${audited.size} URL)\n`);
+      const audited = lhUrls(cfg, targetUrl);
+      await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${audited.length} URL)\n`);
     }
     // cwd = dir: lhci menulis .lighthouseci/ relatif cwd, jadi tiap run terisolasi.
-    const child = spawn('npx', ['lhci', 'autorun', '--config=' + configPath, '--upload.target=filesystem', '--upload.outputDir=' + outDir], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], shell: true });
+    const child = spawn(process.execPath, [lhciBin, 'autorun', '--config=' + configPath, '--upload.target=filesystem', '--upload.outputDir=' + outDir], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
     state.child = child;
     child.stdout.on('data', d => this.log(state, 'stdout', d));
     child.stderr.on('data', d => this.log(state, 'stderr', d));
@@ -342,40 +360,50 @@ export class Runner extends EventEmitter {
     return out;
   }
 
+  // Lighthouse writes LHRs and the HTML report to `.lighthouseci/` first and the
+  // filesystem upload copies them afterwards. Reading both keeps scores when a
+  // run is killed before upload finishes.
   async parseLighthouse(dir) {
-    const files = await filesBelow(join(dir, 'artifacts')).catch(() => []);
+    const artifactsDir = join(dir, 'artifacts');
+    const lhciDir = join(dir, '.lighthouseci');
+    const files = await filesBelow(artifactsDir).catch(() => []);
     const out = new Map();
-    // Assertion yang gagal → budget_failed per URL. lhci menaruhnya di .lighthouseci/ (cwd),
-    // bukan di upload dir; cek keduanya.
-    const assertFile = files.find(f => f.includes('assertion-results'));
-    const assertRaw = assertFile
-      ? await readFile(join(dir, 'artifacts', assertFile), 'utf8').catch(() => null)
-      : await readFile(join(dir, '.lighthouseci', 'assertion-results.json'), 'utf8').catch(() => null);
+
+    const assertRaw = await readFile(join(artifactsDir, 'assertion-results.json'), 'utf8').catch(() => null)
+      ?? await readFile(join(lhciDir, 'assertion-results.json'), 'utf8').catch(() => null);
     const assertFailed = new Map();
-    if (assertRaw) {
-      const rows = (() => { try { return JSON.parse(assertRaw); } catch { return []; } })();
-      for (const a of Array.isArray(rows) ? rows : []) {
-        if (a.level !== 'error' && a.level !== 'warn') continue;
-        const key = a.url ?? '';
-        const label = a.auditId && a.auditProperty ? `${a.auditId}:${a.auditProperty}` : a.auditId ?? a.name ?? 'assertion';
-        assertFailed.set(key, [...(assertFailed.get(key) ?? []), label]);
-      }
+    for (const a of parseJsonArray(assertRaw)) {
+      if (a.level !== 'error' && a.level !== 'warn') continue;
+      const key = a.url ?? '';
+      const label = a.auditId && a.auditProperty ? `${a.auditId}:${a.auditProperty}` : a.auditId ?? a.name ?? 'assertion';
+      assertFailed.set(key, [...(assertFailed.get(key) ?? []), label]);
     }
-    // lhci filesystem target menulis manifest.json: url → htmlPath/jsonPath absolut.
-    const manifest = await readFile(join(dir, 'artifacts', 'manifest.json'), 'utf8').then(JSON.parse).catch(() => []);
+
+    const manifest = parseJsonArray(await readFile(join(artifactsDir, 'manifest.json'), 'utf8').catch(() => null));
     const htmlByUrl = new Map();
-    for (const m of Array.isArray(manifest) ? manifest : []) {
-      if (m.url && m.htmlPath) htmlByUrl.set(m.url, relative(join(dir, 'artifacts'), m.htmlPath).replaceAll('\\', '/'));
+    for (const m of manifest) {
+      if (m.url && m.htmlPath) htmlByUrl.set(m.url, relative(artifactsDir, m.htmlPath).replaceAll('\\', '/'));
     }
-    for (const f of files.filter(f => f.endsWith('.json'))) {
-      if (f === 'manifest.json') continue;
-      const data = await readFile(join(dir, 'artifacts', f), 'utf8').then(JSON.parse).catch(() => null);
+
+    let lhrFiles = files.filter(f => f.endsWith('.json') && f !== 'manifest.json');
+    let lhrDir = artifactsDir;
+    if (!lhrFiles.length) {
+      lhrFiles = (await filesBelow(lhciDir).catch(() => [])).filter(f => /^lhr-.+\.json$/.test(basename(f)));
+      lhrDir = lhciDir;
+    }
+
+    const fileByUrl = new Map();
+    for (const f of lhrFiles) {
+      const data = await readFile(join(lhrDir, f), 'utf8').then(JSON.parse).catch(() => null);
       if (!data?.categories) continue;
-      const cat = (k) => data.categories[k]?.score ?? null;
       const url = data.finalUrl ?? data.requestedUrl ?? f;
-      // lhci menulis satu LHR per run (numberOfRuns) → UNIQUE(run_id,url).
-      // Ambil run terakhir per URL; run lebih awal ditimpa.
+      const at = Number(data.fetchTime ?? 0);
+      // numberOfRuns > 1 yields several LHRs per URL; keep the newest.
+      if ((out.get(url)?.at ?? -1) > at) continue;
+      const cat = (k) => data.categories[k]?.score ?? null;
+      fileByUrl.set(url, f);
       out.set(url, {
+        at,
         url,
         performance: cat('performance'),
         accessibility: cat('accessibility'),
@@ -389,9 +417,18 @@ export class Runner extends EventEmitter {
         reportPath: htmlByUrl.get(url) ?? null,
       });
     }
+
+    // Report never uploaded: adopt the lhci copy so the link still resolves.
+    if (out.size) await mkdir(artifactsDir, { recursive: true }).catch(() => {});
+    for (const [url, row] of out) {
+      delete row.at;
+      if (row.reportPath) continue;
+      const name = basename(fileByUrl.get(url) ?? '').replace(/\.json$/, '.html');
+      const ok = await copyFile(join(lhrDir, name), join(artifactsDir, 'lh-' + name)).then(() => true).catch(() => false);
+      if (ok) row.reportPath = 'lh-' + name;
+    }
     return [...out.values()];
   }
-
   // Snapshot run untuk pipeline laporan HTML (scripts/build-report-docs.mjs).
   // Hanya fakta run; kode spec sengaja tidak ikut supaya tidak bocor ke report statis.
   async writeRunJson(state, dir, { status, exitCode, error, mode }) {

@@ -7,7 +7,7 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { realpath, lstat, rm, mkdir, writeFile } from 'node:fs/promises';
 import { Store } from './store.mjs';
-import { Runner } from './runner.mjs';
+import { Runner, MAX_LH_URLS } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
 import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check.mjs';
 import { reportMarkdownFor } from '../scripts/report-md.mjs';
@@ -199,6 +199,14 @@ export function createApp({ store, runner, token, origins }) {
     const { project, tool } = req.query;
     res.json(store.listTestFiles({ projectId: project ?? undefined, tool: tool === 'pw' || tool === 'lh' ? tool : undefined }));
   }));
+  // Session target already claims one URL slot, so extra URLs are capped below it.
+  function checkLhUrls(tool, config) {
+    if (tool !== 'lh' || !config) return;
+    const cfg = typeof config === 'string' ? (() => { try { return JSON.parse(config); } catch { return null; } })() : config;
+    const extra = Array.isArray(cfg?.urls) ? cfg.urls.length : 0;
+    if (extra + 1 > MAX_LH_URLS) fail(`Maksimal ${MAX_LH_URLS} URL per run Lighthouse (target + ${MAX_LH_URLS - 1} tambahan)`, 400);
+  }
+
   app.post('/api/test-files', requireAuth, requireAdmin, route(async (req, res) => {
     const t = toolValue(req.body?.tool);
     const projectId = id(req.body?.projectId);
@@ -207,6 +215,7 @@ export function createApp({ store, runner, token, origins }) {
     const code = codeValue(req.body?.code);
     const label = text(req.body?.label, 'label', 200);
     const config = req.body?.config != null ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config)) : null;
+    checkLhUrls(t, config);
     const tf = { id: randomUUID(), projectId, tool: t, path, label, code, config, updatedBy: req.user.id };
     store.createTestFile(tf);
     store.audit({ userId: req.user.id, action: 'create_test_file', entity: 'test_files', entityId: tf.id });
@@ -219,6 +228,7 @@ export function createApp({ store, runner, token, origins }) {
     if (req.body.code !== undefined) fields.code = codeValue(req.body.code);
     if (req.body.label !== undefined) fields.label = text(req.body.label, 'label');
     if (req.body.config !== undefined) fields.config = req.body.config != null ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config)) : null;
+    checkLhUrls(tf.tool, fields.config);
     if (req.body.enabled !== undefined) fields.enabled = bool(req.body.enabled, 'enabled');
 
     // Sinkron ke disk hanya untuk spec Playwright yang punya path file nyata.

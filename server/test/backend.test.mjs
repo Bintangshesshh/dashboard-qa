@@ -477,6 +477,30 @@ test('parseLighthouse: banyak LHR URL sama → satu baris per URL', async () => 
   await rm(runsDir, { recursive: true, force: true });
 });
 
+test('parseLighthouse: baca .lighthouseci/ saat upload tak sempat jalan', async () => {
+  const { Runner } = await import('../runner.mjs');
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-lh-'));
+  const dir = join(runsDir, 'run1');
+  const lhci = join(dir, '.lighthouseci');
+  await mkdir(lhci, { recursive: true });
+  const lhr = (perf) => JSON.stringify({
+    finalUrl: 'https://a.test/',
+    fetchTime: new Date().toISOString(),
+    categories: { performance: { score: perf }, accessibility: { score: 0.9 }, 'best-practices': { score: 0.8 }, seo: { score: 1 } },
+    audits: {},
+  });
+  await writeFile(join(lhci, 'lhr-1.json'), lhr(0.5));
+  await writeFile(join(lhci, 'lhr-1.html'), '<html></html>');
+
+  const runner = new Runner({}, { runsDir });
+  const rows = await runner.parseLighthouse(dir);
+
+  assert.equal(rows.length, 1, 'data tetap terbaca tanpa upload');
+  assert.equal(rows[0].performance, 0.5);
+  assert.equal(rows[0].reportPath, 'lh-lhr-1.html', 'report disalin ke artifacts');
+  await rm(runsDir, { recursive: true, force: true });
+});
+
 test('warningLines: runWarnings LH jadi baris log system', async () => {
   const { warningLines } = await import('../runner.mjs');
   const rows = [
@@ -509,6 +533,7 @@ test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async
   assert.equal(parsed.ci.upload.outputDir, 'D:/runs/abc/artifacts', 'backslash dinormalisasi');
 
   assert.throws(() => lhConfig({ urls: [] }, null, 'x'), /Tidak ada URL/);
+  assert.throws(() => lhConfig({ urls: ['https://a.test/', 'https://b.test/', 'https://c.test/'] }, 'https://d.test/', 'x'), /Maksimal 3 URL/);
   const minimal = lhConfig(null, 'https://a.test/', 'out');
   assert.equal(JSON.parse(minimal.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.numberOfRuns, 1);
 });

@@ -18,6 +18,9 @@ const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 const stripAnsi = (s: string) => s.replace(/\u001b?\[[0-9;]*m/g, "");
 
 type Budgets = Record<string, { minScore: number }>;
+
+// Matches MAX_LH_URLS on the server: the session target takes one slot.
+const MAX_EXTRA_URLS = 2;
 type LhConfig = { urls?: string[]; numberOfRuns?: number; budgets?: Budgets };
 
 const CATEGORIES = [
@@ -116,12 +119,18 @@ export default function LighthousePage() {
 
   useEffect(() => { termRef.current?.scrollTo({ top: termRef.current.scrollHeight }); }, [logs]);
 
+  const extraUrlList = extraUrls.split("\n").map(s => s.trim()).filter(Boolean);
+
   const saveConfig = async () => {
     if (!selected) return;
+    if (extraUrlList.length > MAX_EXTRA_URLS) {
+      setError(`Maksimal ${MAX_EXTRA_URLS} URL tambahan (target sesi memakai 1 slot dari 3).`);
+      return;
+    }
     setSaving(true); setError("");
     try {
       const config: LhConfig = {
-        urls: extraUrls.split("\n").map(s => s.trim()).filter(Boolean),
+        urls: extraUrlList,
         numberOfRuns: runs,
         budgets: Object.fromEntries(CATEGORIES.map(c => [c.key, { minScore: scores[c.key] ?? 0.6 }])),
       };
@@ -198,7 +207,7 @@ export default function LighthousePage() {
                 onChange={e => setRuns(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} />
             </label>
             <label className="pb-field">
-              URL tambahan (satu per baris)
+              URL tambahan (satu per baris) - {extraUrlList.length}/{MAX_EXTRA_URLS}
               <textarea className="pb-input pb-mono" rows={3} value={extraUrls}
                 placeholder="https://contoh.test/halaman-lain" onChange={e => setExtraUrls(e.target.value)} />
             </label>
@@ -265,7 +274,13 @@ export default function LighthousePage() {
                     <td>{pct(r.best_practices)}</td>
                     <td>{pct(r.seo)}</td>
                     <td className="mono">{r.lcp_ms ? `${Math.round(r.lcp_ms)}ms` : "-"}</td>
-                    <td className="mono">{r.budget_failed ?? "-"}</td>
+                    <td className="mono">
+                      {r.budget_failed
+                        ? r.budget_failed.split(", ").map(f => (
+                            <span className="pb-badge failed" key={f} title="Skor di bawah batas">{f}</span>
+                          ))
+                        : "-"}
+                    </td>
                     <td style={{ textAlign: "right" }}>
                       {r.report_path
                         ? <ArtifactLink href={artifactUrl(r.run_id, r.report_path)}>Buka report</ArtifactLink>
