@@ -21,13 +21,14 @@ const tone = v => (typeof v !== 'number' ? 'mut2' : v >= 0.9 ? 'ok' : v >= 0.5 ?
 const link = (href, label) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
 
 function playwrightSection(run, results, logs) {
-  if (!results.length) return `<p class="mut">data tidak ditemukan - JSON Playwright hilang atau korup. Run tidak dianggap lulus.</p>`;
+  if (!results.length) return `<p class="empty">data tidak ditemukan - JSON Playwright hilang atau korup. Run tidak dianggap lulus.</p>`;
   const passed = results.filter(r => r.status === 'passed').length;
   const failed = results.filter(r => r.status === 'failed').length;
   const flaky = results.filter(r => r.status === 'flaky').length;
+  const maxDuration = Math.max(1, ...results.map(r => Number(r.duration_ms) || 0));
   const rows = results.map(r => `<tr>
       <td class="mono">${esc(n(r.tc_id))}</td><td>${esc(r.title)}</td><td class="mono">${esc(r.file)}</td>
-      <td>${statusBadge(r.status)}</td><td class="mono">${dur(r.duration_ms)}</td><td class="mono">${r.retry || 0}</td></tr>`).join('');
+      <td>${statusBadge(r.status)}</td><td class="mono dur"><span class="dur-cell"><span class="dur-bar" style="width:${Math.max(2, Math.round(((Number(r.duration_ms) || 0) / maxDuration) * 100))}%"></span><span>${dur(r.duration_ms)}</span></span></td><td class="mono">${r.retry || 0}</td></tr>`).join('');
   const errors = results.filter(r => r.error).map(r => `<h3>${esc(r.tc_id ?? r.title)}</h3><p class="mono mut">${esc(r.file)}</p><pre>${esc(r.error)}</pre>`).join('');
   return `${tiles([['Lulus', String(passed), 'test case passed', passed && !failed ? 'success' : ''],
     ['Gagal', String(failed), 'perlu diperiksa', failed ? 'danger' : ''],
@@ -39,7 +40,7 @@ function playwrightSection(run, results, logs) {
 }
 
 async function lighthouseSection(run, rows, logs) {
-  if (!rows.length) return `<p class="mut">data tidak ditemukan - JSON Lighthouse hilang atau korup.</p>`;
+  if (!rows.length) return `<p class="empty">data tidak ditemukan - JSON Lighthouse hilang atau korup.</p>`;
   // manifest.json lhci: url → htmlPath/jsonPath absolut. Dipakai untuk link report & audit gagal.
   const dir = join(resolve(root, process.env.RUNS_DIR ?? '.runs'), run.id, 'artifacts');
   const manifest = await readFile(join(dir, 'manifest.json'), 'utf8').then(JSON.parse).catch(() => []);
@@ -90,7 +91,7 @@ function verdict(runs) {
   const parts = [];
   if (pw) parts.push(`Playwright: ${pw.status}`);
   if (lh) parts.push(`Lighthouse: ${lh.status}`);
-  return `<p class="b ${failed.length ? 'bad' : 'ok'}">${failed.length ? 'Gagal' : 'Lulus'}</p> <span class="mut">${esc(parts.join(' · '))}</span>`;
+  return `<span class="b ${failed.length ? 'bad' : 'ok'}">${failed.length ? 'Gagal' : 'Lulus'}</span> <span class="mut">${esc(parts.join(' · '))}</span>`;
 }
 
 // Header sesi: identitas + verdict + jumlah run. Dipasang di dalam hero oleh pemanggil.
@@ -110,7 +111,7 @@ async function runSection(run, results, logs) {
   const body = run.tool === 'pw'
     ? playwrightSection(run, results, logs)
     : await lighthouseSection(run, results, logs);
-  const head = `<h2>${run.tool === 'pw' ? 'Playwright' : 'Lighthouse'} ${statusBadge(run.status)}</h2>
+  const head = `<h2><span class="tool ${run.tool === 'pw' ? 'pw' : 'lh'}">${run.tool === 'pw' ? 'Playwright' : 'Lighthouse'}</span> ${statusBadge(run.status)}</h2>
 <p>Mulai ${date(run.started_at)} · selesai ${date(run.finished_at)} · durasi ${dur(run.duration_ms)} · exit ${n(run.exit_code)}</p>`;
   return panel(head, `${run.error ? `<p class="b bad">${esc(run.error)}</p>` : ''}${body}
     <p class="mut">${[files.length ? files.join(' · ') : '', link(`/api/runs/${run.id}/logs/download`, 'unduh log penuh')].filter(Boolean).join(' · ')}</p>`);
@@ -141,7 +142,7 @@ export async function buildSessionReport(store, reportId) {
       sub: [project?.name, session?.env].filter(Boolean).join(' · '),
       actions: verdict(usedRuns),
       hero: `<section class="hero">${sessionIntro(session, project, usedRuns)}</section>`,
-      body: sections.join('\n') + `<p class="mut" style="margin-top:28px;font-size:12px">Dibangun ${date(new Date().toISOString())} · cakupan ${esc(report.scope)} · ${runIds.length} run</p>`,
+      body: sections.join('\n') + `<p class="doc-footer">Dibangun ${date(new Date().toISOString())} · cakupan ${esc(report.scope)} · ${runIds.length} run</p>`,
     });
     await mkdir(outDir, { recursive: true });
 

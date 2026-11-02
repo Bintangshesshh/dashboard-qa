@@ -14,20 +14,30 @@ const location = value => (value?.file ? [value.file, value.line, value.column].
 export const doc = ({ title, brand, sub = '', actions = '', hero = '', body = '' }) => `<!doctype html><html lang="id"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f8fb" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#0b1020" media="(prefers-color-scheme:dark)">
 <title>${esc(title)}</title><style>${reportCss}</style></head><body>
-<header class="top-nav"><div class="top-nav-inner">
-<div><div class="brand-title">${esc(brand)}</div>${sub ? `<div class="brand-subtitle">${esc(sub)}</div>` : ''}</div>
-<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">${actions}</div>
+<a class="skip" href="#main">Lewati ke konten</a>
+<header class="top-nav"><div class="container top-nav-inner">
+<div class="nav-brand"><span class="brand-mark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg></span>
+<div class="brand-text"><div class="brand-title">${esc(brand)}</div>${sub ? `<div class="brand-subtitle">${esc(sub)}</div>` : ''}</div></div>
+<div class="nav-actions">${actions}</div>
 </div></header>
-<main class="container">${hero}${body}</main></body></html>`;
+<main class="container" id="main">${hero}${body}</main></body></html>`;
 
 export // title is plain text, or ready-made markup when it already carries its own heading.
-const panel = (title, body, note = '') => `<section class="panel"><div class="panel-head"><div>
+const panel = (title, body, note = '', id = '') => `<section class="panel"${id ? ` id="${esc(id)}"` : ''}><div class="panel-head"><div>
 ${title.startsWith('<') ? title : `<h2>${title}</h2>`}${note ? `<p>${note}</p>` : ''}</div></div><div class="panel-body">${body}</div></section>`;
 
-export const tiles = items => `<section class="card-row">${items.map(([label, value, sub, cls = '']) => `<div class="tile">
-<div class="tile-label">${esc(label)}</div><div class="tile-value${String(value).length > 9 ? ' sm' : ''}"${cls ? ` style="color:var(--${cls})"` : ''}>${value}</div>
-<div class="tile-sub${cls ? ' ' + (cls === 'success' ? 'good' : cls) : ''}">${esc(sub)}</div></div>`).join('')}</section>`;
+// cls menerima nama tone lama (success/danger/warn) supaya pemanggil tidak perlu berubah.
+export const tiles = items => `<section class="card-row">${items.map(([label, value, sub, cls = '']) => {
+  const tone = cls === 'success' ? 'ok' : cls === 'danger' ? 'bad' : cls === 'warn' ? 'warn' : '';
+  const text = String(value).replace(/<[^>]+>/g, '');
+  return `<div class="tile${tone ? ` tone-${tone}` : ''}">
+<div class="tile-top"><span class="tile-label">${esc(label)}</span><span class="tile-dot" aria-hidden="true"></span></div>
+<div class="tile-value${text.length > 9 ? ' sm' : ''}">${value}</div>
+<div class="tile-sub">${esc(sub)}</div></div>`;
+}).join('')}</section>`;
 
 export const statusBadge = status => `<span class="b ${status === 'passed' ? 'ok' : ['failed', 'cancelled', 'interrupted'].includes(status)
   ? 'bad' : status === 'flaky' ? 'warn' : 'mut2'}">${esc(status ?? 'tidak diketahui')}</span>`;
@@ -71,12 +81,15 @@ function playwrightSection(data) {
   const rows = tests(data.suites);
   const failures = rows.filter(needsAttention);
   const others = rows.filter(test => !needsAttention(test));
+  const durations = rows.map(test => (test.results || []).reduce((sum, r) => sum + (Number(r.duration) || 0), 0));
+  const maxDuration = Math.max(1, ...durations);
   const list = rows.map((test, i) => {
-    const total = (test.results || []).reduce((sum, r) => sum + (Number(r.duration) || 0), 0);
+    const total = durations[i];
+    const label = total >= 1000 ? (total / 1000).toFixed(2) + ' s' : total + ' ms';
     return `<tr><td class="mono">${i + 1}</td><td>${esc(test.title)}</td>
 <td class="mono">${esc(location(test) || test.file || '-')}</td>
 <td>${needsAttention(test) ? '<span class="b bad">perlu diperiksa</span>' : '<span class="b ok">sesuai harapan</span>'}</td>
-<td class="mono">${total >= 1000 ? (total / 1000).toFixed(2) + ' s' : total + ' ms'}</td></tr>`;
+<td class="mono dur"><span class="dur-cell"><span class="dur-bar" style="width:${Math.max(2, Math.round((total / maxDuration) * 100))}%"></span><span>${label}</span></span></td></tr>`;
   }).join('');
   return `<p><strong>${failures.length} entri test perlu diperiksa</strong> / ${rows.length} total.`
     + ` Kegagalan yang diharapkan dan retry tetap terlihat; test flaky tidak dianggap lulus.</p>`
@@ -197,8 +210,12 @@ export function runReportHtml(report) {
   const screenshots = report.files.filter(f => /\.(png|jpe?g|webp)$/i.test(f));
   const traces = report.files.filter(f => /trace.*\.zip$/i.test(f));
   const archives = report.files.filter(f => /\.(tar\.gz|tgz|zip)$/i.test(f) && !traces.includes(f));
-  const download = (path, label) => `<a href="${esc(artifact(path))}" download>${esc(label ?? path)}</a>`;
-  const buka = path => `<a href="${esc(artifact(path))}" target="_blank" rel="noopener">buka</a>`;
+  const download = (path, label) => `<a class="link" href="${esc(artifact(path))}" download>${esc(label ?? path)}</a>`;
+  const buka = path => `<a class="link" href="${esc(artifact(path))}" target="_blank" rel="noopener">buka</a>`;
+  const fileRow = (path, actions) => `<li class="file-row"><span class="file-name">${esc(path)}</span>
+<span class="file-actions">${actions}</span></li>`;
+  const fileList = paths => `<ul class="file-list">${paths.map(path => fileRow(path, `${buka(path)}${download(path, 'unduh')}`)).join('')}</ul>`;
+  const empty = text => `<p class="empty">${esc(text)}</p>`;
   const tool = run.mode === 'lh' ? 'Lighthouse' : 'Playwright';
   const target = run.targetUrl || 'tidak diketahui';
 
@@ -219,8 +236,9 @@ export function runReportHtml(report) {
 ${run.error ? `<div class="snapshot-banner" role="alert">${errorDetail(run.error)}</div>` : ''}
 </section>`;
 
+  const runTone = run.status === 'passed' ? 'success' : ['failed', 'cancelled', 'interrupted'].includes(run.status) ? 'danger' : 'warn';
   const kpi = tiles([
-    ['Status', statusBadge(run.status), `exit ${run.exitCode ?? '-'}`],
+    ['Status', statusBadge(run.status), `exit ${run.exitCode ?? '-'}`, runTone],
     ['Artifact', String(report.files.length), `${html.length} html · ${screenshots.length} gambar`],
     ['Selesai', esc((run.finishedAt || '-').replace('T', ' ').slice(0, 19)), 'waktu server'],
     ['Peringatan', String(report.warnings.length), report.warnings.length ? 'perlu dibaca' : 'tidak ada', report.warnings.length ? 'warn' : ''],
@@ -230,34 +248,35 @@ ${run.error ? `<div class="snapshot-banner" role="alert">${errorDetail(run.error
 ${panel('Ringkasan kegagalan lebih dulu', `${report.reports.length
     ? `<p>${report.reports.length} sumber JSON terbaca; kegagalan dirinci di panel di bawah.</p>`
     : '<p class="mut">Tidak ada JSON report yang terbaca. Run tidak dianggap lulus.</p>'}`
-    + `<details><summary>Metadata run</summary>${pre(run)}</details>`)}
-${report.warnings.length > 0 ? panel('Peringatan', `<ul>${report.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>`) : ''}
+    + `<details><summary>Metadata run</summary>${pre(run)}</details>`, '', 'ringkasan')}
+${report.warnings.length > 0 ? panel('Peringatan', `<ul>${report.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>`, '', 'peringatan') : ''}
 ${report.reports.map(r => panel(`${esc(r.kind === 'steps' ? 'Langkah' : r.kind === 'lighthouse' ? 'Lighthouse' : 'Playwright')} · ${esc(r.path)}`, `${sectionBody(r)}
 <p class="mut">${download(r.path, 'Unduh JSON sumber')}</p>`)).join('')}
+<h2 class="section-title">Lampiran &amp; ekspor</h2>
 ${panel('Teks ringkas (salin tempel)', `<p>Salin blok di bawah ke tiket atau dokumen. Isinya pesan error, lokasi, dan angka yang sama dengan tabel di atas. Tersedia juga sebagai <a href="ringkas.txt" download>ringkas.txt</a>.</p>
-<pre id="ringkas">${esc(ringkasTeks(report))}</pre>`)}
+<pre id="ringkas">${esc(ringkasTeks(report))}</pre>`, '', 'teks-ringkas')}
 ${panel('Report HTML asli', `<p>Report asli dari tool dibuka di tab baru, atau diunduh untuk dibuka offline. Halaman ini statis; viewer interaktif mungkin tidak jalan bila disajikan sebagai lampiran.</p>
-${html.length ? `<ul>${html.map(f => `<li>${buka(f)} · ${download(f, 'unduh ' + f)}</li>`).join('')}</ul>` : '<p class="mut">Tidak ada report HTML asli.</p>'}`)}
-${panel('Screenshot', screenshots.length
-    ? screenshots.map(f => `<figure>${download(f, 'Unduh screenshot: ' + f)} · ${buka(f)}</figure>`).join('')
-    : '<p class="mut">Tidak ada screenshot.</p>')}
+${html.length ? fileList(html) : empty('Tidak ada report HTML asli.')}`)}
+${panel('Screenshot', screenshots.length ? fileList(screenshots) : empty('Tidak ada screenshot.'))}
 ${panel('Bundel artifact', report.bundle
-    ? '<p><a href="downloads/artifacts.tar.gz" download>Unduh artifacts.tar.gz</a> · artifact dan log, tanpa source run.json dan symlink.</p>'
-    : '<p class="mut">Bundel tidak tersedia. Unduh artifact satu per satu di bawah.</p>')}
+    ? `<div class="callout"><p>artifact dan log, tanpa source run.json dan symlink.</p>
+<a class="btn primary" href="downloads/artifacts.tar.gz" download>Unduh artifacts.tar.gz</a></div>`
+    : empty('Bundel tidak tersedia. Unduh artifact satu per satu di bawah.'))}
 ${panel('Arsip report', `<p>Arsip dari runner ada di bawah. Isi folder report bisa diunduh dari daftar Semua artifact.</p>
-${archives.length ? `<ul>${archives.map(f => `<li>${download(f, 'Unduh ' + f)}</li>`).join('')}</ul>` : '<p class="mut">Tidak ada arsip.</p>'}`)}
-${panel('Trace dan pembukaan offline', `<ul>${traces.map(f => `<li>${download(f)}</li>`).join('')}</ul>
+${archives.length ? fileList(archives) : empty('Tidak ada arsip.')}`)}
+${panel('Trace dan pembukaan offline', `${traces.length ? fileList(traces) : empty('Tidak ada trace.')}
 <p>Unduh trace ZIP, lalu jalankan <code>npx playwright show-trace /path/to/trace.zip</code> di mesin yang punya Playwright. Viewer jalan lokal; jangan unggah trace privat ke layanan pihak ketiga. Trace ZIP bukan halaman HTML.</p>
 <p>Untuk report Playwright offline, unduh seluruh folder report HTML beserta folder data-nya, lalu jalankan <code>npx playwright show-report /path/to/report-folder</code>. Report HTML Lighthouse bisa dibuka lokal. Sajikan folder dokumen ini lewat HTTP di base path-nya; membuka index.html lewat file:// tidak didukung.</p>`)}
-${panel('Log runner', `<details><summary>Tampilkan log runner asli</summary>${pre(report.logs)}</details>`)}
+${panel('Log runner', `<details><summary>Tampilkan log runner asli</summary>${pre(report.logs)}</details>`, '', 'log-runner')}
 ${panel('Semua artifact', report.files.length
-    ? `<ul>${report.files.map(f => `<li>${download(f)}</li>`).join('')}</ul>` : '<p class="mut">Tidak ada artifact.</p>')}`;
+    ? `<details><summary>Tampilkan ${report.files.length} artifact</summary>${fileList(report.files)}</details>`
+    : empty('Tidak ada artifact.'))}`;
 
   return doc({
     title: `${run.suiteName || run.id} · ${run.status}`,
     brand: run.suiteName || run.id,
     sub: `run ${run.id}`,
-    actions: `${statusBadge(run.status)}<a class="b mut2" href="ringkas.txt" download>ringkas.txt</a>`,
+    actions: `${statusBadge(run.status)}<a class="btn sm" href="ringkas.txt" download>ringkas.txt</a>`,
     hero,
     body,
   });
@@ -267,7 +286,7 @@ ${panel('Semua artifact', report.files.length
 export function indexHtml(runs, intro = '') {
   const rows = runs.map(r => `<tr>
 <td><a href="${esc(r.slug)}/index.html">${esc(r.suiteName || r.id.slice(0, 8))}</a><div class="mono mut">${esc(r.id.slice(0, 8))}</div></td>
-<td><span class="tool">${r.mode === 'lh' ? 'Lighthouse' : 'Playwright'}</span></td>
+<td><span class="tool ${r.mode === 'lh' ? 'lh' : 'pw'}">${r.mode === 'lh' ? 'Lighthouse' : 'Playwright'}</span></td>
 <td>${statusBadge(r.status)}</td>
 <td class="mono">${esc(r.targetUrl || '-')}</td>
 <td class="mono">${esc((r.finishedAt || '-').replace('T', ' ').slice(0, 19))}</td>
