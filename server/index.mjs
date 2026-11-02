@@ -413,7 +413,10 @@ export function createApp({ store, runner, token, origins }) {
     runner.start(pwRun, pwFile, session.id, targetUrl)
       .catch(err => console.error('[quick-check pw]', err.message))
       .then(() => runner.start(lhRun, lhFile, session.id, targetUrl))
-      .catch(err => console.error('[quick-check lh]', err.message));
+      .catch(err => console.error('[quick-check lh]', err.message))
+      // Hasil quick check langsung bisa dibuka; tanpa ini laporan harus dipublish manual.
+      .then(() => { try { publishReport(session.id, 'both', req.user.id); }
+        catch (err) { console.error('[quick-check report]', err.message); } });
 
     store.audit({ userId: req.user.id, action: 'quick_check', entity: 'sessions', entityId: session.id, detail: JSON.stringify({ project: project.slug, env: e }) });
     res.status(202).json({ sessionId: session.id, runIds: [pwRun, lhRun] });
@@ -624,28 +627,31 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   // ─── Reports ─────────────────────────────────────────────────────────────
-  app.post('/api/sessions/:id/reports', requireAuth, requireAdmin, route(async (req, res) => {
-    const session = store.getSession(id(req.params.id));
-    if (!session) fail('Not found', 404);
-    const scope = req.body?.scope;
+  // Satu laporan per scope per sesi; isinya run final terbaru per tool.
+  function publishReport(sessionId, scope, userId) {
     if (!['pw', 'lh', 'both'].includes(scope)) fail("scope must be 'pw'|'lh'|'both'", 400);
-    const runs = store.listRunsBySession(session.id);
-    // Hanya run yang belum final yang memblokir (PRD §7). cancelled/interrupted dianggap selesai.
-    if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Ada run yang belum final', 409);
-    const finals = runs.filter(r => ['passed', 'failed'].includes(r.status));
+    // cancelled/interrupted sudah selesai; hanya run aktif yang memblokir.
+    if (store.countRunsByStatus(sessionId, ['queued', 'running', 'uploading']) > 0) fail('Ada run yang belum final', 409);
+    const finals = store.listRunsBySession(sessionId).filter(r => ['passed', 'failed'].includes(r.status));
     const tools = new Set(finals.map(r => r.tool));
     if (scope === 'both' && (!tools.has('pw') || !tools.has('lh'))) fail("'both' butuh minimal satu run pw dan satu run lh", 409);
-    if (scope === 'pw' && !tools.has('pw')) fail("Tidak ada run Playwright final", 409);
-    if (scope === 'lh' && !tools.has('lh')) fail("Tidak ada run Lighthouse final", 409);
-    // Rerun membuat baris baru; laporan memakai run final terbaru per tool (PRD §9).
+    if (scope === 'pw' && !tools.has('pw')) fail('Tidak ada run Playwright final', 409);
+    if (scope === 'lh' && !tools.has('lh')) fail('Tidak ada run Lighthouse final', 409);
     const latest = tool => finals.filter(r => r.tool === tool).at(-1)?.id;
     const runIds = (scope === 'both' ? ['pw', 'lh'] : [scope]).map(latest).filter(Boolean);
-    const report = store.createReport({ id: randomUUID(), sessionId: session.id, scope, runIds, builtBy: req.user.id });
+    const report = store.createReport({ id: randomUUID(), sessionId, scope, runIds, builtBy: userId });
     // Satu worker build: antre berurutan, jangan blok request.
     app.__buildChain = (app.__buildChain ?? Promise.resolve())
       .then(() => buildSessionReport(store, report.id))
       .catch(err => console.error('[report]', report.id, err.message));
-    res.status(202).json({ reportId: report.id, runIds });
+    return report;
+  }
+
+  app.post('/api/sessions/:id/reports', requireAuth, requireAdmin, route(async (req, res) => {
+    const session = store.getSession(id(req.params.id));
+    if (!session) fail('Not found', 404);
+    const report = publishReport(session.id, req.body?.scope, req.user.id);
+    res.status(202).json({ reportId: report.id, runIds: JSON.parse(report.run_ids ?? '[]') });
   }));
 
   app.get('/api/reports/:id', requireAuth, route(async (req, res) => {

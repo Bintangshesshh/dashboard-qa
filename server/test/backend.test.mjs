@@ -294,6 +294,32 @@ test('quick-check: 400 tanpa projectId/env, 202 dengan 2 run, production dibloki
   assert.deepEqual(chosen.map(x => x.test_file_id).sort(), ['tf-lh', 'tf-pw']);
 });
 
+test('quick-check: laporan sesi dibuat sendiri setelah kedua run final', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  // Build report menulis ke REPORTS_DIR; arahkan ke tmp supaya repo tidak kotor.
+  const reportsDir = await mkdtemp(join(tmpdir(), 'pb-reports-'));
+  const previous = process.env.REPORTS_DIR;
+  process.env.REPORTS_DIR = reportsDir;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.REPORTS_DIR; else process.env.REPORTS_DIR = previous;
+    await rm(reportsDir, { recursive: true, force: true });
+  });
+  // Runner palsu: run langsung final, jadi publish report tidak menunggu proses.
+  f.runner.start = runId => {
+    f.store.patchRun(runId, { status: 'passed', finalized_at: new Date().toISOString() });
+    return Promise.resolve();
+  };
+
+  const r = await f.call('/api/quick-check', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
+  assert.equal(r.status, 202);
+  await new Promise(res => setImmediate(res));
+
+  const reports = f.store.listReportsBySession(r.body.sessionId);
+  assert.deepEqual(reports.map(x => x.scope), ['both'], 'hasil quick check langsung punya laporan');
+  assert.equal(JSON.parse(reports[0].run_ids).length, 2);
+});
+
 test('CLI token: dibuat, terdaftar tanpa nilai plain, lalu dicabut', async t => {
   const f = await fixture(t);
   const cookie = await f.login();
