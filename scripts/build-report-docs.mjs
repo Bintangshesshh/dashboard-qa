@@ -97,7 +97,7 @@ export async function buildReportDocs(runDirs, outDir, baseUrl, intro = '') {
     const bundle = await tarDir(staging, join(pageDir, 'downloads/artifacts.tar.gz'));
     await writeFile(join(pageDir, 'index.html'),
       runReportHtml({ run: entry.run, logs: entry.logs, files: entry.files, reports: entry.reports, warnings: entry.warnings, bundle }));
-    // Teks polos siap tempel ke agent/tiket; satu sumber dengan tabel di index.html.
+    // Teks polos siap salin; satu sumber dengan tabel di index.html.
     await writeFile(join(pageDir, 'ringkas.txt'), ringkasTeks(entry) + '\n');
     index.push({
       id: entry.run.id, slug: name, suiteName: entry.run.suiteName ?? null,

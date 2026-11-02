@@ -109,7 +109,7 @@ function stepSection(data) {
 const sectionBody = r => (r.kind === 'playwright' ? playwrightSection(r.data)
   : r.kind === 'lighthouse' ? lighthouseSection(r.data) : stepSection(r.data));
 
-// Teks polos untuk ditempel ke chat AI / tiket bug: fakta run + baris gagal saja.
+// Teks polos untuk disalin ke tiket atau dokumen: fakta run + baris gagal saja.
 // Dibuat dari data yang sama dengan tabel, jadi tidak bisa berbeda.
 export function ringkasTeks(report) {
   const out = [];
@@ -166,8 +166,8 @@ export function runReportHtml(report) {
 ${report.run.error ? errorDetail(report.run.error) : ''}<details><summary>Metadata run</summary>${pre(report.run)}</details>
 ${report.warnings.length > 0 ? `<h2>Peringatan</h2><ul>${report.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
 ${report.reports.map(r => `<section><h2>${esc(r.kind)}: ${esc(r.path)}</h2>${sectionBody(r)}<p>${download(r.path, 'Unduh JSON sumber')}</p></section>`).join('')}
-<h2>Teks siap tempel (untuk AI agent / tiket bug)</h2>
-<p>Salin blok di bawah dan tempel ke chat agent atau tiket. Isinya pesan error, lokasi, dan angka yang sama dengan tabel di atas. Tersedia juga sebagai <a href="ringkas.txt" download>ringkas.txt</a>.</p>
+<h2>Teks ringkas (salin tempel)</h2>
+<p>Salin blok di bawah ke tiket atau dokumen. Isinya pesan error, lokasi, dan angka yang sama dengan tabel di atas. Tersedia juga sebagai <a href="ringkas.txt" download>ringkas.txt</a>.</p>
 <pre id="ringkas">${esc(ringkasTeks(report))}</pre>
 <h2>Report HTML asli</h2><p>Report asli dari tool dibuka di tab baru, atau diunduh untuk dibuka offline. Halaman ini statis; viewer interaktif mungkin tidak jalan bila disajikan sebagai lampiran.</p>
 ${html.length ? `<ul>${html.map(f => `<li>${buka(f)} · ${download(f, 'unduh ' + f)}</li>`).join('')}</ul>` : '<p>Tidak ada report HTML asli.</p>'}
@@ -196,7 +196,7 @@ export function indexHtml(runs, intro = '') {
 <title>Laporan run</title><style>${css}</style></head><body><main>
 <h1>Laporan run</h1>
 ${intro}
-<p>Ringkasan per run. Setiap halaman memuat fakta run apa adanya; artifact yang hilang bukan berarti lulus. Kolom <strong>Teks</strong> berisi ringkasan polos siap tempel ke agent atau tiket.</p>
+<p>Ringkasan per run. Setiap halaman memuat fakta run apa adanya; artifact yang hilang bukan berarti lulus. Kolom <strong>Teks</strong> berisi ringkasan polos siap disalin.</p>
 <table><thead><tr><th>Run</th><th>Tool</th><th>Status</th><th>Target</th><th>Selesai</th><th>Teks</th></tr></thead>
 <tbody>${rows}</tbody></table>
 </main></body></html>`;

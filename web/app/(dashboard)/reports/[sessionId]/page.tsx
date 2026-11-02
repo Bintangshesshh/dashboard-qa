@@ -272,7 +272,7 @@ export default function SessionDetail() {
                         <ArtifactLink href={reportUrl(rep.id, "report.md")}
                           missing="markdown tidak ada">Markdown</ArtifactLink>
                       )}
-                      {/* Teks polos bahan tempel ke AI agent; isi sama dengan tabel HTML. */}
+                      {/* Teks polos siap salin; isi sama dengan tabel HTML. */}
                       {canOpen && <CopyRingkas reportId={rep.id} runIds={ids} />}
                       <button className="pb-btn sm" onClick={() => publish(rep.scope)}
                         disabled={busy === rep.scope || !canPublish(rep)}>
@@ -388,9 +388,9 @@ function NativeReportLink({ runId, path, label }: { runId: string; path: string;
   );
 }
 
-// Salin ringkas.txt (teks polos untuk agent/tiket) tanpa membuka tab baru.
+// Salin ringkas.txt (teks polos untuk tiket/dokumen) tanpa membuka tab baru.
 function CopyRingkas({ reportId, runIds }: { reportId: string; runIds: string[] }) {
-  const [label, setLabel] = useState("Salin ringkas");
+  const [label, setLabel] = useState("Salin markdown");
   const copy = async () => {
     try {
       // ringkas.txt ada per run; gabungkan semua run di report ini.
@@ -400,7 +400,7 @@ function CopyRingkas({ reportId, runIds }: { reportId: string; runIds: string[] 
       }));
       await navigator.clipboard.writeText(parts.filter(Boolean).join("\n\n"));
       setLabel("Tersalin");
-      setTimeout(() => setLabel("Salin ringkas"), 2000);
+      setTimeout(() => setLabel("Salin markdown"), 2000);
     } catch {
       setLabel("Gagal salin");
     }

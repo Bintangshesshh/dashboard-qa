@@ -89,7 +89,7 @@ try {
   assert(page.includes('synthetic/ringkas.txt'));
   // Report asli harus bisa dibuka di tab baru, bukan hanya diunduh.
   assert(/target="_blank" rel="noopener">buka</.test(html));
-  // ringkas.txt untuk tempel ke agent, satu sumber dengan tabel.
+  // ringkas.txt untuk disalin, satu sumber dengan tabel.
   const ringkas = await readFile(join(outDir, 'synthetic/ringkas.txt'), 'utf8');
   assert(ringkas.includes('status failed'));
   assert(ringkas.includes('Nested API error'));
