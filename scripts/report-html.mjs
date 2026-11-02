@@ -1,18 +1,8 @@
 // Render laporan run jadi HTML statis satu file: CSS inline, tanpa script.
 // Aman dibuka di iframe ber-sandbox (opaque origin) karena tidak ada subrequest.
-const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+import { reportCss } from './report-css.mjs';
 
-const css = `
-:root{--bg:#0b1020;--card:#131a2e;--line:#233052;--fg:#e7ecf7;--mut:#93a1c0;--bad:#ff6b81;--warn:#ffc857;--acc:#5b8cff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 "Segoe UI",system-ui,sans-serif}
-main{max-width:1100px;margin:0 auto;padding:2rem 1rem}h1{font-size:24px;margin:0 0 8px}
-h2{font-size:16px;color:var(--acc);margin:28px 0 10px}h3{font-size:14px;margin:20px 0 6px}h4{font-size:13px;margin:12px 0 4px}
-article{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:10px 0}
-a{color:#8fb0ff}pre{background:#080d19;border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;
-max-height:600px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
-table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
-ul.plain{display:flex;flex-wrap:wrap;gap:1.5rem;list-style:none;padding:0}
-`;
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const pretty = value => (typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? '');
 const pre = value => `<pre>${esc(pretty(value))}</pre>`;
@@ -67,6 +57,18 @@ function playwrightSection(data) {
 }
 
 const score = value => (typeof value === 'number' ? Math.round(value * 100) + '/100' : 'Tidak dinilai');
+const tone = value => (typeof value !== 'number' ? 'mut2' : value >= 0.9 ? 'ok' : value >= 0.5 ? 'warn' : 'bad');
+
+// Skor kategori dibaca sebagai donat, bukan teks: satu pandangan cukup.
+function scoreRing(label, value) {
+  const pct = typeof value === 'number' ? Math.round(value * 100) : null;
+  const cls = tone(value);
+  const dash = 125.6;
+  return `<li class="score"><svg viewBox="0 0 48 48" role="img" aria-label="${esc(label)} ${pct ?? 'tidak dinilai'}">
+<circle class="track" cx="24" cy="24" r="20"></circle>
+<circle class="val ${cls}" cx="24" cy="24" r="20" stroke-dasharray="${dash}" stroke-dashoffset="${dash - (dash * (pct ?? 0)) / 100}"></circle>
+</svg><div><b class="num-${cls}">${pct ?? '-'}</b><span>${esc(label)}</span></div></li>`;
+}
 
 function lighthouseSection(data) {
   const weights = {};
@@ -78,10 +80,10 @@ function lighthouseSection(data) {
     .sort((a, b) => Number(Boolean(b.errorMessage || b.scoreDisplayMode === 'error')) - Number(Boolean(a.errorMessage || a.scoreDisplayMode === 'error'))
       || ((1 - (b.score ?? 0)) * (weights[b.id] || 1)) - ((1 - (a.score ?? 0)) * (weights[a.id] || 1)));
   const categories = Object.entries(data.categories)
-    .map(([id, c]) => `<li><strong>${esc(c.title || id)}: ${esc(score(c.score))}</strong></li>`).join('');
+    .map(([id, c]) => scoreRing(c.title || id, c.score)).join('');
   const warnings = (data.runWarnings || []).map(warning => `<li>${esc(warning)}</li>`).join('');
   return `<p>URL: ${esc(data.finalDisplayedUrl || data.finalUrl || data.requestedUrl)} - diambil: ${esc(data.fetchTime)}</p>`
-    + `<ul class="plain">${categories}</ul>`
+    + `<ul class="scores">${categories}</ul>`
     + `${data.runtimeError ? `<h3>Error runtime</h3>${errorDetail(data.runtimeError)}` : ''}`
     + `${warnings ? `<ul>${warnings}</ul>` : ''}`
     + `<h3>Audit prioritas (${audits.length})</h3>`
@@ -160,7 +162,7 @@ export function runReportHtml(report) {
 
   return `<!doctype html><html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>Laporan run</title><style>${css}</style></head><body><main>
+<title>Laporan run</title><meta name="color-scheme" content="light dark"><style>${reportCss}</style></head><body><main>
 <h1>Laporan run</h1><p>Hanya fakta run yang teramati. Artifact yang hilang bukan berarti lulus. Metadata dan log adalah snapshot saat dokumen ini dibangun.</p>
 <h2>Ringkasan kegagalan lebih dulu</h2><p><strong>${esc(report.run.suiteName || report.run.id)}: ${esc(report.run.status)}</strong> - target: ${esc(report.run.targetUrl || 'tidak diketahui')}</p>
 ${report.run.error ? errorDetail(report.run.error) : ''}<details><summary>Metadata run</summary>${pre(report.run)}</details>
@@ -190,15 +192,15 @@ export function indexHtml(runs, intro = '') {
   const rows = runs.map(r => `<tr>
 <td><a href="${esc(r.slug)}/index.html">${esc(r.suiteName || r.id.slice(0, 8))}</a></td>
 <td>${r.mode === 'lh' ? 'Lighthouse' : 'Playwright'}</td>
-<td>${esc(r.status)}</td><td>${esc(r.targetUrl || '-')}</td><td>${esc(r.finishedAt || '-')}</td><td><a href="${esc(r.slug)}/ringkas.txt">teks</a></td></tr>`).join('');
+<td><span class="b ${r.status === 'passed' ? 'ok' : r.status === 'missing' ? 'mut2' : 'bad'}">${esc(r.status)}</span></td><td>${esc(r.targetUrl || '-')}</td><td>${esc(r.finishedAt || '-')}</td><td><a href="${esc(r.slug)}/ringkas.txt">teks</a></td></tr>`).join('');
   return `<!doctype html><html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
-<title>Laporan run</title><style>${css}</style></head><body><main>
+<title>Laporan run</title><meta name="color-scheme" content="light dark"><style>${reportCss}</style></head><body><main>
 <h1>Laporan run</h1>
 ${intro}
 <p>Ringkasan per run. Setiap halaman memuat fakta run apa adanya; artifact yang hilang bukan berarti lulus. Kolom <strong>Teks</strong> berisi ringkasan polos siap disalin.</p>
-<table><thead><tr><th>Run</th><th>Tool</th><th>Status</th><th>Target</th><th>Selesai</th><th>Teks</th></tr></thead>
-<tbody>${rows}</tbody></table>
+<div class="tbl"><table><thead><tr><th>Run</th><th>Tool</th><th>Status</th><th>Target</th><th>Selesai</th><th>Teks</th></tr></thead>
+<tbody>${rows}</tbody></table></div>
 </main></body></html>`;
 }
 

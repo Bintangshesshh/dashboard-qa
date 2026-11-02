@@ -71,6 +71,11 @@ try {
   assert(html.includes('Report HTML asli'));
   assert(html.includes('viewer interaktif mungkin tidak jalan'));
   assert(html.includes('<style>'));
+  // Satu stylesheet dipakai semua halaman report; tema ikut OS.
+  assert(html.includes('prefers-color-scheme:dark'));
+  assert(html.includes('<meta name="color-scheme" content="light dark">'));
+  assert(html.includes('class="tbl"') || html.includes('class="scores"'));
+  assert(!/^\.plain\{/m.test(html));
   assert(html.includes('broken.json'));
   assert(!/<img\b/i.test(html));
   assert(!/<script\b/i.test(html));
@@ -80,6 +85,7 @@ try {
 
   const page = await readFile(join(outDir, 'index.html'), 'utf8');
   assert(page.includes('Laporan run'));
+  assert(page.includes('prefers-color-scheme:dark'));
   assert(page.includes('Run dihapus'));
   assert(!/<script\b/i.test(page));
   // Link folder tanpa index.html dibalas {"error":"Not found"} oleh route artifact.

@@ -308,7 +308,13 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
         <button className="pb-btn sm" onClick={onClose}>Tutup</button>
       </div>
 
-      {isPw ? (
+      {results.length === 0 ? (
+        // Failed/timed-out runs leave no result rows; say so instead of an empty table.
+        <p className="pb-empty">
+          Tidak ada hasil {isPw ? "Playwright" : "Lighthouse"} pada run ini.
+          {run.error ? ` Error: ${run.error}` : ""}
+        </p>
+      ) : isPw ? (
         <table className="pb-table">
           <thead><tr><th>TC</th><th>Judul</th><th>Status</th><th>Durasi</th><th>Retry</th><th>Error</th></tr></thead>
           <tbody>
