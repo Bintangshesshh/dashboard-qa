@@ -860,6 +860,15 @@ button { cursor: pointer; }
 .pb-kv { display: grid; gap: 6px; margin-bottom: 4px; }
 /* Overview: satu blok per grup, judul kecil di atas grid kartu project. */
 .pb-group-block + .pb-group-block { margin-top: 18px; }
+/* Grup berisi satu project: kartu melebar penuh, bukan menyisakan slot grid kosong.
+   Kartu jadi baris mendatar supaya tidak terlihat melar ke bawah. */
+.pb-group-block .pb-project-grid > :only-child {
+  grid-column: 1 / -1;
+  flex-direction: row; align-items: center; flex-wrap: wrap; gap: 14px;
+}
+.pb-group-block .pb-project-grid > :only-child > .pb-pcard-top { flex: 1 1 260px; }
+.pb-group-block .pb-project-grid > :only-child > .pb-pcard-bar { flex: 1 1 120px; max-width: 220px; }
+.pb-group-block .pb-project-grid > :only-child > .pb-pcard-foot { flex: 1 1 200px; margin: 0; }
 .pb-group-label {
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
   margin: 0 0 10px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
@@ -1085,6 +1094,9 @@ button { cursor: pointer; }
   .pb-kpi { min-height: 104px; }
   .pb-kpi-val { font-size: 30px; }
   .pb-project-grid { grid-template-columns: minmax(0, 1fr); }
+  /* Mobile: kartu tunggal kembali menumpuk vertikal. */
+  .pb-group-block .pb-project-grid > :only-child { flex-direction: column; align-items: stretch; }
+  .pb-group-block .pb-project-grid > :only-child > .pb-pcard-bar { max-width: none; }
   .pb-audit-row { grid-template-columns: minmax(0, 1fr) auto; }
   .pb-audit-what { grid-area: 1 / 1; }
   .pb-audit-time { grid-area: 1 / 2; }
