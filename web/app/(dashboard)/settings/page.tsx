@@ -47,6 +47,10 @@ type SettingField = {
   label: string;
   suffix: string;
   help: string;
+  // Sama dengan SETTING_LIMITS di server; input menolak nilai di luar ini
+  // supaya user tidak menunggu 400 setelah klik Simpan.
+  min: number;
+  max: number;
   format: (value: string) => string;
 };
 
@@ -68,11 +72,13 @@ const SECTIONS: SettingSection[] = [
     fields: [
       {
         key: "max_queue_length", label: "Antrean maksimum", suffix: "run",
+        min: 1, max: 100,
         help: "Run baru ditolak saat antrean sudah mencapai jumlah ini.",
         format: value => `${num(value).toLocaleString("id-ID")} run`,
       },
       {
         key: "log_max_bytes", label: "Batas log per run", suffix: "byte",
+        min: 1024, max: 104857600,
         help: "Log lebih panjang dari ini dipotong agar database tidak membengkak.",
         format: fmtBytes,
       },
@@ -86,6 +92,7 @@ const SECTIONS: SettingSection[] = [
     fields: [
       {
         key: "session_reuse_minutes", label: "Reuse sesi", suffix: "menit",
+        min: 1, max: 10080,
         help: "Idle dihitung dari run terakhir. Lebih pendek = laporan lebih ringkas per sesi.",
         format: fmtMinutes,
       },
@@ -99,6 +106,7 @@ const SECTIONS: SettingSection[] = [
     fields: [
       {
         key: "max_upload_mb", label: "Batas upload artifact", suffix: "MB",
+        min: 1, max: 1024,
         help: "Ukuran maksimum satu upload artifact dari runner.",
         format: value => `${num(value).toLocaleString("id-ID")} MB`,
       },
@@ -112,16 +120,19 @@ const SECTIONS: SettingSection[] = [
     fields: [
       {
         key: "artifact_retention_days", label: "Artifact", suffix: "hari",
+        min: 1, max: 365,
         help: "Screenshot, trace, dan file hasil test dihapus setelah umur ini.",
         format: fmtDays,
       },
       {
         key: "report_retention_days", label: "Report HTML", suffix: "hari",
+        min: 1, max: 365,
         help: "Laporan yang dibuka dari dashboard tetap bisa diakses selama ini.",
         format: fmtDays,
       },
       {
         key: "log_retention_days", label: "Log run", suffix: "hari",
+        min: 1, max: 365,
         help: "Teks log runner disimpan selama ini sebelum dipangkas.",
         format: fmtDays,
       },
@@ -135,6 +146,7 @@ const SECTIONS: SettingSection[] = [
     fields: [
       {
         key: "range_default_days", label: "Range default", suffix: "hari",
+        min: 1, max: 365,
         help: "Rentang hari yang dipilih otomatis saat Ringkasan pertama dibuka.",
         format: fmtDays,
       },
@@ -171,6 +183,13 @@ export default function SettingsPage() {
 
   const sectionDirty = (section: SettingSection) =>
     section.fields.some(f => draft[f.key] !== undefined && draft[f.key] !== settings?.[f.key]);
+
+  const fieldInvalid = (field: SettingField) => {
+    const raw = draft[field.key];
+    if (raw === undefined) return false;
+    const n = Number(raw);
+    return raw === "" || !Number.isSafeInteger(n) || n < field.min || n > field.max;
+  };
 
   const saveSection = async (section: SettingSection) => {
     if (!settings) return;
@@ -331,20 +350,28 @@ export default function SettingsPage() {
                 <input
                   className="pb-input"
                   type="number"
-                  min={1}
+                  min={field.min}
+                  max={field.max}
+                  step={1}
                   inputMode="numeric"
+                  aria-invalid={fieldInvalid(field)}
                   value={draft[field.key] ?? settings[field.key]}
                   onChange={e => setDraft(d => ({ ...d, [field.key]: e.target.value }))}
                 />
                 <span aria-hidden="true">{field.suffix}</span>
               </span>
-              <span className="pb-set-help">{field.help}</span>
+              <span className="pb-set-help">
+                {field.min.toLocaleString("id-ID")}-{field.max.toLocaleString("id-ID")} {field.suffix}. {field.help}
+              </span>
             </label>
           ))}
         </div>
         <div className="pb-set-foot">
           <button className="pb-btn primary" onClick={() => saveSection(section)}
-            disabled={busy || !dirty}>Simpan</button>
+            disabled={busy || !dirty || section.fields.some(fieldInvalid)}
+            title={section.fields.some(fieldInvalid) ? "Ada nilai di luar rentang." : undefined}>
+            Simpan
+          </button>
           <button className="pb-btn" onClick={() => resetSection(section)}
             disabled={busy || !dirty}>Reset</button>
           <span className="pb-spacer" />
