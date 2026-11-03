@@ -258,23 +258,50 @@ export class Store {
       .run(id, projectId, env, targetUrl, label, createdBy ?? null, new Date().toISOString());
   }
   closeSession(id) { this.db.prepare('UPDATE sessions SET closed_at=? WHERE id=? AND closed_at IS NULL').run(new Date().toISOString(), id); }
-  listSessions({ projectId, status, from, to } = {}) {
-    // Ringkasan run dihitung di SQL (PRD §10.5: jumlah run per tool + gagal),
-    // bukan dengan memuat semua baris run ke klien.
-    let sql = `SELECT s.*, ${SESSION_STATUS_SQL} AS status,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id) AS run_count,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.tool='pw') AS pw_count,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.tool='lh') AS lh_count,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.status IN ('failed','cancelled','interrupted')) AS failed_count,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.status IN ('queued','running','uploading')) AS active_count
-      FROM sessions s WHERE 1=1`; const vals = [];
-    if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
-    if (from) { sql += ' AND s.created_at>=?'; vals.push(from); }
-    if (to) { sql += ' AND s.created_at<=?'; vals.push(to); }
-    sql += ' ORDER BY s.created_at DESC';
-    const rows = this.db.prepare(sql).all(...vals);
-    for (const row of rows) row.reports = this.listReportsBySession(row.id);
-    return status ? rows.filter(r => r.status === status) : rows;
+  // Daftar sesi satu query: hitungan run diagregasi LEFT JOIN (sebelumnya 5
+  // subquery per baris), report diambil sekali untuk semua sesi, dan filter
+  // status pindah ke SQL supaya LIMIT benar-benar membatasi baris.
+  listSessions({ projectId, status, from, to, limit = 200 } = {}) {
+    const where = ['1=1'];
+    const vals = [];
+    if (projectId) { where.push('s.project_id=?'); vals.push(projectId); }
+    if (from) { where.push('s.created_at>=?'); vals.push(from); }
+    if (to) { where.push('s.created_at<=?'); vals.push(to); }
+    const rows = this.db.prepare(
+      'SELECT s.*, ' + SESSION_STATUS_SQL + ' AS status,' +
+      ' coalesce(c.run_count, 0) AS run_count,' +
+      ' coalesce(c.pw_count, 0) AS pw_count,' +
+      ' coalesce(c.lh_count, 0) AS lh_count,' +
+      ' coalesce(c.failed_count, 0) AS failed_count,' +
+      ' coalesce(c.active_count, 0) AS active_count' +
+      ' FROM sessions s LEFT JOIN (' +
+      '   SELECT session_id, COUNT(*) AS run_count,' +
+      "     SUM(CASE WHEN tool='pw' THEN 1 ELSE 0 END) AS pw_count," +
+      "     SUM(CASE WHEN tool='lh' THEN 1 ELSE 0 END) AS lh_count," +
+      "     SUM(CASE WHEN status IN ('failed','cancelled','interrupted') THEN 1 ELSE 0 END) AS failed_count," +
+      "     SUM(CASE WHEN status IN ('queued','running','uploading') THEN 1 ELSE 0 END) AS active_count" +
+      '   FROM runs GROUP BY session_id' +
+      ') c ON c.session_id = s.id' +
+      ' WHERE ' + where.join(' AND ') +
+      ' ORDER BY s.created_at DESC LIMIT ?'
+    ).all(...vals, Math.min(Math.max(Number(limit) || 200, 1), 1000));
+    if (!rows.length) return [];
+    const reports = new Map();
+    const ids = rows.map(r => r.id);
+    const marks = ids.map(() => '?').join(',');
+    const repSql = 'SELECT * FROM reports WHERE session_id IN (' + marks + ') ORDER BY created_at DESC';
+    for (const rep of this.db.prepare(repSql).all(...ids)) {
+      const list = reports.get(rep.session_id) ?? [];
+      list.push(rep);
+      reports.set(rep.session_id, list);
+    }
+    const out = [];
+    for (const row of rows) {
+      if (status && row.status !== status) continue;
+      row.reports = reports.get(row.id) ?? [];
+      out.push(row);
+    }
+    return out;
   }
   deleteSession(id) {
     this.db.exec('BEGIN IMMEDIATE');
