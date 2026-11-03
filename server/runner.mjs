@@ -36,10 +36,28 @@ export default defineConfig({
 });
 `;
 
-// Each URL is a full Lighthouse pass; past this a run times out before
-// lhci uploads, which leaves no scores and no report on disk.
-export const MAX_LH_URLS = 3;
+// Lighthouse (PRD FR-04/FR-05): target sesi + maksimal 4 URL tambahan.
+export const MAX_LH_URLS = 5;
+export const MAX_LH_RUNS = 10;
+// Lantai 15 menit: killing lhci mid-run membuang report, jadi 1 URL pun dapat lantai.
 const MIN_LH_TIMEOUT_MS = 900_000;
+const LH_TIMEOUT_CAP_MS = 120 * 60_000;
+
+// timeout = max(15 menit, 5 menit + URL x run x 90 detik), cap 120 menit.
+// Flat 900.000 ms aman untuk 1-2 URL, tapi tidak proporsional untuk 5 URL x 10 run.
+export function lhTimeout(urlCount, runsPerUrl = 1) {
+  const urls = Math.max(1, Number(urlCount) || 1);
+  const runs = Math.max(1, Number(runsPerUrl) || 1);
+  const dynamic = 5 * 60_000 + urls * runs * 90_000;
+  return Math.min(Math.max(MIN_LH_TIMEOUT_MS, dynamic), LH_TIMEOUT_CAP_MS);
+}
+
+// Jumlah audit untuk timeout: URL sesi ikut dihitung, duplikat dibuang.
+export function lhAuditShape(testFile, targetUrl) {
+  const cfg = (() => { try { return JSON.parse(testFile?.config ?? 'null'); } catch { return null; } })();
+  const urls = lhUrls(cfg, targetUrl);
+  return [urls.length || 1, cfg?.numberOfRuns ?? 1];
+}
 
 export function lhUrls(cfg, targetUrl) {
   return [...new Set([...(targetUrl ? [targetUrl] : []), ...(cfg?.urls ?? [])])];
@@ -52,17 +70,30 @@ export function lhUrls(cfg, targetUrl) {
 const isLoopback = h => h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost');
 const localHttps = urls => urls.some(u => { try { const x = new URL(u); return x.protocol === 'https:' && isLoopback(x.hostname); } catch { return false; } });
 
-export function lhConfig(cfg, targetUrl, outDir) {
+export function lhConfig(cfg, targetUrl, outDir, { allowedOrigins = [] } = {}) {
   const urls = lhUrls(cfg, targetUrl);
   if (!urls.length) throw new Error('Tidak ada URL untuk diaudit: sesi tanpa targetUrl dan config tanpa urls');
   if (urls.length > MAX_LH_URLS) throw new Error(`Maksimal ${MAX_LH_URLS} URL per run Lighthouse (diminta ${urls.length})`);
+  // URL tambahan dicek sebelum spawn: bentuk URL + origin yang diizinkan project.
+  for (const u of urls) {
+    let origin;
+    try { origin = new URL(u).origin; } catch { throw new Error(`URL tidak valid: ${u}`); }
+    if (allowedOrigins.length && !allowedOrigins.includes(origin)) {
+      throw new Error(`Origin ${origin} tidak diizinkan untuk project ini`);
+    }
+  }
+  const runs = cfg?.numberOfRuns ?? 1;
+  if (!Number.isInteger(runs) || runs < 1 || runs > MAX_LH_RUNS) {
+    throw new Error(`numberOfRuns harus bilangan bulat 1-${MAX_LH_RUNS}`);
+  }
+  // Budget memakai 'error': skor di bawah batas = run failed (PRD FR-04).
   const assertions = Object.fromEntries(
-    Object.entries(cfg?.budgets ?? {}).map(([k, v]) => [k, ['warn', { minScore: v?.minScore ?? 0.6 }]]),
+    Object.entries(cfg?.budgets ?? {}).map(([k, v]) => [k, ['error', { minScore: v?.minScore ?? 0.6 }]]),
   );
   return `module.exports = ${JSON.stringify({
     ci: {
       collect: {
-        numberOfRuns: cfg?.numberOfRuns ?? 1,
+        numberOfRuns: runs,
         url: urls,
         ...(localHttps(urls) ? { settings: { chromeFlags: ['--ignore-certificate-errors'] } } : {}),
       },
@@ -181,16 +212,22 @@ export class Runner extends EventEmitter {
     this.emit('status', { type: 'status', runId: this.active?.runId, run: await this.store.patchRun(this.active?.runId, patch) });
   }
 
+  // Origin yang boleh ditembak runner: allowlist server + project (origin
+  // base/staging/local + projects.origins). `env local` tetap dikecualikan.
+  allowedOriginsFor(state) {
+    const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
+    const project = session ? this.store.getProject(session.project_id) : null;
+    const declared = [project?.base_url, project?.staging_url, project?.local_url]
+      .filter(Boolean).map(v => { try { return new URL(v).origin; } catch { return null; } }).filter(Boolean);
+    return [...this.origins, ...(project?.origins ?? []), ...declared];
+  }
+
   async execute(state) {
     const { runId, testFile } = state;
     // PRD Â§7/G11: runner tidak percaya pemanggil - target harus tetap di allowlist.
     // Origin milik project (dari sesi) ikut diizinkan, sama seperti resolveTarget.
     if (state.targetUrl) {
-      const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
-      const project = session ? this.store.getProject(session.project_id) : null;
-      const declared = [project?.base_url, project?.staging_url, project?.local_url]
-        .filter(Boolean).map(v => { try { return new URL(v).origin; } catch { return null; } }).filter(Boolean);
-      const allowed = [...this.origins, ...(project?.origins ?? []), ...declared];
+      const allowed = this.allowedOriginsFor(state);
       try { state.targetUrl = validateTarget(state.targetUrl, allowed); }
       catch (error) {
         await this.store.patchRun(runId, { status: 'failed', error: stripAnsi(error.message), finished_at: new Date().toISOString() });
@@ -202,7 +239,7 @@ export class Runner extends EventEmitter {
     await mkdir(dir, { recursive: true });
     await this.store.patchRun(runId, { status: 'running', started_at: new Date().toISOString() });
     this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
-    this.arm(state, testFile.tool === 'lh' ? Math.max(this.timeout, MIN_LH_TIMEOUT_MS) : this.timeout);
+    this.arm(state, testFile.tool === 'lh' ? lhTimeout(...lhAuditShape(testFile, state.targetUrl)) : this.timeout);
 
     const started = Date.now();
     try {
@@ -313,7 +350,9 @@ export class Runner extends EventEmitter {
     let configPath = isAbsolute(testFile.path) ? testFile.path : join(root, testFile.path);
     if (cfg) {
       configPath = join(dir, 'lighthouserc.cjs');
-      await writeFile(configPath, lhConfig(cfg, targetUrl, outDir));
+      // Origin URL tambahan divalidasi di sini juga: config bisa ditulis CLI.
+      const allowed = this.allowedOriginsFor(state);
+      await writeFile(configPath, lhConfig(cfg, targetUrl, outDir, { allowedOrigins: allowed }));
       const audited = lhUrls(cfg, targetUrl);
       await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${audited.length} URL)\n`);
     }

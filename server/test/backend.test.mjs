@@ -7,7 +7,7 @@ import { once } from 'node:events';
 import { randomUUID, randomBytes, scrypt as _scrypt } from 'node:crypto';
 import { promisify } from 'node:util';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { allowlist, target, id, cursor, authorized, rangeDays, isoTimestamp, bool } from '../validation.mjs';
@@ -602,7 +602,7 @@ test('warningLines: runWarnings LH jadi baris log system', async () => {
   assert.deepEqual(warningLines(null), []);
 });
 
-test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async () => {
+test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion error', async () => {
   const { lhConfig } = await import('../runner.mjs');
   const cfg = {
     urls: ['https://prod.test/', 'https://staging.test/'],
@@ -614,11 +614,17 @@ test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async
   const parsed = JSON.parse(text.replace(/^module\.exports = /, '').replace(/;\n$/, ''));
   assert.deepEqual(parsed.ci.collect.url, ['https://staging.test/', 'https://prod.test/'], 'URL sesi dulu, duplikat dibuang');
   assert.equal(parsed.ci.collect.numberOfRuns, 2);
-  assert.deepEqual(parsed.ci.assert.assertions['categories:performance'], ['warn', { minScore: 0.8 }]);
+  assert.deepEqual(parsed.ci.assert.assertions['categories:performance'], ['error', { minScore: 0.8 }], 'budget error agar skor rendah = failed');
   assert.equal(parsed.ci.upload.outputDir, 'D:/runs/abc/artifacts', 'backslash dinormalisasi');
 
   assert.throws(() => lhConfig({ urls: [] }, null, 'x'), /Tidak ada URL/);
-  assert.throws(() => lhConfig({ urls: ['https://a.test/', 'https://b.test/', 'https://c.test/'] }, 'https://d.test/', 'x'), /Maksimal 3 URL/);
+  // 5 URL total (target + 4 tambahan) masih sah; 6 ditolak.
+  const five = lhConfig({ urls: ['https://a.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/'] }, 'https://e.test/', 'x');
+  assert.equal(JSON.parse(five.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.url.length, 5);
+  assert.throws(() => lhConfig({ urls: ['https://a.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/', 'https://e.test/'] }, 'https://f.test/', 'x'), /Maksimal 5 URL/);
+  assert.throws(() => lhConfig({ numberOfRuns: 11 }, 'https://a.test/', 'x'), /numberOfRuns/);
+  assert.throws(() => lhConfig({ numberOfRuns: 0 }, 'https://a.test/', 'x'), /numberOfRuns/);
+  assert.throws(() => lhConfig({ urls: ['https://luar.test/'] }, 'https://a.test/', 'x', { allowedOrigins: ['https://a.test'] }), /tidak diizinkan/);
   const minimal = lhConfig(null, 'https://a.test/', 'out');
   assert.equal(JSON.parse(minimal.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.numberOfRuns, 1);
   assert.equal(/settings/.test(minimal), false, 'target publik tidak melewati cek sertifikat');
@@ -1140,6 +1146,67 @@ test('T04: normalisasi config lama — target di urls tidak dihitung sebagai URL
   const cfg = normalizeLhUrls({ urls: ['https://ebh.test/', 'https://ebh.test/a', 'https://ebh.test/b', 'https://ebh.test/c', 'https://ebh.test/d'] }, project);
   const checked = checkLhConfig(cfg, { allowedOrigins: ['https://ebh.test'] });
   assert.equal(checked.urls.length, 4);
+});
+
+test('T05: lhTimeout proporsional — lantai 15 menit, 5 URL x 10 run tidak flat', async () => {
+  const { lhTimeout, MAX_LH_URLS, MAX_LH_RUNS, lhConfig } = await import('../runner.mjs');
+  assert.equal(MAX_LH_URLS, 5);
+  assert.equal(MAX_LH_RUNS, 10);
+
+  // 1 URL: lantai 15 menit (dynamic 5+1x1x1.5 = 6,5 menit)
+  assert.equal(lhTimeout(1, 1), 900_000);
+  assert.equal(lhTimeout(2, 1), 900_000, '2 URL masih di bawah lantai');
+
+  // 5 URL x 10 run: 5 + 5*10*1.5 = 80 menit, bukan flat 15 menit
+  assert.equal(lhTimeout(5, 10), 80 * 60_000);
+
+  // Cap 120 menit
+  assert.equal(lhTimeout(50, 10), 120 * 60_000);
+
+  // Config invalid ditolak sebelum spawn
+  assert.throws(() => lhConfig({ numberOfRuns: 'x' }, 'https://a.test/', 'x'), /numberOfRuns/);
+  assert.throws(() => lhConfig({ urls: ['bukan-url'] }, 'https://a.test/', 'x'), /URL tidak valid|Maksimal/);
+});
+
+test('T05: budget error membuat run LH gagal saat skor di bawah batas', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = f.store.createSession({ id: randomUUID(), projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test/', label: 'S', createdBy: null });
+  void session;
+
+  const tf = { id: randomUUID() };
+  f.store.createTestFile({
+    id: tf.id, projectId: 'p1', tool: 'lh', path: 'lighthouserc.ebh.js', label: 'LH', code: '',
+    config: JSON.stringify({ budgets: { 'categories:performance': { minScore: 0.8 } } }),
+  });
+
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-runner-t05-'));
+  t.after(() => rm(runsDir, { recursive: true, force: true }));
+  const runner = new Runner(f.store, { runsDir, origins: [ORIGIN, 'https://staging.ebh.test'] });
+
+  // Tulis config seperti runLighthouse: budget harus tampil sebagai 'error'.
+  const { writeFile: wf } = await import('node:fs/promises');
+  const outDir = join(runsDir, 'out');
+  const cfgPath = join(runsDir, 'lighthouserc.cjs');
+  const { lhConfig } = await import('../runner.mjs');
+  await wf(cfgPath, lhConfig(JSON.parse(f.store.getTestFile(tf.id).config), 'https://staging.ebh.test/', outDir));
+  const generated = readFileSync(cfgPath, 'utf8');
+  assert.match(generated, /"categories:performance": \[\s*"error"/, "budget memakai level error");
+  assert.equal(/"warn"/.test(generated), false, 'tidak ada assertion warn');
+
+  // Config lh yang ditulis langsung ke disk dipakai apa adanya untuk assert().
+  void cookie;
+});
+
+test('T05: runner menolak origin URL tambahan di luar izin sebelum spawn', async () => {
+  const { lhConfig } = await import('../runner.mjs');
+  assert.throws(
+    () => lhConfig({ urls: ['https://evil.test/'] }, 'https://a.test/', 'x', { allowedOrigins: ['https://a.test'] }),
+    /tidak diizinkan/,
+  );
+  // Origin project yang sah lolos.
+  const ok = lhConfig({ urls: ['https://b.test/x'] }, 'https://a.test/', 'x', { allowedOrigins: ['https://a.test', 'https://b.test'] });
+  assert.match(ok, /https:\/\/b\.test\/x/);
 });
 
 test('T01: fresh DB → project_groups ada, user_version=5, reuse=60', async t => {
