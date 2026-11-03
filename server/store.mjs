@@ -114,6 +114,29 @@ export class Store {
   listCliTokens(userId) { return this.db.prepare('SELECT id, label, created_at, last_used_at, revoked_at FROM cli_tokens WHERE user_id=? ORDER BY created_at DESC').all(userId); }
   revokeCliToken(id) { return this.db.prepare('UPDATE cli_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL').run(new Date().toISOString(), id).changes > 0; }
 
+  // ─── Project groups ──────────────────────────────────────────────────────
+  // Grup hanya wadah: tidak punya URL, spec, config, run, atau report.
+  listProjectGroups() {
+    return this.db.prepare(`SELECT g.id, g.name, g.created_at,
+      (SELECT COUNT(*) FROM projects p WHERE p.group_id = g.id) AS project_count
+      FROM project_groups g ORDER BY g.name`).all();
+  }
+  getProjectGroup(id) { return this.db.prepare('SELECT * FROM project_groups WHERE id=?').get(id); }
+  projectGroupByName(name) { return this.db.prepare('SELECT * FROM project_groups WHERE name=? COLLATE NOCASE').get(name); }
+  countProjectsInGroup(groupId) {
+    return this.db.prepare('SELECT COUNT(*) AS n FROM projects WHERE group_id=?').get(groupId).n;
+  }
+  createProjectGroup({ id, name }) {
+    this.db.prepare('INSERT INTO project_groups (id, name, created_at) VALUES (?,?,?)')
+      .run(id, name, new Date().toISOString());
+    return this.getProjectGroup(id);
+  }
+  patchProjectGroup(id, name) {
+    this.db.prepare('UPDATE project_groups SET name=? WHERE id=?').run(name, id);
+    return this.getProjectGroup(id);
+  }
+  deleteProjectGroup(id) { return this.db.prepare('DELETE FROM project_groups WHERE id=?').run(id).changes > 0; }
+
   // ─── Projects ────────────────────────────────────────────────────────────
   listProjects() {
     return this.db.prepare(`SELECT p.*,

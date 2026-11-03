@@ -1112,3 +1112,77 @@ test('T01: backfill DB lama → grup dibuat dari project', async t => {
       .run('p_c', 'alpha2', 'alpha', 'https://a.test', '[]', now);
   }, /UNIQUE constraint failed/);
 });
+
+test('T02: CRUD grup — buat, rename, hapus kosong, nama duplikat 409', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  const anon = await call('/api/project-groups');
+  assert.equal(anon.status, 401);
+  assert.deepEqual(anon.body, { error: 'Sesi tidak valid' });
+
+  let r = await call('/api/project-groups', { cookie });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, []);
+
+  r = await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'Marketing' } });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.name, 'Marketing');
+  assert.equal(r.body.project_count, 0);
+  const groupId = r.body.id;
+
+  // Nama unik case-insensitive
+  r = await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'marketing' } });
+  assert.equal(r.status, 409);
+
+  r = await call(`/api/project-groups/${groupId}`, { method: 'PATCH', cookie, body: { name: 'Marketing Digital' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.name, 'Marketing Digital');
+
+  // Rename ke nama grup lain ditolak
+  const other = (await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'Sales' } })).body;
+  r = await call(`/api/project-groups/${other.id}`, { method: 'PATCH', cookie, body: { name: 'marketing digital' } });
+  assert.equal(r.status, 409);
+
+  // Grup kosong boleh dihapus
+  r = await call(`/api/project-groups/${other.id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(store.listProjectGroups().length, 1);
+
+  // Audit tercatat
+  const actions = store.listAudit({ entity: 'project_groups' }).map(a => a.action);
+  assert.ok(actions.includes('create_group'));
+  assert.ok(actions.includes('update_group'));
+  assert.ok(actions.includes('delete_group'));
+});
+
+test('T02: hapus grup berisi project (aktif atau arsip) ditolak 409', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  const group = (await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'EBH' } })).body;
+  store.db.prepare('UPDATE projects SET group_id=? WHERE id=?').run(group.id, 'p1');
+
+  let r = await call('/api/project-groups', { cookie });
+  assert.equal(r.body[0].project_count, 1);
+
+  r = await call(`/api/project-groups/${group.id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+
+  // Project arsip juga dihitung
+  store.db.prepare('UPDATE projects SET active=0 WHERE id=?').run('p1');
+  r = await call(`/api/project-groups/${group.id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+});
+
+test('T02: viewer tidak boleh menulis grup', async t => {
+  const { call, login, store, user } = await fixture(t);
+  store.createUser({ id: randomUUID(), username: 'lihat', role: 'viewer', passwordHash: await hash(PASSWORD) });
+  const cookie = await login('lihat');
+
+  const before = store.listProjectGroups().length;
+  assert.equal((await call('/api/project-groups', { cookie })).status, 200);
+  assert.equal((await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'X' } })).status, 403);
+  assert.equal(store.listProjectGroups().length, before);
+  assert.equal(user.role, 'admin');
+});

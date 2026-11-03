@@ -176,6 +176,38 @@ export function createApp({ store, runner, token, origins }) {
     res.sendStatus(204);
   }));
 
+  // ─── Project groups ──────────────────────────────────────────────────────
+  app.get('/api/project-groups', requireAuth, route(async (req, res) => res.json(store.listProjectGroups())));
+
+  app.post('/api/project-groups', requireAuth, requireAdmin, route(async (req, res) => {
+    const name = text(req.body?.name, 'name');
+    if (store.projectGroupByName(name)) fail('Nama grup sudah dipakai', 409);
+    const group = store.createProjectGroup({ id: 'g_' + randomUUID(), name });
+    store.audit({ userId: req.user.id, action: 'create_group', entity: 'project_groups', entityId: group.id });
+    res.status(201).json({ ...group, project_count: 0 });
+  }));
+
+  app.patch('/api/project-groups/:id', requireAuth, requireAdmin, route(async (req, res) => {
+    const group = store.getProjectGroup(id(req.params.id));
+    if (!group) fail('Not found', 404);
+    const name = text(req.body?.name, 'name');
+    const other = store.projectGroupByName(name);
+    if (other && other.id !== group.id) fail('Nama grup sudah dipakai', 409);
+    store.patchProjectGroup(group.id, name);
+    store.audit({ userId: req.user.id, action: 'update_group', entity: 'project_groups', entityId: group.id });
+    res.json(store.getProjectGroup(group.id));
+  }));
+
+  app.delete('/api/project-groups/:id', requireAuth, requireAdmin, route(async (req, res) => {
+    const group = store.getProjectGroup(id(req.params.id));
+    if (!group) fail('Not found', 404);
+    // Grup kosong saja; project arsip juga dihitung.
+    if (store.countProjectsInGroup(group.id) > 0) fail('Grup masih berisi project', 409);
+    store.deleteProjectGroup(group.id);
+    store.audit({ userId: req.user.id, action: 'delete_group', entity: 'project_groups', entityId: group.id });
+    res.sendStatus(204);
+  }));
+
   // ─── Projects ────────────────────────────────────────────────────────────
   app.get('/api/projects', requireAuth, route(async (req, res) => res.json(store.listProjects())));
   // Tambah departemen/project baru dari halaman Seting. Slug jadi bagian ID dan
