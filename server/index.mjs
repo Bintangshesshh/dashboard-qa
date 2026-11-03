@@ -1151,6 +1151,16 @@ export async function main() {
     runsDir: runsDirEnv,
     timeout: Number(process.env.RUN_TIMEOUT_MS ?? 300000),
   });
+  // Sapu run CLI yang menggantung: tanpa ini satu run "Antre" memblokir
+  // sesinya sampai proses di-restart.
+  const sweep = () => {
+    try {
+      const n = store.failStaleRuns(Number(process.env.STALE_RUN_MINUTES ?? 30));
+      if (n) console.log(`run menggantung dilewati: ${n}`);
+    } catch (err) { console.error('[sweep]', err.message); }
+  };
+  sweep();
+  setInterval(sweep, 5 * 60_000).unref();
   const app = createApp({ store, runner, token: null, origins });
   const server = app.__wssServer ?? createServer(app);
   server.listen(Number(process.env.PORT ?? 3001), process.env.HOST ?? '127.0.0.1', () => console.log('QA backend listening', server.address()));

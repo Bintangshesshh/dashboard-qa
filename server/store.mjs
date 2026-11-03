@@ -324,6 +324,24 @@ export class Store {
   }
 
   // ─── Runs ────────────────────────────────────────────────────────────────
+  // Run dari CLI (`POST /api/runs/local`) yang tidak pernah di-start akan
+  // menggantung "queued" selamanya dan memblokir sesinya (409). Anggap
+  // interrupted setelah batas waktu supaya sesi bisa dipakai lagi.
+  failStaleRuns(maxAgeMinutes = 30) {
+    const cut = new Date(Date.now() - maxAgeMinutes * 60_000).toISOString();
+    const rows = this.db.prepare(`SELECT id, session_id FROM runs
+      WHERE status='queued' AND started_at IS NULL AND queued_at < ?`).all(cut);
+    if (!rows.length) return 0;
+    const upd = this.db.prepare(`UPDATE runs SET status='interrupted', finished_at=?,
+      error=? WHERE id=? AND status='queued'`);
+    const now = new Date().toISOString();
+    const msg = 'Run tidak pernah dimulai dan dilewati otomatis setelah ' + maxAgeMinutes + ' menit.';
+    for (const r of rows) {
+      upd.run(now, msg, r.id);
+      this.markReportsStale(r.session_id);
+    }
+    return rows.length;
+  }
   createRun({ id, sessionId, testFileId, tool }) {
     this.db.prepare('INSERT INTO runs (id, session_id, test_file_id, tool, status, queued_at, created_at) VALUES (?,?,?,?,?,?,?)')
       .run(id, sessionId, testFileId ?? null, tool, 'queued', new Date().toISOString(), new Date().toISOString());

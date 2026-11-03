@@ -1649,6 +1649,26 @@ test('S03: config Playwright per project divalidasi dan disimpan', async () => {
   assert.throws(() => checkPwConfig({ timeout: 10 }), /timeout harus bilangan bulat 10000-900000/);
 });
 
+test('failStaleRuns: run CLI yang tak pernah start dilepas, run aktif tidak', async () => {
+  const { Store } = await import('../store.mjs');
+  const store = new Store(':memory:');
+  await store.init();
+  try {
+    store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, allow_production, active, created_at)
+      VALUES ('p-stale','p-stale','P Stale','http://127.0.0.1:5173','["http://127.0.0.1:5173"]',0,1,?)`)
+      .run(new Date().toISOString());
+    const old = new Date(Date.now() - 90 * 60_000).toISOString();
+    store.createSession({ id: 's-stale', projectId: 'p-stale', env: 'local', targetUrl: 'http://127.0.0.1:5173', label: 'stale' });
+    store.createRun({ id: 'r-menggantung', sessionId: 's-stale', testFileId: null, tool: 'pw' });
+    store.db.prepare('UPDATE runs SET queued_at=? WHERE id=?').run(old, 'r-menggantung');
+    store.createRun({ id: 'r-baru', sessionId: 's-stale', testFileId: null, tool: 'lh' });
+
+    assert.equal(store.failStaleRuns(30), 1, 'hanya run lama yang dilepas');
+    assert.equal(store.getRun('r-menggantung').status, 'interrupted');
+    assert.equal(store.getRun('r-baru').status, 'queued');
+    assert.equal(store.countRunsByStatus('s-stale', ['queued', 'running', 'uploading']), 1);
+  } finally { store.close?.(); }
+});
 test('B04: statsByProject setara stats per project', async () => {
   const { Store } = await import('../store.mjs');
   const store = new Store(':memory:');
