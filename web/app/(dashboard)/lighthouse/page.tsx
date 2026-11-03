@@ -5,6 +5,7 @@
 // Layout menumpuk: Project → Config → Terminal → Run → Hasil.
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
+import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig } from "../../_components/lh-config-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -14,19 +15,6 @@ import {
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
-
-type Budgets = Record<string, { minScore: number }>;
-
-// Matches MAX_LH_URLS on the server: the session target takes one slot.
-const MAX_EXTRA_URLS = 2;
-type LhConfig = { urls?: string[]; numberOfRuns?: number; budgets?: Budgets };
-
-const CATEGORIES = [
-  { key: "categories:performance", label: "Performance" },
-  { key: "categories:accessibility", label: "Accessibility" },
-  { key: "categories:best-practices", label: "Best practices" },
-  { key: "categories:seo", label: "SEO" },
-];
 
 type Env = "local" | "staging" | "production";
 const ENVS: Env[] = ["local", "staging", "production"];
@@ -44,12 +32,9 @@ export default function LighthousePage() {
   // Konfirmasi production: ketik nama project. Guard sama ada di server.
   const [confirmName, setConfirmName] = useState("");
 
-  // Draft config. Skor disimpan 0-1 di backend, ditampilkan 0-100 di slider.
-  const [runs, setRuns] = useState(1);
-  const [extraUrls, setExtraUrls] = useState<string[]>([]);
-  const [scores, setScores] = useState<Record<string, number>>({});
+  // Draft config berupa string JSON apa adanya; editor bersama yang mengubahnya.
+  const [config, setConfig] = useState("");
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
 
   // Run + terminal, dipisah per project seperti halaman Playwright.
@@ -95,14 +80,10 @@ export default function LighthousePage() {
   const productionOk = env !== "production" || confirmName.trim() === (project?.name ?? "");
   const running = !!run && !FINAL.includes(run.status);
 
-  // Muat config ke form hanya saat file berganti. Kalau bergantung pada
-  // `selected`, autosave yang menulis balik akan mereset ketikan user.
+  // Muat config hanya saat file berganti. Kalau bergantung pada `selected`,
+  // autosave yang menulis balik akan mereset ketikan user.
   useEffect(() => {
-    const cfg: LhConfig = (() => { try { return JSON.parse(selected?.config ?? "{}"); } catch { return {}; } })();
-    setRuns(cfg.numberOfRuns ?? 1);
-    setExtraUrls(cfg.urls ?? []);
-    setScores(Object.fromEntries(CATEGORIES.map(c => [c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100)])));
-    setDirty(false);
+    setConfig(selected?.config ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id]);
 
@@ -127,24 +108,30 @@ export default function LighthousePage() {
     return () => { alive = false; clearTimeout(timer); };
   }, [runId]);
 
-  const extraUrlList = extraUrls.map(s => s.trim()).filter(Boolean);
+  const dirty = !!selected && config !== (selected.config ?? "");
+
+  // Validasi client sebelum simpan: server tetap memeriksa hal yang sama.
+  const validate = () => {
+    if (!project) return "Project tidak ditemukan.";
+    const cfg = parseLhConfig(config);
+    return lhConfigError({
+      target,
+      extra: extraUrlsOf(cfg, project),
+      runs: cfg.numberOfRuns ?? 1,
+      scores: Object.fromEntries(LH_CATEGORIES.map(c => [
+        c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100),
+      ])),
+    });
+  };
 
   const saveConfig = async () => {
     if (!selected) return;
-    if (extraUrlList.length > MAX_EXTRA_URLS) {
-      setError(`Maksimal ${MAX_EXTRA_URLS} URL tambahan (target sesi memakai 1 slot dari 3).`);
-      return;
-    }
+    const msg = validate();
+    if (msg) { setError(msg); return; }
     setSaving(true); setError("");
     try {
-      const config: LhConfig = {
-        urls: extraUrlList,
-        numberOfRuns: runs,
-        budgets: Object.fromEntries(CATEGORIES.map(c => [c.key, { minScore: (scores[c.key] ?? 60) / 100 }])),
-      };
-      const updated = await api.patchTestFile(selected.id, { config: JSON.stringify(config) });
+      const updated = await api.patchTestFile(selected.id, { config });
       setFiles([updated]);
-      setDirty(false);
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
 
@@ -156,9 +143,8 @@ export default function LighthousePage() {
     pending.current = setTimeout(() => { saveConfig(); }, 1000);
     return () => { if (pending.current) clearTimeout(pending.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, extraUrls, scores, dirty, selected?.id]);
+  }, [config, dirty, selected?.id]);
 
-  const touch = () => setDirty(true);
   const saveState = saving ? "Menyimpan…" : dirty ? "Belum disimpan" : selected ? "Tersimpan" : "";
 
   const start = async () => {
@@ -169,6 +155,8 @@ export default function LighthousePage() {
       if (env === "production" && confirmName.trim() !== project?.name)
         throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya konfigurasi Lighthouse.");
+      const msg = validate();
+      if (msg) throw new Error(msg);
       // Flush autosave yang masih menunggu supaya run memakai config terbaru.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; await saveConfig(); }
       // Konfirmasi production diketik user; guard yang sama ada di server.
@@ -245,64 +233,9 @@ export default function LighthousePage() {
             <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada konfigurasi"}</div>
           </div>
         </div>
-        {selected ? (
-          <div className="pb-lh-form">
-            <div className="pb-field">
-              <span>Jumlah run per URL</span>
-              <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
-                {[1, 2, 3, 5].map(n => (
-                  <button key={n} type="button" className={runs === n ? "active" : ""}
-                    aria-pressed={runs === n} disabled={running}
-                    onClick={() => { setRuns(n); touch(); }}>{n}×</button>
-                ))}
-              </div>
-            </div>
-
-            <div className="pb-field">
-              <span>URL tambahan ({extraUrls.filter(u => u.trim()).length}/{MAX_EXTRA_URLS})</span>
-              <span className="pb-lh-urls">
-                {extraUrls.map((u, i) => (
-                  <span className="pb-row" key={i} style={{ gap: 8 }}>
-                    <input className="pb-input pb-mono" value={u}
-                      placeholder="https://contoh.test/halaman-lain" disabled={running}
-                      onChange={e => {
-                        const v = e.target.value;
-                        setExtraUrls(list => list.map((x, j) => j === i ? v : x));
-                        touch();
-                      }} />
-                    <button type="button" className="pb-btn sm danger" disabled={running}
-                      aria-label={"Hapus URL " + (i + 1)}
-                      onClick={() => { setExtraUrls(list => list.filter((_, j) => j !== i)); touch(); }}>Hapus</button>
-                  </span>
-                ))}
-                {extraUrls.length < MAX_EXTRA_URLS && (
-                  <button type="button" className="pb-btn sm" disabled={running}
-                    onClick={() => { setExtraUrls(list => [...list, ""]); touch(); }}>+ Tambah URL</button>
-                )}
-              </span>
-            </div>
-
-            <div className="pb-field">
-              <span>Skor minimum per kategori</span>
-              <div className="pb-lh-budgets">
-                {CATEGORIES.map(c => (
-                  <label className="pb-lh-budget" key={c.key}>
-                    <span className="pb-lh-budget-top">
-                      <span>{c.label}</span>
-                      <output>{scores[c.key] ?? 60}%</output>
-                    </span>
-                    <input type="range" min={0} max={100} step={5} disabled={running}
-                      value={scores[c.key] ?? 60} aria-label={"Skor minimum " + c.label}
-                      onChange={e => {
-                        const v = Number(e.target.value);
-                        setScores(s => ({ ...s, [c.key]: v }));
-                        touch();
-                      }} />
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
+        {selected && project ? (
+          <LhConfigEditor project={project} value={config} target={target}
+            disabled={running} onChange={setConfig} idPrefix="lh-page" />
         ) : <p className="pb-empty">Project ini belum punya konfigurasi Lighthouse.</p>}
       </section>
 

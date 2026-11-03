@@ -9,6 +9,9 @@ import {
   api, fmtDate,
   type CliToken, type Project, type Settings, type TestFile,
 } from "../../../lib/playbook";
+import LhConfigEditor, {
+  LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig,
+} from "../../_components/lh-config-editor";
 
 const num = (value: string) => Number(value) || 0;
 
@@ -36,23 +39,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "report", label: "Report" },
   { id: "access", label: "Akses" },
 ];
-
-// Cermin konstanta server: MAX_LH_URLS=3, target sesi memakai 1 slot.
-const MAX_EXTRA_URLS = 2;
-const RUN_CHOICES = [1, 2, 3, 5];
-const CATEGORIES = [
-  { key: "categories:performance", label: "Performance" },
-  { key: "categories:accessibility", label: "Accessibility" },
-  { key: "categories:best-practices", label: "Best practices" },
-  { key: "categories:seo", label: "SEO" },
-];
-
-type Budgets = Record<string, { minScore: number }>;
-type LhConfig = { urls?: string[]; numberOfRuns?: number; budgets?: Budgets };
-
-const parseConfig = (config: string | null): LhConfig => {
-  try { return JSON.parse(config ?? "{}") ?? {}; } catch { return {}; }
-};
 
 type SettingField = {
   key: keyof Settings;
@@ -483,39 +469,33 @@ export default function SettingsPage() {
   );
 }
 
-// Editor config lhci per project. Bentuk JSON sama dengan /lighthouse supaya run
-// dari dua halaman tidak saling menimpa nilai.
+// Editor config lhci per project, memakai komponen bersama LhConfigEditor
+// supaya bentuk JSON-nya sama dengan /lighthouse (PRD T09).
 function LhciCard({ project, file, onSave }: {
   project: Project;
   file: TestFile;
   onSave: (file: TestFile, patch: Parameters<typeof api.patchTestFile>[1]) => Promise<void>;
 }) {
-  const cfg = parseConfig(file.config);
-  const baselineUrls = cfg.urls ?? [];
-  const [runs, setRuns] = useState(cfg.numberOfRuns ?? 1);
-  const [extraUrls, setExtraUrls] = useState<string[]>(baselineUrls);
-  const [scores, setScores] = useState<Record<string, number>>(
-    Object.fromEntries(CATEGORIES.map(c => [c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100)])),
-  );
+  const target = project.base_url || "";
+  const [config, setConfig] = useState(file.config ?? "");
   const [saving, setSaving] = useState(false);
-
-  const extra = extraUrls.map(s => s.trim()).filter(Boolean);
-  const dirty =
-    runs !== (cfg.numberOfRuns ?? 1) ||
-    extra.join("\n") !== baselineUrls.join("\n") ||
-    CATEGORIES.some(c => (scores[c.key] ?? 60) !== Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100));
+  const [error, setError] = useState("");
+  const dirty = config !== (file.config ?? "");
 
   const save = async () => {
-    setSaving(true);
-    try {
-      await onSave(file, {
-        config: JSON.stringify({
-          urls: extra,
-          numberOfRuns: runs,
-          budgets: Object.fromEntries(CATEGORIES.map(c => [c.key, { minScore: (scores[c.key] ?? 60) / 100 }])),
-        }),
-      });
-    } finally { setSaving(false); }
+    const cfg = parseLhConfig(config);
+    const msg = lhConfigError({
+      target, extra: extraUrlsOf(cfg, project),
+      runs: cfg.numberOfRuns ?? 1,
+      scores: Object.fromEntries(LH_CATEGORIES.map(c => [
+        c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100),
+      ])),
+    });
+    if (msg) { setError(msg); return; }
+    setSaving(true); setError("");
+    try { await onSave(file, { config }); }
+    catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -525,75 +505,23 @@ function LhciCard({ project, file, onSave }: {
         <span className="pb-muted pb-mono">{file.path}</span>
       </div>
 
-      <div className="pb-lh-form">
-        <div className="pb-lh-field">
-          <span className="pb-set-label">Jumlah run per URL</span>
-          <div className="pb-seg">
-            {RUN_CHOICES.map(n => (
-              <button key={n} className={runs === n ? "active" : ""}
-                onClick={() => setRuns(n)} aria-pressed={runs === n}>{n}×</button>
-            ))}
-          </div>
-        </div>
+      <LhConfigEditor project={project} value={config} target={target}
+        onChange={setConfig} idPrefix={`set-${project.id}`} />
 
-        <div className="pb-lh-field">
-          <span className="pb-set-label">
-            URL tambahan ({extra.length}/{MAX_EXTRA_URLS})
-          </span>
-          <div className="pb-lh-urls">
-            <div className="pb-row">
-              <input className="pb-input" value={project.base_url} readOnly aria-label="Target utama" />
-              <span className="pb-badge closed">target utama</span>
-            </div>
-            {extraUrls.map((u, i) => (
-              <div className="pb-row" key={i}>
-                <input className="pb-input" value={u} placeholder="https://…"
-                  aria-label={`URL tambahan ${i + 1}`}
-                  onChange={e => setExtraUrls(list => list.map((x, j) => (j === i ? e.target.value : x)))} />
-                <button className="pb-btn sm" onClick={() => setExtraUrls(list => list.filter((_, j) => j !== i))}>
-                  Hapus
-                </button>
-              </div>
-            ))}
-            {extraUrls.length < MAX_EXTRA_URLS && (
-              <button className="pb-btn sm" onClick={() => setExtraUrls(list => [...list, ""])}>
-                + Tambah URL
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div className="pb-lh-field">
-          <span className="pb-set-label">Skor minimum per kategori</span>
-          <div className="pb-lh-budgets">
-            {CATEGORIES.map(c => (
-              <label className="pb-lh-budget" key={c.key}>
-                <span className="pb-lh-budget-top">
-                  <span>{c.label}</span>
-                  <output>{scores[c.key] ?? 60}%</output>
-                </span>
-                <input type="range" min={0} max={100} step={5}
-                  value={scores[c.key] ?? 60} aria-label={"Skor minimum " + c.label}
-                  onChange={e => {
-                    const v = Number(e.target.value);
-                    setScores(s => ({ ...s, [c.key]: v }));
-                  }} />
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
+      {error && <div className="pb-err">{error}</div>}
 
       <div className="pb-row pb-proj-foot">
         <span className="pb-set-status">{dirty ? "Belum disimpan" : "Tersimpan"}</span>
         <span className="pb-spacer" />
-        <button className="pb-btn sm primary" onClick={save} disabled={saving || !dirty}>
+        <button className="pb-btn sm primary" onClick={save}
+          disabled={saving || !dirty || !target.trim()}>
           Simpan config
         </button>
       </div>
     </div>
   );
 }
+
 
 // Tambah departemen baru. base_url boleh dikosongkan kalau targetnya masih lokal;
 // server memakai local_url sebagai gantinya supaya kolom NOT NULL tetap terisi.
