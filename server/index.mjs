@@ -23,6 +23,17 @@ const route = fn => (req, res, next) => Promise.resolve().then(() => fn(req, res
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
 // ?range=N → ISO timestamp N hari lalu; tanpa range → undefined (tanpa batas).
+// PRD FR-07: timestamp DB tetap UTC, tampilan manusia memakai Asia/Jakarta + "WIB".
+// Format eksplisit supaya mesin server yang bukan WIB tidak menggeser jam.
+const TZ = 'Asia/Jakarta';
+const wibDate = (iso = new Date().toISOString()) => new Intl.DateTimeFormat('id-ID', {
+  timeZone: TZ, day: '2-digit', month: 'short', year: 'numeric',
+}).format(new Date(iso));
+const wibTime = (iso = new Date().toISOString()) => new Intl.DateTimeFormat('en-GB', {
+  timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+}).format(new Date(iso));
+export const wibStamp = (iso = new Date().toISOString()) => `${wibDate(iso)} ${wibTime(iso)} WIB`;
+
 const rangeStart = value => value === undefined ? undefined
   : new Date(Date.now() - rangeDays({ range: value }) * 86400000).toISOString();
 
@@ -418,7 +429,7 @@ export function createApp({ store, runner, token, origins }) {
 
   // PRD §8.2 step 2: setiap run production meninggalkan satu baris `system`.
   const traceProduction = (runId, e, user) => {
-    if (e === 'production') store.systemLog(runId, `production run by ${user.username} at ${new Date().toISOString()}`);
+    if (e === 'production') store.systemLog(runId, `production run by ${user.username} at ${wibStamp()}`);
   };
 
   app.post('/api/sessions', requireAuth, requireAdmin, route(async (req, res) => {
@@ -454,7 +465,7 @@ export function createApp({ store, runner, token, origins }) {
     }
     try {
       const id = randomUUID();
-      const label = `${project.name} ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+      const label = `${project.name} ${wibStamp()}`;
       store.createSession({ id, projectId, env: e, targetUrl, label, createdBy: req.user.id });
       const session = store.getSession(id);
       res.status(201).json({ sessionId: id, targetUrl, session });
@@ -537,7 +548,7 @@ export function createApp({ store, runner, token, origins }) {
     let session = store.findOpenSession(project.id, e, req.user.id);
     if (!session) {
       const sessionId = randomUUID();
-      const label = `Quick check ${project.name} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+      const label = `Quick check ${project.name} ${wibStamp()}`;
       store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
       session = { id: sessionId };
     }
@@ -632,7 +643,7 @@ export function createApp({ store, runner, token, origins }) {
         fail('Sesi masih terbuka. Tutup sesi atau mulai sesi baru.', 409);
       } else {
         sessionId = randomUUID();
-        const label = `${project.name} ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+        const label = `${project.name} ${wibStamp()}`;
         store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
       }
     }

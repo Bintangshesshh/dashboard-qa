@@ -844,7 +844,8 @@ test('A5: run production menulis satu baris log system', async t => {
 
   const lines = f.store.logsRaw(runId).filter(l => l.stream === 'system' && /production run by/.test(l.text));
   assert.equal(lines.length, 1);
-  assert.match(lines[0].text, /production run by tester at \d{4}-\d{2}-\d{2}T/);
+  assert.match(lines[0].text, /production run by tester at \d{2} \w{3} \d{4} \d{2}:\d{2} WIB\n?$/);
+  assert.equal(/T\d{2}:\d{2}:\d{2}/.test(lines[0].text), false, 'bukan ISO mentah');
 
   // runner tidak boleh mulai dari seq 0 - baris system tadi sudah pakai seq 1.
   const runsDir = await mkdtemp(join(tmpdir(), 'pb-runner-a5-'));
@@ -1264,6 +1265,22 @@ test('T06: sesi lewat 60 menit ditutup otomatis, run berikutnya sesi baru', asyn
   assert.notEqual(r.body.sessionId, old);
 });
 
+test('T07: timestamp WIB — UTC disimpan, tampilan Asia/Jakarta + label WIB', async () => {
+  const { wibStamp } = await import('../index.mjs');
+  // 2026-01-01T17:30:00Z = 2026-01-02 00:30 WIB
+  const out = wibStamp('2026-01-01T17:30:00.000Z');
+  assert.match(out, /^02 Jan 2026 00:30 WIB$/);
+  assert.equal(/T\d{2}:\d{2}.*Z/.test(out), false, 'bukan ISO mentah');
+});
+
+test('T07: label sesi memakai WIB', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201);
+  assert.match(r.body.session.label, / WIB$/, 'label sesi berakhir WIB');
+  assert.equal(/T\d{2}:\d{2}.*Z/.test(r.body.session.label), false);
+});
 test('T01: fresh DB → project_groups ada, user_version=5, reuse=60', async t => {
   const store = new Store(':memory:');
   await store.init();

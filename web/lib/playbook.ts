@@ -284,6 +284,19 @@ export const fmtDur = (ms: number | null) => {
   if (ms == null) return "-";
   return ms >= 60000 ? `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s` : `${(ms / 1000).toFixed(1)}s`;
 };
+// Waktu disimpan UTC, ditampilkan Asia/Jakarta + label WIB (PRD FR-07).
+// opsi timeZone eksplisit supaya jam laptop yang bukan WIB tidak menggeser tampilan.
+export const TZ = "Asia/Jakarta";
+
 export const fmtDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "-";
+  iso
+    ? new Date(iso).toLocaleString("id-ID", {
+        timeZone: TZ, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+      }) + " WIB"
+    : "-";
+
+export const fmtTime = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleTimeString("id-ID", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }) + " WIB"
+    : "-";
 export const pct = (v: number | null) => (v == null ? "-" : Math.round(v * 100) + "%");
