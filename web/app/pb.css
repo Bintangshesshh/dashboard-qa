@@ -908,8 +908,6 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   color: var(--muted);
   white-space: nowrap;
 }
-.pb-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-soft); flex: none; }
-.pb-live-dot.on { background: var(--accent); }
 /* Satu tema terminal untuk Playwright & Lighthouse. */
 .pb-term {
   background: #0d1117;

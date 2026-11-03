@@ -102,7 +102,6 @@ export function RunPanel({ logs, run, live, downloadHref }: {
         <span className="pb-row" style={{ gap: 8, fontSize: 12 }}>
           {run && <RunClock run={run} />}
           <span className="pb-live-state">
-            <span className={"pb-live-dot" + (live ? " on" : "")} aria-hidden="true" />
             {live ? "berjalan" : run ? "selesai" : "menunggu"} · {term.length} baris
           </span>
           {downloadHref && <a className="pb-btn sm" href={downloadHref}>Unduh log</a>}
