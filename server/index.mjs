@@ -736,7 +736,8 @@ export function createApp({ store, runner, token, origins }) {
     run.artifacts = store.listArtifacts(run.id);
     run.results = run.tool === 'pw' ? store.listPlaywrightResults(run.id) : store.listLighthouseResults(run.id);
     // PRD §7: console & network dipisah dari logs (dipakai panel §10.3).
-    const raw = store.logsRaw(run.id);
+    // Diambil lewat SQL dengan batas baris: endpoint ini di-poll tiap 1,5 detik.
+    const raw = store.logsByStreams(run.id, ['console', 'network']);
     run.console = raw.filter(e => e.stream === 'console').map(e => ({ seq: e.seq, at: e.at, ...parseConsole(e.text) }));
     run.network = raw.filter(e => e.stream === 'network').map(e => ({ seq: e.seq, at: e.at, ...parseNetwork(e.text) }));
     res.json(run);

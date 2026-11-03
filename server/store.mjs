@@ -396,6 +396,17 @@ export class Store {
     return { logs, hasMore, nextAfter };
   }
   logsRaw(runId, after = 0) { return this.db.prepare('SELECT seq, stream, text, at FROM run_logs WHERE run_id=? AND seq>? ORDER BY seq').all(runId, after); }
+  // Panel console/network: saring stream di SQL dan batasi barisnya. Tanpa ini
+  // GET /api/runs/:id memuat seluruh log run (hingga 5 MB) tiap 1,5 detik.
+  logsByStreams(runId, streams = ['console', 'network'], limit = 2000) {
+    const list = streams.filter(s => ['stdout', 'stderr', 'system', 'console', 'network'].includes(s));
+    if (!list.length) return [];
+    const safeLimit = Math.min(Math.max(Number(limit) || 2000, 1), 10000);
+    const marks = list.map(() => '?').join(',');
+    return this.db.prepare(
+      `SELECT seq, stream, text, at FROM run_logs WHERE run_id=? AND stream IN (${marks}) ORDER BY seq DESC LIMIT ?`,
+    ).all(runId, ...list, safeLimit).reverse();
+  }
   async logsText(runId) { return this.db.prepare('SELECT text FROM run_logs WHERE run_id=? ORDER BY seq').all(runId).map(r => r.text).join(''); }
 
   // ─── Playwright results ──────────────────────────────────────────────────
