@@ -143,7 +143,7 @@ export default function LhConfigEditor({
               aria-pressed={runs === n} disabled={disabled}
               onClick={() => { setRuns(n); emit({ runs: n }); }}>{n}×</button>
           ))}
-          <input type="number" className="pb-input pb-input-narrow" min={1} max={MAX_RUNS}
+          <input type="number" className="pb-input" min={1} max={MAX_RUNS}
             inputMode="numeric" aria-label="Jumlah run custom" disabled={disabled}
             value={runs}
             onChange={e => {

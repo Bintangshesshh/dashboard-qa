@@ -650,7 +650,9 @@ button { cursor: pointer; }
 .pb-input::placeholder { color: var(--meta); }
 /* Select di baris flex tidak boleh full-width, kalau tidak filter memakan satu baris. */
 .pb-filters .pb-select, .pb-row .pb-select, .pb-row .pb-input { width: auto; min-width: 150px; }
-label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+/* .pb-field dipakai di <label> maupun <div> (editor LH); ::before tidak dipakai
+   supaya aturan ini aman untuk keduanya. */
 
 .pb-btn {
   display: inline-flex;
@@ -1398,8 +1400,9 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 /* ---------- Segmented control ---------- */
 .pb-seg {
   display: inline-flex;
-  padding: 2px;
-  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  gap: 4px;
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1414,6 +1417,17 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-seg button:hover:not(:disabled) { color: var(--text); }
 .pb-seg button.active { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
 .pb-seg button:disabled { opacity: .6; cursor: not-allowed; }
+/* Input angka custom ikut tinggi tombol segmen; tanpa ini tinggi 37px vs 28px
+   membuat kontrol terlihat menempel dan tidak sejajar. */
+.pb-seg .pb-input {
+  width: 60px; max-width: 60px; height: 28px;
+  padding: 0 6px; border: 0; background: transparent;
+  font-family: var(--mono); font-size: 11.5px; text-align: center;
+  border-radius: 6px;
+  /* Jarak dari tombol preset: input ini nilai bebas, bukan salah satu preset. */
+  margin-left: 6px; box-shadow: inset 1px 0 0 var(--border);
+}
+.pb-seg .pb-input:hover { border: 0; }
 
 /* ---------- Feed run terakhir (Ringkasan) ---------- */
 .pb-run-feed { display: flex; flex-direction: column; }
@@ -1515,5 +1529,6 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   .pb-btn.sm { height: 44px; padding: 0 14px; font-size: 13px; }
   .pb-icon-btn { width: 44px; height: 44px; }
   .pb-seg button { height: 44px; }
+  .pb-seg .pb-input { height: 44px; }
   .pb-select { min-height: 44px; }
 }
