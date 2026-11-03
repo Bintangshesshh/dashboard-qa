@@ -839,6 +839,19 @@ button { cursor: pointer; }
 .pb-empty { color: var(--meta); text-align: center; padding: 36px 12px; }
 /* ---------- Pohon grup project (Pengaturan > Project) ---------- */
 .pb-empty.sm { padding: 14px 12px; font-size: 12px; }
+/* Panel tambah: grup dan project satu tempat, tidak lagi kartu terpisah. */
+.pb-add-panel {
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  padding: 12px 14px; margin-bottom: 4px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.pb-add-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pb-add-row > .pb-card-sub { flex: 0 0 auto; margin: 0; }
+.pb-add-row.col { flex-direction: column; align-items: stretch; gap: 8px; }
+/* Isi panel sudah punya bingkai sendiri: jangan bingkai dua kali. */
+.pb-add-panel .pb-proj-card { border: 0; padding: 0; background: none; }
+.pb-add-panel .pb-mb-3 { margin-bottom: 0; }
+
 .pb-group { border: 1px solid var(--line); border-radius: 10px; margin-top: 12px; }
 .pb-group-head {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;

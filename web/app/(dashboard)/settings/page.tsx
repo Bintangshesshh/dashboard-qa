@@ -541,7 +541,19 @@ export default function SettingsPage() {
                 </label>
               </div>
 
-              <NewGroupForm onCreate={addGroup} />
+              {/* Tambah grup dan project di satu panel: keduanya soal struktur. */}
+              <div className="pb-add-panel">
+                <div className="pb-add-row">
+                  <span className="pb-card-sub">Grup baru</span>
+                  <NewGroupForm onCreate={addGroup} />
+                </div>
+                <div className="pb-add-row col">
+                  <span className="pb-card-sub">
+                    Project baru. base_url wajib; slug dipakai sebagai kunci di CLI dan URL report.
+                  </span>
+                  <NewProjectForm groups={groups} onCreate={createProject} />
+                </div>
+              </div>
 
               {groups.length === 0 && orphans.length === 0 && (
                 <p className="pb-empty">
@@ -607,17 +619,6 @@ export default function SettingsPage() {
               )}
             </section>
 
-            <section className="pb-card">
-              <div className="pb-card-head">
-                <div>
-                  <h2>Project baru</h2>
-                  <div className="pb-card-sub">
-                    base_url wajib. Slug dipakai sebagai kunci di CLI dan URL report.
-                  </div>
-                </div>
-              </div>
-              <NewProjectForm groups={groups} onCreate={createProject} />
-            </section>
           </>
         )}
 
