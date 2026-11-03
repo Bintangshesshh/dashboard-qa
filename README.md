@@ -11,10 +11,10 @@ Kontrak produk ada di `docs/PRD.md`, cara install di `docs/SETUP.md` (keduanya i
 ## Peta proyek
 
 - `server/index.mjs` - REST API + WebSocket log + penyajian artifact/laporan
-- `server/store.mjs` - skema SQLite v5 + migrasi + query
+- `server/store.mjs` - skema SQLite v7 + migrasi + query
 - `server/runner.mjs` - eksekusi Playwright/Lighthouse, cancel, timeout, parsing hasil
 - `server/validation.mjs` - validasi request + allowlist target
-- `server/migrations/` - `0001_schema_v5.sql` s.d. `0005_project_groups.sql` (skema = `user_version` 5)
+- `server/migrations/` - `0001_schema_v5.sql` s.d. `0007_run_indexes.sql` (skema = `user_version` 7)
 - `web/app/(dashboard)/` - Overview, Playwright, Lighthouse, Reports; `run-terminal.tsx` panel log live, `settings/` admin
 - `web/app/(auth)/login/` - login
 - `web/lib/playbook.ts` - klien API bertipe
