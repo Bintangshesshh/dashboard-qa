@@ -954,7 +954,7 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   // ─── WebSocket (log streaming) ───────────────────────────────────────────
-  attachWebSocket(app, { store, runner });
+  attachWebSocket(app, { store, runner, resolveUser });
 
   // ─── Error handler ───────────────────────────────────────────────────────
   app.use((err, req, res, next) => {
@@ -966,11 +966,14 @@ export function createApp({ store, runner, token, origins }) {
   return app;
 }
 
-function attachWebSocket(app, { store, runner }) {
+function attachWebSocket(app, { store, runner, resolveUser }) {
   const server = app.__wssServer ?? createServer(app);
   app.__wssServer = server;
   const wss = new WebSocketServer({ server, path: '/ws' });
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    // Log run memuat data pelanggan; tanpa sesi valid tidak ada yang boleh mendengar.
+    // Resolver-nya sama dengan requireAuth, jadi aturan cookie/bearer tidak bercabang.
+    if (!resolveUser(req)) return ws.close(1008, 'Unauthorized');
     let subscribed = false;
     const onLog = (msg) => { if (subscribed) ws.send(JSON.stringify(msg)); };
     const onStatus = (msg) => { if (subscribed) ws.send(JSON.stringify(msg)); };

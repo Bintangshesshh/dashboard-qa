@@ -16,6 +16,8 @@ import { Store, databasePath } from '../store.mjs';
 import { Runner } from '../runner.mjs';
 import { runRetention } from '../retention.mjs';
 import { backupDatabase } from '../backup.mjs';
+// Klien ws (bukan WebSocket global) karena hanya ini yang bisa mengirim header cookie.
+import { WebSocket } from 'ws';
 
 const scrypt = promisify(_scrypt);
 const PASSWORD = 'rahasia-test-123';
@@ -41,9 +43,13 @@ async function fixture(t) {
     runsDir: await mkdtemp(join(tmpdir(), 'pb-runs-')),
     start() {},
     async cancel() { return true; },
+    // Runner asli EventEmitter; stub ini cukup menampung langganan log dari /ws.
+    on() {},
+    off() {},
   };
   const app = createApp({ store, runner, token: null, origins: [ORIGIN, 'https://ebh.test', 'https://staging.ebh.test'] });
-  const server = createServer(app);
+  // Pakai server yang sama dengan tempat WebSocket terpasang, persis seperti main().
+  const server = app.__wssServer ?? createServer(app);
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -1560,4 +1566,28 @@ test('T14: GET /api/help memuat versi, node, dan perintah update', async t => {
   assert.match(r.body.update_commands[0], /@playwright\/test@latest/);
   // null = FEEDBACK_URL belum diisi; UI wajib punya fallback.
   assert.equal(r.body.feedback_url, process.env.FEEDBACK_URL || null);
+});
+
+// Log run bisa memuat data pelanggan, jadi /ws wajib sesi. Klien tanpa cookie
+// harus ditutup 1008 sebelum sempat subscribe; dengan cookie, penolakan baru
+// datang dari validasi runId ("Unknown run"), bukan dari auth.
+test('websocket log menolak klien tanpa sesi', async t => {
+  const f = await fixture(t);
+  const url = f.base.replace('http', 'ws') + '/ws';
+
+  const closed = ws => new Promise(res => ws.on('close', (code, reason) => res({ code, reason: reason.toString() })));
+  const open = ws => new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
+
+  const anon = new WebSocket(url, { origin: f.base });
+  const anonClose = await closed(anon);
+  assert.equal(anonClose.code, 1008);
+  assert.equal(anonClose.reason, 'Unauthorized');
+
+  const cookie = await f.login();
+  const auth = new WebSocket(url, { origin: f.base, headers: { cookie } });
+  await open(auth);
+  auth.send(JSON.stringify({ type: 'subscribe', runId: 'tidak-ada' }));
+  const authClose = await closed(auth);
+  assert.equal(authClose.code, 1008);
+  assert.equal(authClose.reason, 'Unknown run', 'sesi valid harus lolos gerbang auth');
 });
