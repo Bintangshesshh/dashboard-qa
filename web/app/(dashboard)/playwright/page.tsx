@@ -6,8 +6,8 @@ import { CodeEditor } from "../code-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, fmtDur,
-  type LogEntry, type PlaywrightResult, type Project, type Run, type TestFile,
+  api, artifactUrl, fmtDur, fmtTime,
+  type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
@@ -44,6 +44,9 @@ export default function PlaywrightPage() {
   // Terminal dipisah per project: satu kunci sessionStorage per project, jadi
   // ganti dropdown tidak menumpuk log project lain.
   const [starting, setStarting] = useState(false);
+  // Sesi milik run terakhir + batas reuse dari DB (bukan hardcode).
+  const [session, setSession] = useState<Session | null>(null);
+  const [reuseMinutes, setReuseMinutes] = useState<number | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -81,6 +84,13 @@ export default function PlaywrightPage() {
     }).catch(e => setError(e.message));
   }, []);
 
+  // Nilai reuse dari tabel settings; endpoint admin-only, viewer cukup tidak
+  // melihat saran sesi.
+  useEffect(() => {
+    api.settings().then(x => setReuseMinutes(Number(x.session_reuse_minutes) || null))
+      .catch(() => {});
+  }, []);
+
   // Spec otomatis: project hanya punya satu spec Playwright. Dropdown Spec dihapus
   // (belum ada API bikin file baru).
   useEffect(() => {
@@ -96,6 +106,11 @@ export default function PlaywrightPage() {
   const productionOk = env !== "production" || confirmName.trim() === (project?.name ?? "");
   const dirty = !!selected && draft !== savedCode;
   const running = !!run && !FINAL.includes(run.status);
+  const sessionAge = session
+    ? Math.max(0, Math.round((Date.now() - Date.parse(session.created_at)) / 60000))
+    : 0;
+  // Saran hanya muncul kalau batas reuse sudah diketahui dari DB.
+  const stale = !!session && !session.closed_at && reuseMinutes !== null && sessionAge > reuseMinutes;
 
   // Poll run + log selama belum final. 1.5s cukup; run Playwright hitungan menit.
   useEffect(() => {
@@ -123,6 +138,15 @@ export default function PlaywrightPage() {
     tick();
     return () => { alive = false; clearTimeout(timer); };
   }, [runId]);
+
+  // Sesi milik run yang dipantau: umurnya menentukan saran sesi baru.
+  useEffect(() => {
+    const id = run?.session_id;
+    if (!id) { setSession(null); return; }
+    let alive = true;
+    api.session(id).then(x => { if (alive) setSession(x); }).catch(() => {});
+    return () => { alive = false; };
+  }, [run?.session_id]);
 
   const save = async (force = false) => {
     if (!selected) return;
@@ -167,7 +191,8 @@ export default function PlaywrightPage() {
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
 
-  const start = async () => {
+  // fresh=true memaksa sesi baru: server menutup sesi terbuka yang idle.
+  const start = async (fresh = false) => {
     setStarting(true); setError("");
     setRunId(null); setRun(null); setLogs([]);
     try {
@@ -178,7 +203,9 @@ export default function PlaywrightPage() {
       // Flush autosave yang masih menunggu supaya run memakai kode terbaru.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; await save(); }
       // Konfirmasi production diketik user; guard yang sama ada di server.
-      const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
+      const created = await api.createSession(
+        projectId, env, env === "production" ? confirmName : undefined, fresh,
+      );
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`pw-run:${projectId}`, runId);
       setRunsByProject(prev => ({ ...prev, [projectId]: runId }));
@@ -211,9 +238,14 @@ export default function PlaywrightPage() {
           <span className={`pb-save-state${conflict ? " bad" : dirty ? " dirty" : ""}`} aria-live="polite">
             {conflict ? "Konflik disk" : saveState}
           </span>
-          <button className="pb-btn primary" onClick={start}
+          <button className="pb-btn primary" onClick={() => start()}
             disabled={starting || running || !selected || !target || !productionOk}>
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
+          </button>
+          <button className="pb-btn" onClick={() => start(true)}
+            disabled={starting || running || !selected || !target || !productionOk}
+            title="Tutup sesi terbuka yang idle lalu mulai sesi baru">
+            Sesi baru
           </button>
           {running && <button className="pb-btn" onClick={stop}>Stop</button>}
         </div>
@@ -239,6 +271,14 @@ export default function PlaywrightPage() {
           <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
             Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
           </p>
+          {session && (
+            <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
+              {session.closed_at ? "Sesi terakhir sudah ditutup" : "Sesi terbuka"}
+              {" sejak "}<span className="pb-mono">{fmtTime(session.created_at)}</span>
+              {session.closed_at ? "" : ` · umur ${sessionAge} menit`}
+              {stale ? ` · lewat batas reuse ${reuseMinutes} menit, pakai Sesi baru` : ""}
+            </p>
+          )}
         </div>
         {env === "production" && (
           <label className="pb-field" style={{ marginTop: 12 }}>

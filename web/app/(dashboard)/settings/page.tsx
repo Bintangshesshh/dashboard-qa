@@ -93,7 +93,7 @@ const SECTIONS: SettingSection[] = [
   },
   {
     id: "upload",
-    tab: "lh",
+    tab: "report",
     title: "Upload artifact",
     desc: "Batas ukuran satu upload artifact dari runner.",
     fields: [
@@ -406,6 +406,9 @@ export default function SettingsPage() {
                     Spec nonaktif tetap tersimpan tapi tidak ditawarkan saat memilih run.
                   </div>
                 </div>
+                <span className="pb-set-status">
+                  {pwFiles.filter(f => f.enabled).length} spec aktif dari {pwFiles.length}
+                </span>
               </div>
               {projects.map(p => {
                 const own = pwFiles.filter(f => f.project_id === p.id);
