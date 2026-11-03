@@ -9,7 +9,7 @@ import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfi
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, pct, runStatusLabel,
+  api, artifactUrl, groupProjects, pct, runStatusLabel,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
 
@@ -204,7 +204,11 @@ export default function LighthousePage() {
             Project
             <select className="pb-select" value={projectId}
               onChange={e => { setProjectId(e.target.value); setConfirmName(""); }}>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {groupProjects(projects).map(g => (
+                <optgroup key={g.id} label={g.name}>
+                  {g.items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </optgroup>
+              ))}
             </select>
           </label>
           <label className="pb-field">

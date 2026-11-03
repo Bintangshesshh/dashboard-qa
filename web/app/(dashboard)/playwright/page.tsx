@@ -6,7 +6,7 @@ import { CodeEditor } from "../code-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, fmtDur, fmtTime,
+  api, artifactUrl, fmtDur, fmtTime, groupProjects,
   type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
 
@@ -258,7 +258,11 @@ export default function PlaywrightPage() {
             Project
             <select className="pb-select" value={projectId}
               onChange={e => { setProjectId(e.target.value); setConfirmName(""); }}>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {groupProjects(projects).map(g => (
+                <optgroup key={g.id} label={g.name}>
+                  {g.items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </optgroup>
+              ))}
             </select>
           </label>
           <label className="pb-field">

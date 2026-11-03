@@ -110,6 +110,13 @@ export default function SessionDetail() {
     catch (e) { setError((e as Error).message); }
   };
 
+  const closeSession = async () => {
+    if (!confirm("Tutup sesi ini? Run baru akan membuat sesi terpisah.")) return;
+    setBusy("close"); setError(""); setNotice("");
+    try { await api.closeSession(sessionId); setNotice("Sesi ditutup."); load(); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(""); }
+  };
+
   const deleteRun = async (run: Run) => {
     if (!confirm("Hapus run ini beserta artifact-nya?")) return;
     setBusy(run.id); setError(""); setNotice("");
@@ -155,6 +162,11 @@ export default function SessionDetail() {
               </>
             )}
           </div>
+          <button className="pb-btn sm" onClick={closeSession}
+            disabled={!!busy || !!session.closed_at || active > 0}
+            title={active > 0 ? "Tunggu run selesai dulu." : "Run baru akan memakai sesi baru."}>
+            Tutup sesi
+          </button>
           <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
         </div>
       </div>

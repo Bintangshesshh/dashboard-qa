@@ -20,7 +20,8 @@ export default function ProjectReports() {
   }, [projectId]);
 
   useEffect(() => {
-    api.projects()
+    // all=true: halaman project arsip tetap harus terbuka.
+    api.projects({ all: true })
       .then(ps => {
         const found = ps.find(p => p.id === projectId) ?? null;
         setProject(found);

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, fmtDate, type Project, type Stats } from "../../../lib/playbook";
+import { api, fmtDate, groupProjects, type Project, type Stats } from "../../../lib/playbook";
 
 // Satu kartu per project, selalu tampil walau belum ada sesi.
 export default function ReportsPage() {
@@ -11,7 +11,8 @@ export default function ReportsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.projects()
+    // all=true: report project arsip harus tetap bisa dibuka.
+    api.projects({ all: true })
       .then(async ps => {
         setProjects(ps);
         // Satu project gagal stats tidak boleh mengosongkan kartu lainnya.
@@ -42,7 +43,7 @@ export default function ReportsPage() {
         <p className="pb-empty">Belum ada project.</p>
       ) : (
         <div className="pb-project-grid">
-          {projects.map(p => {
+          {groupProjects(projects).flatMap(g => g.items).map(p => {
             const s = stats[p.id];
             const rate = s?.passRate == null ? null : Math.round(s.passRate * 100);
             const tone = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
@@ -50,7 +51,7 @@ export default function ReportsPage() {
               <div className="pb-card pb-pcard" key={p.id}>
                 <div className="pb-pcard-top">
                   <div>
-                    <h3>{p.name}</h3>
+                    <h3>{p.name}{!p.active && <span className="pb-badge closed">Arsip</span>}</h3>
                     <div className="pb-pcard-meta">{s?.sessions ?? 0} sesi · {s?.runs ?? 0} run</div>
                   </div>
                   <span

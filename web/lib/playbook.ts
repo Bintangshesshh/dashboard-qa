@@ -328,3 +328,17 @@ export const fmtTime = (iso: string | null) =>
     ? new Date(iso).toLocaleTimeString("id-ID", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }) + " WIB"
     : "-";
 export const pct = (v: number | null) => (v == null ? "-" : Math.round(v * 100) + "%");
+
+// Kelompokkan project untuk optgroup dan pohon tampilan. Project tanpa grup
+// masuk bucket terakhir supaya urutan tidak melompat.
+export const groupProjects = (projects: Project[]) => {
+  const groups: { id: string; name: string; items: Project[] }[] = [];
+  for (const p of projects) {
+    const id = p.group_id ?? "";
+    let g = groups.find(x => x.id === id);
+    if (!g) { g = { id, name: p.group_name ?? "Tanpa grup", items: [] }; groups.push(g); }
+    g.items.push(p);
+  }
+  return groups.sort((a, b) =>
+    a.id === "" ? 1 : b.id === "" ? -1 : a.name.localeCompare(b.name));
+};
