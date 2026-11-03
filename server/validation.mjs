@@ -6,12 +6,12 @@ export function fail(message, status = 400) {
 export function id(value) {
   // UUID (sesi/run/report) atau ID berawalan seperti p_ebh, tf_lighthouserc_ebh_js.
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(value))
-    fail('Invalid ID');
+    fail('ID tidak sah');
   return value;
 }
 export function text(value, name, max = 200) {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
-    fail(`${name} must contain 1-${max} characters`);
+    fail(`${name} harus 1-${max} karakter`);
   return value.trim();
 }
 export function optionalText(value, name, max = 200) {
@@ -22,23 +22,23 @@ export function optionalText(value, name, max = 200) {
 // dan memicu status "belum disimpan" palsu di editor.
 export function code(value, max = 200000) {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
-    fail(`code must contain 1-${max} characters`);
+    fail(`Kode harus 1-${max} karakter`);
   return value;
 }
 // env dari PRD §6: hanya local | staging | production
 export function env(value) {
-  if (!['local', 'staging', 'production'].includes(value)) fail('env must be local|staging|production');
+  if (!['local', 'staging', 'production'].includes(value)) fail('env harus salah satu: local, staging, production');
   return value;
 }
 export function tool(value) {
-  if (!['pw', 'lh'].includes(value)) fail('tool must be pw|lh');
+  if (!['pw', 'lh'].includes(value)) fail('tool harus pw atau lh');
   return value;
 }
 export function allowlist(value = '') {
   return value.split(',').filter(Boolean).map(entry => {
     const u = new URL(entry.trim());
     if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || u.pathname !== '/' || u.search || u.hash)
-      throw new Error('TARGET_ALLOWLIST entries must be HTTP(S) origins');
+      throw new Error('TARGET_ALLOWLIST harus berisi origin http(s) tanpa path');
     return u.origin;
   });
 }
@@ -57,7 +57,7 @@ export function target(value, origins) {
 // dibatasi karena admin yang mengisi; yang dicegah hanya skema aneh (javascript:).
 export function url(value, name = 'url') {
   let u;
-  try { u = new URL(value); } catch { fail(`Invalid ${name}`); }
+  try { u = new URL(value); } catch { fail(`${name} tidak sah`); }
   if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password)
     fail(`${name} harus URL http(s) tanpa kredensial`);
   return u.href;
@@ -75,32 +75,32 @@ export function authorized(value, token) {
 }
 export function cursor(value = 0) {
   const n = Number(value);
-  if (!Number.isSafeInteger(n) || n < 0) fail('Invalid log cursor');
+  if (!Number.isSafeInteger(n) || n < 0) fail('Cursor log tidak sah');
   return n;
 }
 export function rangeDays(query, fallback = 14) {
   const v = query.range;
   if (v === undefined) return fallback;
   const n = Number(v);
-  if (!Number.isSafeInteger(n) || n <= 0) fail('range must be a positive integer');
+  if (!Number.isSafeInteger(n) || n <= 0) fail('range harus bilangan bulat positif');
   return n;
 }
 export function isoTimestamp(value) {
-  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) fail('Invalid timestamp');
+  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) fail('Waktu tidak sah');
   return new Date(value).toISOString();
 }
 // boolean integer untuk kolom SQLite
 export function bool(value, name) {
   if (typeof value === 'boolean') return value ? 1 : 0;
   if (value === 1 || value === 0) return value;
-  fail(`${name} must be boolean`);
+  fail(`${name} harus boolean`);
 }
 
 // ─── Test file (PRD §9) ─────────────────────────────────────────────────────
 // Path relatif ke root repo, unik global: spec/config antar project tidak
 // saling menimpa di disk.
 export function testFilePath(value) {
-  if (typeof value !== 'string' || !value.trim() || value.length > 500) fail('path must contain 1-500 characters');
+  if (typeof value !== 'string' || !value.trim() || value.length > 500) fail('path harus 1-500 karakter');
   const p = value.trim();
   if (p.includes('..')) fail('path tidak boleh mengandung ..');
   if (/^([a-zA-Z]:|[\\/])/.test(p)) fail('path harus relatif');

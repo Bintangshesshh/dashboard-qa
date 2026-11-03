@@ -228,7 +228,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.patch('/api/project-groups/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const group = store.getProjectGroup(id(req.params.id));
-    if (!group) fail('Not found', 404);
+    if (!group) fail('Data tidak ditemukan', 404);
     const name = text(req.body?.name, 'name');
     const other = store.projectGroupByName(name);
     if (other && other.id !== group.id) fail('Nama grup sudah dipakai', 409);
@@ -239,7 +239,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.delete('/api/project-groups/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const group = store.getProjectGroup(id(req.params.id));
-    if (!group) fail('Not found', 404);
+    if (!group) fail('Data tidak ditemukan', 404);
     // Grup kosong saja; project arsip juga dihitung.
     if (store.countProjectsInGroup(group.id) > 0) fail('Grup masih berisi project', 409);
     store.deleteProjectGroup(group.id);
@@ -306,7 +306,7 @@ export function createApp({ store, runner, token, origins }) {
   app.patch('/api/projects/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const projectId = id(req.params.id);
     const p = store.getProject(projectId);
-    if (!p) fail('Not found', 404);
+    if (!p) fail('Data tidak ditemukan', 404);
     const fields = {};
     if (req.body.name !== undefined) {
       fields.name = text(req.body.name, 'name');
@@ -338,10 +338,10 @@ export function createApp({ store, runner, token, origins }) {
   app.delete('/api/projects/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const projectId = id(req.params.id);
     const p = store.getProject(projectId);
-    if (!p) fail('Not found', 404);
+    if (!p) fail('Data tidak ditemukan', 404);
     const history = store.projectHistory(projectId);
     if (history.testFiles || history.sessions || history.runs) {
-      fail('Project punya riwayat. Arsipkan saja lewat PATCH active=0.', 409);
+      fail('Project ini sudah punya riwayat, jadi tidak bisa dihapus. Pakai tombol Arsipkan di kolom aksi.', 409);
     }
     store.deleteProject(projectId);
     store.audit({ userId: req.user.id, action: 'delete_project', entity: 'projects', entityId: projectId });
@@ -352,7 +352,7 @@ export function createApp({ store, runner, token, origins }) {
   app.get('/api/test-files', requireAuth, route(async (req, res) => {
     const { project, tool, all } = req.query;
     // all=1 hanya untuk halaman seting (admin); pemanggil run tetap dapat yang aktif.
-    if (all === '1' && req.user.role !== 'admin') fail('Forbidden', 403);
+    if (all === '1' && req.user.role !== 'admin') fail('Akses ditolak', 403);
     res.json(store.listTestFiles({
       projectId: project ?? undefined,
       tool: tool === 'pw' || tool === 'lh' ? tool : undefined,
@@ -394,7 +394,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.patch('/api/test-files/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const tf = store.getTestFile(id(req.params.id));
-    if (!tf) fail('Not found', 404);
+    if (!tf) fail('Data tidak ditemukan', 404);
     const project = store.getProject(tf.project_id);
     const fields = {};
     if (req.body.path !== undefined) {
@@ -436,7 +436,7 @@ export function createApp({ store, runner, token, origins }) {
   // memutus riwayat report.
   app.delete('/api/test-files/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const tf = store.getTestFile(id(req.params.id));
-    if (!tf) fail('Not found', 404);
+    if (!tf) fail('Data tidak ditemukan', 404);
     const used = store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE test_file_id=?').get(tf.id).n;
     if (used) fail('Test file sudah dipakai run. Nonaktifkan saja.', 409);
     store.db.prepare('DELETE FROM test_files WHERE id=?').run(tf.id);
@@ -447,7 +447,7 @@ export function createApp({ store, runner, token, origins }) {
   // Muat ulang isi spec dari disk ke DB (arah sebaliknya, manual).
   app.post('/api/test-files/:id/reload', requireAuth, requireAdmin, route(async (req, res) => {
     const tf = store.getTestFile(id(req.params.id));
-    if (!tf) fail('Not found', 404);
+    if (!tf) fail('Data tidak ditemukan', 404);
     if (tf.tool !== 'pw') fail('Hanya spec Playwright yang punya file di disk', 400);
     const disk = await readSpec(specPath(root, tf.path));
     if (!disk) fail('File spec tidak ada di disk', 404);
@@ -546,7 +546,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.get('/api/sessions/:id', requireAuth, route(async (req, res) => {
     const session = store.getSession(id(req.params.id), true);
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     session.reports = store.listReportsBySession(session.id);
     res.json(session);
   }));
@@ -554,7 +554,7 @@ export function createApp({ store, runner, token, origins }) {
   // PRD §10.6: `Tutup sesi` mengunci sesi (closed_at), bukan menghapus.
   app.post('/api/sessions/:id/close', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id));
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     if (session.closed_at) return res.json(session);
     if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
     store.closeSession(session.id);
@@ -564,7 +564,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.delete('/api/sessions/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id), true);
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     // Jangan hapus folder di bawah proses yang masih jalan.
     if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
     const runIds = (session.runs ?? []).map(r => r.id);
@@ -643,7 +643,7 @@ export function createApp({ store, runner, token, origins }) {
   // ─── Runs ────────────────────────────────────────────────────────────────
   app.post('/api/sessions/:id/runs', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id));
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     const testFileId = id(req.body?.testFileId);
     const tf = store.getTestFile(testFileId);
     if (!tf) fail('Test file tidak ditemukan', 400);
@@ -718,7 +718,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.post('/api/runs/:id/start', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     if (['passed', 'failed', 'cancelled', 'interrupted'].includes(run.status)) fail('Run sudah final', 409);
     requireActiveProject(store.getProject(store.getSession(run.session_id).project_id));
     const started = store.patchRun(run.id, { status: 'running', started_at: run.started_at ?? new Date().toISOString() });
@@ -728,13 +728,13 @@ export function createApp({ store, runner, token, origins }) {
 
   app.post('/api/runs/:id/logs', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     const entries = req.body?.entries;
-    if (!Array.isArray(entries)) fail('entries must be an array');
+    if (!Array.isArray(entries)) fail('entries harus array');
     if (entries.length > 5000) fail('entries maksimal 5000 per batch');
     const clean = entries.map(e => {
-      if (!Number.isSafeInteger(Number(e?.seq)) || Number(e.seq) < 0) fail('seq must be a non-negative integer');
-      if (typeof e?.text !== 'string') fail('text must be a string');
+      if (!Number.isSafeInteger(Number(e?.seq)) || Number(e.seq) < 0) fail('seq harus bilangan bulat >= 0');
+      if (typeof e?.text !== 'string') fail('text harus string');
       return { seq: Number(e.seq), stream: String(e.stream ?? 'stdout').slice(0, 20), text: e.text, at: isoTimestamp(e.at ?? new Date().toISOString()) };
     });
     store.logsBatch(run.id, clean);
@@ -744,11 +744,11 @@ export function createApp({ store, runner, token, origins }) {
   // Upload artifact mentah: body biner, query ?kind=&path=
   app.put('/api/runs/:id/artifacts', express.raw({ type: () => true, limit: '100mb' }), requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     const kind = String(req.query.kind ?? 'log');
     if (!['pw-html', 'lh-html', 'pw-json', 'lh-json', 'trace', 'screenshot', 'video', 'log'].includes(kind)) fail('kind tidak dikenal');
     const rel = String(req.query.path ?? '');
-    if (!rel || rel.includes('..') || rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) fail('Invalid path', 400);
+    if (!rel || rel.includes('..') || rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) fail('Path tidak sah', 400);
     const maxMb = Number(store.getSetting('max_upload_mb') ?? 100);
     const body = req.body;
     if (!Buffer.isBuffer(body) || !body.length) fail('Body harus biner (application/octet-stream)');
@@ -772,7 +772,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.get('/api/runs/:id', requireAuth, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     run.artifacts = store.listArtifacts(run.id);
     run.results = run.tool === 'pw' ? store.listPlaywrightResults(run.id) : store.listLighthouseResults(run.id);
     // PRD §7: console & network dipisah dari logs (dipakai panel §10.3).
@@ -784,13 +784,13 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   app.get('/api/runs/:id/logs', requireAuth, route(async (req, res) => {
-    if (!store.getRun(id(req.params.id))) fail('Not found', 404);
+    if (!store.getRun(id(req.params.id))) fail('Data tidak ditemukan', 404);
     const after = cursor(req.query.after);
     res.json(await store.logs(req.params.id, after));
   }));
 
   app.get('/api/runs/:id/logs/download', requireAuth, route(async (req, res) => {
-    if (!store.getRun(id(req.params.id))) fail('Not found', 404);
+    if (!store.getRun(id(req.params.id))) fail('Data tidak ditemukan', 404);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.send(await store.logsText(req.params.id));
   }));
@@ -800,12 +800,12 @@ export function createApp({ store, runner, token, origins }) {
 
   app.patch('/api/runs/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const existing = store.getRun(id(req.params.id));
-    if (!existing) fail('Not found', 404);
+    if (!existing) fail('Data tidak ditemukan', 404);
     const b = req.body ?? {};
     const fields = {};
 
     if (b.status !== undefined) {
-      if (!RUN_STATUS.includes(b.status)) fail(`status must be ${RUN_STATUS.join('|')}`);
+      if (!RUN_STATUS.includes(b.status)) fail(`status harus ${RUN_STATUS.join('|')}`);
       fields.status = b.status;
     }
     // PRD §7 pakai camelCase; snake_case tetap diterima (klien lama).
@@ -817,11 +817,11 @@ export function createApp({ store, runner, token, origins }) {
     if (finishedAt !== undefined) fields.finished_at = isoTimestamp(finishedAt);
     if (b.finalized_at !== undefined) fields.finalized_at = isoTimestamp(b.finalized_at);
     if (durationMs !== undefined) {
-      if (!Number.isFinite(Number(durationMs)) || Number(durationMs) < 0) fail('duration_ms must be a non-negative number');
+      if (!Number.isFinite(Number(durationMs)) || Number(durationMs) < 0) fail('duration_ms harus angka >= 0');
       fields.duration_ms = Number(durationMs);
     }
     if (exitCode !== undefined) {
-      if (!Number.isInteger(Number(exitCode))) fail('exit_code must be an integer');
+      if (!Number.isInteger(Number(exitCode))) fail('exit_code harus bilangan bulat');
       fields.exit_code = Number(exitCode);
     }
     if (b.error !== undefined) fields.error = b.error == null ? null : String(b.error).slice(0, 2000);
@@ -843,7 +843,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.post('/api/runs/:id/cancel', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     if (['passed', 'failed', 'cancelled', 'interrupted'].includes(run.status)) fail('Run sudah final', 409);
     // Run yang masih antre belum dipegang runner; tandai langsung.
     if (run.status === 'queued') {
@@ -859,7 +859,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.delete('/api/runs/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     if (['queued', 'running', 'uploading'].includes(run.status)) fail('Run masih berjalan, batalkan dulu', 409);
     store.deleteRun(req.params.id);
     store.markReportsStale(run.session_id);
@@ -871,7 +871,7 @@ export function createApp({ store, runner, token, origins }) {
   // ─── Reports ─────────────────────────────────────────────────────────────
   // Satu laporan per scope per sesi; isinya run final terbaru per tool.
   function publishReport(sessionId, scope, userId) {
-    if (!['pw', 'lh', 'both'].includes(scope)) fail("scope must be 'pw'|'lh'|'both'", 400);
+    if (!['pw', 'lh', 'both'].includes(scope)) fail('scope harus pw, lh, atau both', 400);
     // cancelled/interrupted sudah selesai; hanya run aktif yang memblokir.
     if (store.countRunsByStatus(sessionId, ['queued', 'running', 'uploading']) > 0) fail('Ada run yang belum final', 409);
     const finals = store.listRunsBySession(sessionId).filter(r => ['passed', 'failed'].includes(r.status));
@@ -891,7 +891,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.post('/api/sessions/:id/reports', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id));
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     const report = publishReport(session.id, req.body?.scope, req.user.id);
     store.audit({ userId: req.user.id, action: 'publish_report', entity: 'reports', entityId: report.id, detail: JSON.stringify({ session: session.id, scope: report.scope }) });
     res.status(202).json({ reportId: report.id, runIds: JSON.parse(report.run_ids ?? '[]') });
@@ -899,7 +899,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.get('/api/reports/:id', requireAuth, route(async (req, res) => {
     const report = store.getReport(id(req.params.id));
-    if (!report) fail('Not found', 404);
+    if (!report) fail('Data tidak ditemukan', 404);
     res.json(report);
   }));
 
@@ -1002,18 +1002,18 @@ export function createApp({ store, runner, token, origins }) {
 
   app.get('/artifacts/reports/:reportId/*', requireAuth, route(async (req, res) => {
     const report = store.getReport(id(req.params.reportId));
-    if (!report) fail('Not found', 404);
+    if (!report) fail('Data tidak ditemukan', 404);
     // Link ke folder (mis. "<runId>/") dipetakan ke index.html; link lama tetap hidup.
     const asked = (req.params[0] ?? '').replace(/\/$/, '');
     const rel = asked === '' || !/\.[a-z0-9]+$/i.test(asked) ? (asked ? asked + '/index.html' : 'index.html') : asked;
-    if (rel.includes('..')) fail('Invalid path', 400);
+    if (rel.includes('..')) fail('Path tidak sah', 400);
     const base = join(reportsDir, report.id);
     // Report lama tidak punya report.md; susun dari DB supaya tautan tidak 404.
     if (rel === 'report.md') {
       const cached = await realpath(join(base, rel)).catch(() => null);
       if (!cached) {
         const markdown = reportMarkdownFor(store, report.id);
-        if (!markdown) fail('Not found', 404);
+        if (!markdown) fail('Data tidak ditemukan', 404);
         res.type('text/markdown; charset=utf-8');
         res.setHeader('X-Robots-Tag', 'noindex');
         res.send(markdown);
@@ -1022,9 +1022,9 @@ export function createApp({ store, runner, token, origins }) {
     }
     // realpath melempar ENOENT kalau file belum ada (mis. report lama tanpa report.md).
     const file = await realpath(join(base, rel)).catch(() => null);
-    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Not found', 404);
+    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Data tidak ditemukan', 404);
     const stat = await lstat(file).catch(() => null);
-    if (!stat?.isFile()) fail('Not found', 404);
+    if (!stat?.isFile()) fail('Data tidak ditemukan', 404);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
@@ -1035,16 +1035,16 @@ export function createApp({ store, runner, token, origins }) {
   app.get('/artifacts/:runId/*', requireAuth, route(async (req, res) => {
     const runId = id(req.params.runId);
     const run = store.getRun(runId);
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     // Sama: folder artifact (mis. "playwright-report/") dipetakan ke index.html.
     const asked = (req.params[0] ?? '').replace(/\/$/, '');
     const rel = asked === '' || !/\.[a-z0-9]+$/i.test(asked) ? (asked ? asked + '/index.html' : 'index.html') : asked;
-    if (rel.includes('..')) fail('Invalid path', 400);
+    if (rel.includes('..')) fail('Path tidak sah', 400);
     const base = join(runsDir, runId, 'artifacts');
     const file = await realpath(join(base, rel)).catch(() => null);
-    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Path tidak ada', 404);
+    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Path tidak ditemukan', 404);
     const stat = await lstat(file).catch(() => null);
-    if (!stat?.isFile()) fail('Not found', 404);
+    if (!stat?.isFile()) fail('Data tidak ditemukan', 404);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
@@ -1095,7 +1095,7 @@ function attachWebSocket(app, { store, runner, resolveUser }) {
         if (replay.hasMore) ws.send(JSON.stringify({ type: 'replay-truncated', runId, fromSeq: replay.nextAfter }));
         ws.send(JSON.stringify({ type: 'status', run: store.getRun(runId) }));
         ws.send(JSON.stringify({ type: 'replay-complete', runId }));
-      } catch { ws.close(1008, 'Invalid subscription'); }
+      } catch { ws.close(1008, 'Langganan log tidak sah'); }
     });
     ws.on('close', () => { clearTimeout(timer); runner.off('log', onLog); runner.off('status', onStatus); });
     ws.on('error', () => ws.close());
@@ -1115,7 +1115,7 @@ export async function main() {
     console.log(`membersihkan ${staleUploads.length} run upload basi`);
   }
   const origins = allowlist(process.env.TARGET_ALLOWLIST);
-  if (!origins.length) throw new Error('TARGET_ALLOWLIST must contain at least one exact origin');
+  if (!origins.length) throw new Error('TARGET_ALLOWLIST harus berisi minimal satu origin persis');
   // PRD §8.6: retensi harian. Opt-in lewat env supaya deployment bisa pakai cron
   // eksternal (scripts/retention.mjs) tanpa dua job jalan bersamaan.
   // PRD §8.6/A60: backup wajib jalan SEBELUM retensi. Kalau RETENTION_INTERVAL_MS
