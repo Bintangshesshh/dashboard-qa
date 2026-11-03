@@ -838,7 +838,8 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-group-head .pb-input { max-width: 240px; }
 .pb-proj-row { border-top: 1px solid var(--line); padding: 8px 12px; }
 .pb-proj-row:first-of-type { border-top: 0; }
-.pb-proj-row.archived { opacity: .62; }
+/* Arsip tetap terbaca: jangan turunkan opasitas terlalu jauh. */
+.pb-proj-row.archived { opacity: .8; }
 .pb-proj-row-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pb-proj-toggle {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -1461,4 +1462,35 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   .pb-lh-budgets { grid-template-columns: minmax(0, 1fr); }
   .pb-run-row { grid-template-columns: 74px minmax(0, 1fr); }
   .pb-run-dur { display: none; }
+}
+
+/* ---------- T17: responsif Seting (900px / 640px) ---------- */
+@media (max-width: 900px) {
+  /* Tab bar bisa digeser, bukan memaksa lebar halaman melebar. */
+  .pb-set-tabbar { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; }
+  .pb-set-tabbar .pb-tab { flex: 0 0 auto; white-space: nowrap; }
+  .pb-group-head .pb-input { max-width: none; flex: 1 1 180px; }
+  .pb-proj-body { padding-left: 12px; }
+  .pb-spec-row { grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .pb-lh-budgets { gap: 10px 14px; }
+  .pb-group-label { margin-bottom: 8px; }
+}
+
+@media (max-width: 640px) {
+  .pb-set-tabbar .pb-tab { padding: 6px 8px; font-size: 11px; }
+  .pb-group-head { gap: 8px; padding: 8px 10px; }
+  .pb-group-head .pb-input { flex: 1 1 100%; }
+  .pb-proj-row { padding: 8px 10px; }
+  .pb-proj-row-head { gap: 8px; }
+  .pb-proj-body { padding: 10px 0 2px; }
+  /* Nama dan path spec menumpuk; kontrol turun ke baris sendiri. */
+  .pb-spec-row { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+  .pb-spec-name, .pb-spec-path { flex: 1 1 100%; }
+  .pb-file-list .pb-spec-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .pb-lh-budgets { grid-template-columns: minmax(0, 1fr); }
+  .pb-lh-urls .pb-row { flex-direction: column; align-items: stretch; }
+  .pb-lh-urls .pb-row > * { width: 100%; }
+  .pb-kv-row { gap: 2px; }
+  .pb-group-label { gap: 6px; }
+  .pb-cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
 }
