@@ -3,9 +3,10 @@ import { WebSocketServer } from 'ws';
 import { randomUUID, createHash, scrypt as _scrypt, randomBytes, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { realpath, lstat, rm, mkdir, writeFile } from 'node:fs/promises';
+import { realpath, lstat, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { Store } from './store.mjs';
 import { Runner, MAX_LH_URLS } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
@@ -14,7 +15,7 @@ import { reportMarkdownFor } from '../scripts/report-md.mjs';
 import { runRetention } from './retention.mjs';
 import { specPath, readSpec, writeSpec } from './spec-sync.mjs';
 import { backupDatabase } from './backup.mjs';
-import { fail, id, text, code as codeValue, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp } from './validation.mjs';
+import { fail, id, text, code as codeValue, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp, testFilePath, checkLhConfig, checkPwConfig } from './validation.mjs';
 
 const scrypt = promisify(_scrypt);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -23,6 +24,17 @@ const route = fn => (req, res, next) => Promise.resolve().then(() => fn(req, res
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
 // ?range=N → ISO timestamp N hari lalu; tanpa range → undefined (tanpa batas).
+// PRD FR-07: timestamp DB tetap UTC, tampilan manusia memakai Asia/Jakarta + "WIB".
+// Format eksplisit supaya mesin server yang bukan WIB tidak menggeser jam.
+const TZ = 'Asia/Jakarta';
+const wibDate = (iso = new Date().toISOString()) => new Intl.DateTimeFormat('id-ID', {
+  timeZone: TZ, day: '2-digit', month: 'short', year: 'numeric',
+}).format(new Date(iso));
+const wibTime = (iso = new Date().toISOString()) => new Intl.DateTimeFormat('en-GB', {
+  timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+}).format(new Date(iso));
+export const wibStamp = (iso = new Date().toISOString()) => `${wibDate(iso)} ${wibTime(iso)} WIB`;
+
 const rangeStart = value => value === undefined ? undefined
   : new Date(Date.now() - rangeDays({ range: value }) * 86400000).toISOString();
 
@@ -130,15 +142,39 @@ export function createApp({ store, runner, token, origins }) {
   app.get('/api/health', route(async (req, res) => { await store.ping(); res.json({ ok: true, database: 'sqlite' }); }));
 
   // ─── Auth ────────────────────────────────────────────────────────────────
+  // Batas percobaan login per IP+username. In-memory supaya tidak menambah tabel;
+  // cukup untuk menahan tebak-tebakan password pada satu proses server.
+  const LOGIN_MAX_ATTEMPTS = 5;
+  const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+  const loginAttempts = new Map();
+  const loginKey = req => req.ip + '|' + String(req.body?.username ?? '').toLowerCase();
+  const loginRow = req => {
+    const key = loginKey(req);
+    const row = loginAttempts.get(key);
+    // Entri kedaluwarsa dibuang saat diakses: tidak perlu timer pembersih.
+    if (row && Date.now() - row.first > LOGIN_WINDOW_MS) { loginAttempts.delete(key); return null; }
+    return row ?? null;
+  };
+  const loginBlocked = req => (loginRow(req)?.count ?? 0) >= LOGIN_MAX_ATTEMPTS;
+  const loginFailed = req => {
+    const key = loginKey(req);
+    const row = loginRow(req);
+    if (row) row.count += 1; else loginAttempts.set(key, { count: 1, first: Date.now() });
+  };
+  const loginSucceeded = req => loginAttempts.delete(loginKey(req));
+
   app.post('/api/auth/login', route(async (req, res) => {
     if (!sameOrigin(req)) fail('Permintaan lintas origin ditolak', 403);
+    if (loginBlocked(req)) fail('Terlalu banyak percobaan login. Coba lagi 15 menit lagi.', 429);
     const username = text(req.body?.username, 'username', 64);
     const password = req.body?.password;
-    if (typeof password !== 'string' || !password) fail('Username atau password salah', 401);
+    if (typeof password !== 'string' || !password) { loginFailed(req); fail('Username atau password salah', 401); }
     const user = store.userByUsername(username);
     if (!user || !(await verifyPassword(password, user.password_hash).catch(() => false))) {
+      loginFailed(req);
       fail('Username atau password salah', 401);
     }
+    loginSucceeded(req);
     const rawToken = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8 jam
     store.createAuthSession({ id: sha256(rawToken), userId: user.id, expiresAt, ip: req.ip, userAgent: req.get('user-agent') });
@@ -172,76 +208,214 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   app.delete('/api/auth/cli-token/:id', requireAuth, requireAdmin, route(async (req, res) => {
-    if (!store.revokeCliToken(id(req.params.id))) fail('Token tidak ditemukan atau sudah dicabut', 404);
+    const tokenId = id(req.params.id);
+    if (!store.revokeCliToken(tokenId)) fail('Token tidak ditemukan atau sudah dicabut', 404);
+    // Pencabutan kredensial wajib tercatat: tanpa ini insiden token tidak bisa direkonstruksi.
+    store.audit({ userId: req.user.id, action: 'revoke_cli_token', entity: 'cli_tokens', entityId: tokenId });
+    res.sendStatus(204);
+  }));
+
+  // ─── Project groups ──────────────────────────────────────────────────────
+  app.get('/api/project-groups', requireAuth, route(async (req, res) => res.json(store.listProjectGroups())));
+
+  app.post('/api/project-groups', requireAuth, requireAdmin, route(async (req, res) => {
+    const name = text(req.body?.name, 'name');
+    if (store.projectGroupByName(name)) fail('Nama grup sudah dipakai', 409);
+    const group = store.createProjectGroup({ id: 'g_' + randomUUID(), name });
+    store.audit({ userId: req.user.id, action: 'create_group', entity: 'project_groups', entityId: group.id });
+    res.status(201).json({ ...group, project_count: 0 });
+  }));
+
+  app.patch('/api/project-groups/:id', requireAuth, requireAdmin, route(async (req, res) => {
+    const group = store.getProjectGroup(id(req.params.id));
+    if (!group) fail('Data tidak ditemukan', 404);
+    const name = text(req.body?.name, 'name');
+    const other = store.projectGroupByName(name);
+    if (other && other.id !== group.id) fail('Nama grup sudah dipakai', 409);
+    store.patchProjectGroup(group.id, name);
+    store.audit({ userId: req.user.id, action: 'update_group', entity: 'project_groups', entityId: group.id });
+    res.json(store.getProjectGroup(group.id));
+  }));
+
+  app.delete('/api/project-groups/:id', requireAuth, requireAdmin, route(async (req, res) => {
+    const group = store.getProjectGroup(id(req.params.id));
+    if (!group) fail('Data tidak ditemukan', 404);
+    // Grup kosong saja; project arsip juga dihitung.
+    if (store.countProjectsInGroup(group.id) > 0) fail('Grup masih berisi project', 409);
+    store.deleteProjectGroup(group.id);
+    store.audit({ userId: req.user.id, action: 'delete_group', entity: 'project_groups', entityId: group.id });
     res.sendStatus(204);
   }));
 
   // ─── Projects ────────────────────────────────────────────────────────────
-  app.get('/api/projects', requireAuth, route(async (req, res) => res.json(store.listProjects())));
+  // Project arsip (active=0) tidak boleh jadi sesi/run baru, tapi report tetap terbaca.
+  const requireActiveProject = project => {
+    if (!project.active) fail('Project ini diarsipkan. Pulihkan dulu untuk menjalankan run.', 409);
+    return project;
+  };
+  // Arsip ditolak kalau masih ada sesi terbuka atau run queued/running/uploading.
+  const assertProjectIdle = projectId => {
+    const open = store.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE project_id=? AND closed_at IS NULL').get(projectId).n;
+    const busy = store.db.prepare(`SELECT COUNT(*) AS n FROM runs r JOIN sessions s ON s.id=r.session_id
+      WHERE s.project_id=? AND r.status IN ('queued','running','uploading')`).get(projectId).n;
+    if (open || busy) fail('Masih ada sesi terbuka atau run berjalan. Tutup sesi dulu.', 409);
+  };
+  // `all=1` dipakai report, breadcrumb, dan Pengaturan: project arsip tetap terbaca.
+  // Nama project arsip perlu untuk semua user (kartu report + breadcrumb), tapi
+  // URL staging/local dan daftar origin hanya milik halaman Pengaturan (admin).
+  const publicProject = p => ({
+    id: p.id, slug: p.slug, name: p.name, group_id: p.group_id, group_name: p.group_name,
+    base_url: p.base_url, active: p.active, allow_production: p.allow_production,
+    created_at: p.created_at, lastRunAt: p.lastRunAt,
+  });
+  app.get('/api/projects', requireAuth, route(async (req, res) => {
+    const all = req.query.all === '1';
+    const rows = store.listProjects({ includeArchived: all });
+    res.json(req.user.role === 'admin' ? rows : rows.map(publicProject));
+  }));
+
+  // groupId opsional; null/absen = tanpa grup. Nama unik global (case-insensitive).
+  const groupIdValue = value => {
+    if (value === undefined || value === null || value === '') return null;
+    if (!store.getProjectGroup(id(value))) fail('Grup tidak ditemukan', 400);
+    return id(value);
+  };
+
+  app.post('/api/projects', requireAuth, requireAdmin, route(async (req, res) => {
+    const name = text(req.body?.name, 'name');
+    // base_url wajib: project tanpa web production tidak boleh menunjuk localhost.
+    const base_url = urlValue(req.body?.base_url, 'base_url');
+    if (store.projectByName(name)) fail('Nama project sudah dipakai', 409);
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'project';
+    if (store.projectBySlug(slug)) fail('Slug ' + slug + ' sudah dipakai project lain', 409);
+    const project = store.createProject({
+      id: 'p_' + slug,
+      slug,
+      name,
+      group_id: groupIdValue(req.body?.groupId),
+      base_url,
+      staging_url: req.body?.staging_url ? urlValue(req.body.staging_url, 'staging_url') : null,
+      local_url: req.body?.local_url ? urlValue(req.body.local_url, 'local_url') : null,
+      origins: req.body?.origins !== undefined ? originList(req.body.origins) : [],
+      allow_production: req.body?.allow_production !== undefined ? bool(req.body.allow_production, 'allow_production') : 0,
+    });
+    store.audit({ userId: req.user.id, action: 'create_project', entity: 'projects', entityId: project.id });
+    res.status(201).json(project);
+  }));
+
   app.patch('/api/projects/:id', requireAuth, requireAdmin, route(async (req, res) => {
-    const p = store.getProject(id(req.params.id));
-    if (!p) fail('Not found', 404);
+    const projectId = id(req.params.id);
+    const p = store.getProject(projectId);
+    if (!p) fail('Data tidak ditemukan', 404);
     const fields = {};
-    if (req.body.name !== undefined) fields.name = text(req.body.name, 'name');
+    if (req.body.name !== undefined) {
+      fields.name = text(req.body.name, 'name');
+      const other = store.projectByName(fields.name);
+      if (other && other.id !== p.id) fail('Nama project sudah dipakai', 409);
+    }
+    if (req.body.groupId !== undefined) fields.group_id = groupIdValue(req.body.groupId);
     if (req.body.base_url !== undefined) fields.base_url = urlValue(req.body.base_url, 'base_url');
     if (req.body.staging_url !== undefined) fields.staging_url = req.body.staging_url ? urlValue(req.body.staging_url, 'staging_url') : null;
     if (req.body.local_url !== undefined) fields.local_url = req.body.local_url ? urlValue(req.body.local_url, 'local_url') : null;
     if (req.body.origins !== undefined) fields.origins = originList(req.body.origins);
     if (req.body.allow_production !== undefined) fields.allow_production = bool(req.body.allow_production, 'allow_production');
-    if (req.body.active !== undefined) fields.active = bool(req.body.active, 'active');
-    store.patchProject(id(req.params.id), fields);
-    store.audit({ userId: req.user.id, action: 'update_project', entity: 'projects', entityId: req.params.id });
-    res.json(store.getProject(req.params.id));
+    if (req.body.active !== undefined) {
+      fields.active = bool(req.body.active, 'active');
+      // Arsip ditolak selama sesi/run masih hidup.
+      if (!fields.active) assertProjectIdle(p.id);
+    }
+    store.patchProject(projectId, fields);
+    store.audit({
+      userId: req.user.id,
+      action: fields.active === 0 ? 'archive_project' : fields.active === 1 ? 'restore_project' : 'update_project',
+      entity: 'projects',
+      entityId: projectId,
+    });
+    res.json(store.getProject(projectId));
+  }));
+
+  // Hapus permanen hanya untuk project tanpa riwayat; selain itu arahkan ke arsip.
+  app.delete('/api/projects/:id', requireAuth, requireAdmin, route(async (req, res) => {
+    const projectId = id(req.params.id);
+    const p = store.getProject(projectId);
+    if (!p) fail('Data tidak ditemukan', 404);
+    const history = store.projectHistory(projectId);
+    if (history.testFiles || history.sessions || history.runs) {
+      fail('Project ini sudah punya riwayat, jadi tidak bisa dihapus. Pakai tombol Arsipkan di kolom aksi.', 409);
+    }
+    store.deleteProject(projectId);
+    store.audit({ userId: req.user.id, action: 'delete_project', entity: 'projects', entityId: projectId });
+    res.sendStatus(204);
   }));
 
   // ─── Test files ──────────────────────────────────────────────────────────
   app.get('/api/test-files', requireAuth, route(async (req, res) => {
     const { project, tool, all } = req.query;
-    // all=1 hanya untuk halaman seting (admin); pemanggil run tetap dapat yang aktif.
-    if (all === '1' && req.user.role !== 'admin') fail('Forbidden', 403);
+    // all=1 hanya untuk halaman pengaturan (admin); pemanggil run tetap dapat yang aktif.
+    if (all === '1' && req.user.role !== 'admin') fail('Akses ditolak', 403);
     res.json(store.listTestFiles({
       projectId: project ?? undefined,
       tool: tool === 'pw' || tool === 'lh' ? tool : undefined,
       includeDisabled: all === '1',
     }));
   }));
-  // Session target already claims one URL slot, so extra URLs are capped below it.
-  function checkLhUrls(tool, config) {
-    if (tool !== 'lh' || !config) return;
-    const cfg = typeof config === 'string' ? (() => { try { return JSON.parse(config); } catch { return null; } })() : config;
-    const extra = Array.isArray(cfg?.urls) ? cfg.urls.length : 0;
-    if (extra + 1 > MAX_LH_URLS) fail(`Maksimal ${MAX_LH_URLS} URL per run Lighthouse (target + ${MAX_LH_URLS - 1} tambahan)`, 400);
-  }
+
+  // Path unik global: file ditulis relatif root repo, jadi dua project tidak
+  // boleh memakai path yang sama.
+  const assertPathFree = (path, exceptId = null) => {
+    const clash = store.db.prepare('SELECT id, project_id FROM test_files WHERE path=?').get(path);
+    if (clash && clash.id !== exceptId) fail(`Path ${path} sudah dipakai test file lain`, 409);
+  };
+  // Origin yang boleh dipakai URL tambahan LHCI: properti project + allowlist server.
+  const allowedOriginsFor = project => [...(project?.origins ?? []), ...origins];
+  // code wajib untuk spec Playwright; config Lighthouse boleh kosong/string kosong.
+  const codeFor = (tool, value) => (tool === 'pw' ? codeValue(value) : (typeof value === 'string' && value.length <= 200000 ? value : codeValue(value)));
 
   app.post('/api/test-files', requireAuth, requireAdmin, route(async (req, res) => {
     const t = toolValue(req.body?.tool);
     const projectId = id(req.body?.projectId);
-    if (!store.getProject(projectId)) fail('Project tidak ditemukan', 400);
-    const path = text(req.body?.path, 'path', 500);
-    const code = codeValue(req.body?.code);
+    const project = store.getProject(projectId);
+    if (!project) fail('Project tidak ditemukan', 400);
+    const path = testFilePath(req.body?.path);
     const label = text(req.body?.label, 'label', 200);
-    const config = req.body?.config != null ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config)) : null;
-    checkLhUrls(t, config);
-    const tf = { id: randomUUID(), projectId, tool: t, path, label, code, config, updatedBy: req.user.id };
+    const code = codeFor(t, req.body?.code ?? '');
+    assertPathFree(path);
+    const cfg = t === 'lh'
+      ? checkLhConfig(req.body?.config, { allowedOrigins: allowedOriginsFor(project) })
+      : checkPwConfig(req.body?.config);
+    const tf = {
+      id: randomUUID(), projectId, tool: t, path, label, code,
+      config: cfg ? JSON.stringify(cfg) : null, updatedBy: req.user.id,
+    };
     store.createTestFile(tf);
     store.audit({ userId: req.user.id, action: 'create_test_file', entity: 'test_files', entityId: tf.id });
     res.status(201).json(store.getTestFile(tf.id));
   }));
+
   app.patch('/api/test-files/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const tf = store.getTestFile(id(req.params.id));
-    if (!tf) fail('Not found', 404);
+    if (!tf) fail('Data tidak ditemukan', 404);
+    const project = store.getProject(tf.project_id);
     const fields = {};
-    if (req.body.code !== undefined) fields.code = codeValue(req.body.code);
+    if (req.body.path !== undefined) {
+      fields.path = testFilePath(req.body.path);
+      assertPathFree(fields.path, tf.id);
+    }
+    if (req.body.code !== undefined) fields.code = codeFor(tf.tool, req.body.code);
     if (req.body.label !== undefined) fields.label = text(req.body.label, 'label');
-    if (req.body.config !== undefined) fields.config = req.body.config != null ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config)) : null;
-    checkLhUrls(tf.tool, fields.config);
+    if (req.body.config !== undefined) {
+      const cfg = tf.tool === 'lh'
+        ? checkLhConfig(req.body.config, { allowedOrigins: allowedOriginsFor(project) })
+        : checkPwConfig(req.body.config);
+      fields.config = cfg ? JSON.stringify(cfg) : null;
+    }
     if (req.body.enabled !== undefined) fields.enabled = bool(req.body.enabled, 'enabled');
 
     // Sinkron ke disk hanya untuk spec Playwright yang punya path file nyata.
     // Guard: tolak kalau file di disk sudah berubah sejak sinkron terakhir,
     // supaya edit di git tidak tertimpa diam-diam. `force: true` = timpa paksa.
     if (fields.code !== undefined && tf.tool === 'pw') {
-      const abs = specPath(root, tf.path);
+      const abs = specPath(root, fields.path ?? tf.path);
       const disk = await readSpec(abs);
       const expected = tf.disk_hash ?? (disk ? disk.hash : null);
       if (!req.body.force && disk && tf.disk_hash && disk.hash !== tf.disk_hash) {
@@ -253,15 +427,27 @@ export function createApp({ store, runner, token, origins }) {
       fields.disk_hash = await writeSpec(abs, fields.code);
     }
 
-    store.patchTestFile(req.params.id, fields);
-    store.audit({ userId: req.user.id, action: 'update_test_file', entity: 'test_files', entityId: req.params.id });
-    res.json(store.getTestFile(req.params.id));
+    store.patchTestFile(tf.id, fields);
+    store.audit({ userId: req.user.id, action: 'update_test_file', entity: 'test_files', entityId: tf.id });
+    res.json(store.getTestFile(tf.id));
+  }));
+
+  // Hapus hanya kalau belum dipakai run: hapus baris yang masih dirujuk akan
+  // memutus riwayat report.
+  app.delete('/api/test-files/:id', requireAuth, requireAdmin, route(async (req, res) => {
+    const tf = store.getTestFile(id(req.params.id));
+    if (!tf) fail('Data tidak ditemukan', 404);
+    const used = store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE test_file_id=?').get(tf.id).n;
+    if (used) fail('Test file sudah dipakai run. Nonaktifkan saja.', 409);
+    store.db.prepare('DELETE FROM test_files WHERE id=?').run(tf.id);
+    store.audit({ userId: req.user.id, action: 'delete_test_file', entity: 'test_files', entityId: tf.id });
+    res.sendStatus(204);
   }));
 
   // Muat ulang isi spec dari disk ke DB (arah sebaliknya, manual).
   app.post('/api/test-files/:id/reload', requireAuth, requireAdmin, route(async (req, res) => {
     const tf = store.getTestFile(id(req.params.id));
-    if (!tf) fail('Not found', 404);
+    if (!tf) fail('Data tidak ditemukan', 404);
     if (tf.tool !== 'pw') fail('Hanya spec Playwright yang punya file di disk', 400);
     const disk = await readSpec(specPath(root, tf.path));
     if (!disk) fail('File spec tidak ada di disk', 404);
@@ -273,25 +459,27 @@ export function createApp({ store, runner, token, origins }) {
   // ─── Sessions ────────────────────────────────────────────────────────────
   // PRD §7/§8.2: URL target selalu dari `projects`, tidak pernah dari input bebas.
   // Origin hasil resolve wajib ada di `projects.origins` atau TARGET_ALLOWLIST (anti-SSRF).
-  // ponytail: env local dikecualikan dari cek origin - local_url menunjuk mesin
-  // developer, bukan jaringan server. Kalau nanti runner jalan di server juga,
-  // hapus pengecualian ini.
+  // env local juga lewat cek origin. Dulu dikecualikan karena local_url dianggap
+  // mesin developer sendiri, tapi dashboard sekarang bisa dihosting: tanpa cek ini
+  // admin bisa mengarahkan local_url ke host internal server (SSRF).
+  // Konsekuensi: URL tunnel ke web lokal harus didaftarkan di origins project
+  // atau TARGET_ALLOWLIST dulu. Tetap tanpa wildcard.
   const resolveTarget = (project, e) => {
     const raw = e === 'local' ? project.local_url : e === 'staging' ? project.staging_url : project.base_url;
     if (!raw) return null;
-    const href = urlValue(raw, `target ${e}`);
-    return e === 'local' ? raw : target(href, [...(project.origins ?? []), ...origins]);
+    return target(urlValue(raw, `target ${e}`), [...(project.origins ?? []), ...origins]);
   };
 
   // PRD §8.2 step 2: setiap run production meninggalkan satu baris `system`.
   const traceProduction = (runId, e, user) => {
-    if (e === 'production') store.systemLog(runId, `production run by ${user.username} at ${new Date().toISOString()}`);
+    if (e === 'production') store.systemLog(runId, `production run by ${user.username} at ${wibStamp()}`);
   };
 
   app.post('/api/sessions', requireAuth, requireAdmin, route(async (req, res) => {
     const projectId = id(req.body?.projectId);
     const project = store.getProject(projectId);
     if (!project) fail('Project tidak ditemukan', 400);
+    requireActiveProject(project);
     const e = envValue(req.body?.env);
     const targetUrl = resolveTarget(project, e);
     if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
@@ -300,12 +488,27 @@ export function createApp({ store, runner, token, origins }) {
       if (!project.allow_production) fail('Run production diblokir untuk project ini', 403);
       if (req.body?.confirm !== project.name) fail('Ketik ulang nama project untuk konfirmasi production', 400);
     }
-    // reuse: sesi terbuka milik user yang sama
-    const existing = store.findOpenSession(projectId, e, req.user.id);
+    // Sesi baru dipaksa lewat { new: true } (PRD FR-06). Sesi lama yang masih
+    // terbuka harus ditutup dulu supaya index sessions_one_open bebas.
+    const forceNew = req.body?.new === true;
+    const existing = forceNew ? undefined : store.findOpenSession(projectId, e, req.user.id);
     if (existing) return res.status(409).json({ sessionId: existing.id, reuse: true });
+    if (forceNew) {
+      const open = store.openSession(projectId, e, req.user.id);
+      if (open) {
+        if (store.countRunsByStatus(open.id, ['queued', 'running', 'uploading']) > 0) {
+          fail('Masih ada run berjalan di sesi ini. Tunggu sampai selesai.', 409);
+        }
+        store.closeSession(open.id);
+      }
+    } else {
+      // Ada sesi terbuka tapi tidak boleh dipakai ulang (run aktif / sudah report).
+      const open = store.openSession(projectId, e, req.user.id);
+      if (open) fail('Sesi masih terbuka dengan run berjalan. Tutup sesi atau mulai sesi baru.', 409);
+    }
     try {
       const id = randomUUID();
-      const label = `${project.name} ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
+      const label = `${project.name} ${wibStamp()}`;
       store.createSession({ id, projectId, env: e, targetUrl, label, createdBy: req.user.id });
       const session = store.getSession(id);
       res.status(201).json({ sessionId: id, targetUrl, session });
@@ -327,6 +530,11 @@ export function createApp({ store, runner, token, origins }) {
     });
   }));
 
+  // Ringkasan semua project dalam satu request (pengganti N+1 di Overview).
+  app.get('/api/stats/all', requireAuth, route(async (req, res) => {
+    res.json(store.statsByProject({ from: rangeStart(req.query.range) }));
+  }));
+
   app.get('/api/sessions', requireAuth, route(async (req, res) => {
     const { project, status, from, to } = req.query;
     res.json(store.listSessions({
@@ -339,7 +547,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.get('/api/sessions/:id', requireAuth, route(async (req, res) => {
     const session = store.getSession(id(req.params.id), true);
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     session.reports = store.listReportsBySession(session.id);
     res.json(session);
   }));
@@ -347,7 +555,7 @@ export function createApp({ store, runner, token, origins }) {
   // PRD §10.6: `Tutup sesi` mengunci sesi (closed_at), bukan menghapus.
   app.post('/api/sessions/:id/close', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id));
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     if (session.closed_at) return res.json(session);
     if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
     store.closeSession(session.id);
@@ -357,7 +565,7 @@ export function createApp({ store, runner, token, origins }) {
 
   app.delete('/api/sessions/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id), true);
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     // Jangan hapus folder di bawah proses yang masih jalan.
     if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
     const runIds = (session.runs ?? []).map(r => r.id);
@@ -375,6 +583,7 @@ export function createApp({ store, runner, token, origins }) {
   app.post('/api/quick-check', requireAuth, requireAdmin, route(async (req, res) => {
     const project = store.getProject(id(req.body?.projectId));
     if (!project) fail('Project tidak ditemukan', 400);
+    requireActiveProject(project);
     const e = envValue(req.body?.env);
     const targetUrl = resolveTarget(project, e);
     if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
@@ -387,8 +596,8 @@ export function createApp({ store, runner, token, origins }) {
     let session = store.findOpenSession(project.id, e, req.user.id);
     if (!session) {
       const sessionId = randomUUID();
-      const label = `Quick check ${project.name} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
-      store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
+      const label = `Quick check ${project.name} ${wibStamp()}`;
+      store.tx(() => store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id }));
       session = { id: sessionId };
     }
 
@@ -403,10 +612,14 @@ export function createApp({ store, runner, token, origins }) {
 
     const pwRun = randomUUID();
     const lhRun = randomUUID();
-    store.createRun({ id: pwRun, sessionId: session.id, testFileId: pwTest?.id ?? null, tool: 'pw' });
-    store.createRun({ id: lhRun, sessionId: session.id, testFileId: lhTest?.id ?? null, tool: 'lh' });
-    traceProduction(pwRun, e, req.user);
-    traceProduction(lhRun, e, req.user);
+    // Dua run dibuat bersama: kalau yang kedua gagal, yang pertama tidak boleh
+    // tertinggal sebagai run yatim di sesi ini.
+    store.tx(() => {
+      store.createRun({ id: pwRun, sessionId: session.id, testFileId: pwTest?.id ?? null, tool: 'pw' });
+      store.createRun({ id: lhRun, sessionId: session.id, testFileId: lhTest?.id ?? null, tool: 'lh' });
+      traceProduction(pwRun, e, req.user);
+      traceProduction(lhRun, e, req.user);
+    });
 
     const pwFile = pwTest ?? {
       id: null, tool: 'pw', path: 'quick.spec.ts',
@@ -431,19 +644,27 @@ export function createApp({ store, runner, token, origins }) {
   // ─── Runs ────────────────────────────────────────────────────────────────
   app.post('/api/sessions/:id/runs', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id));
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     const testFileId = id(req.body?.testFileId);
     const tf = store.getTestFile(testFileId);
     if (!tf) fail('Test file tidak ditemukan', 400);
     if (tf.project_id !== session.project_id) fail('Test file milik project lain.', 400);
+    requireActiveProject(store.getProject(session.project_id));
     // 409 bila ada run belum final di sesi ini (PRD §7)
     if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
     // max queue
     if (store.countActiveRuns() >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
     const runId = randomUUID();
-    store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
-    traceProduction(runId, session.env, req.user);
-    runner.start(runId, tf, session.id, session.target_url);
+    store.tx(() => {
+      store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
+      traceProduction(runId, session.env, req.user);
+    });
+    Promise.resolve(runner.start(runId, tf, session.id, session.target_url))
+      .catch(err => {
+        console.error('[run]', err.message);
+        try { store.systemLog(runId, `runner gagal start: ${err.message}`); } catch {}
+      });
+    store.audit({ userId: req.user.id, action: 'create_run', entity: 'runs', entityId: runId, detail: JSON.stringify({ session: session.id, testFile: tf.path }) });
     res.status(202).json({ runId });
   }));
 
@@ -454,6 +675,7 @@ export function createApp({ store, runner, token, origins }) {
     if (!tf) fail('Test file tidak ditemukan', 400);
     const project = store.getProject(tf.project_id);
     if (!project) fail('Project tidak ditemukan', 400);
+    requireActiveProject(project);
     const e = envValue(req.body?.env);
     const targetUrl = resolveTarget(project, e);
     if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
@@ -475,36 +697,45 @@ export function createApp({ store, runner, token, origins }) {
       if (open) {
         if (store.countRunsByStatus(open.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
         sessionId = open.id;
+      } else if (store.openSession(project.id, e, req.user.id)) {
+        // Sesi terbuka tapi tidak boleh dipakai ulang (run aktif / report sudah ada).
+        fail('Sesi masih terbuka. Tutup sesi atau mulai sesi baru.', 409);
       } else {
         sessionId = randomUUID();
-        const label = `${project.name} ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
-        store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
+        const label = `${project.name} ${wibStamp()}`;
+        store.tx(() => store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id }));
       }
     }
 
     const runId = randomUUID();
-    store.createRun({ id: runId, sessionId, testFileId: tf.id, tool: tf.tool });
-    store.audit({ userId: req.user.id, action: 'run_local', entity: 'runs', entityId: runId, detail: JSON.stringify({ testFile: tf.path, env: e }) });
-    traceProduction(runId, e, req.user);
+    // Sesi baru, run, jejak production, dan audit harus jadi satu kesatuan.
+    store.tx(() => {
+      store.createRun({ id: runId, sessionId, testFileId: tf.id, tool: tf.tool });
+      store.audit({ userId: req.user.id, action: 'run_local', entity: 'runs', entityId: runId, detail: JSON.stringify({ testFile: tf.path, env: e }) });
+      traceProduction(runId, e, req.user);
+    });
     res.status(201).json({ runId, sessionId, code: tf.code, targetUrl, tool: tf.tool, config: tf.config });
   }));
 
   app.post('/api/runs/:id/start', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     if (['passed', 'failed', 'cancelled', 'interrupted'].includes(run.status)) fail('Run sudah final', 409);
-    res.json(store.patchRun(run.id, { status: 'running', started_at: run.started_at ?? new Date().toISOString() }));
+    requireActiveProject(store.getProject(store.getSession(run.session_id).project_id));
+    const started = store.patchRun(run.id, { status: 'running', started_at: run.started_at ?? new Date().toISOString() });
+    store.audit({ userId: req.user.id, action: 'start_run', entity: 'runs', entityId: run.id });
+    res.json(started);
   }));
 
   app.post('/api/runs/:id/logs', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     const entries = req.body?.entries;
-    if (!Array.isArray(entries)) fail('entries must be an array');
+    if (!Array.isArray(entries)) fail('entries harus array');
     if (entries.length > 5000) fail('entries maksimal 5000 per batch');
     const clean = entries.map(e => {
-      if (!Number.isSafeInteger(Number(e?.seq)) || Number(e.seq) < 0) fail('seq must be a non-negative integer');
-      if (typeof e?.text !== 'string') fail('text must be a string');
+      if (!Number.isSafeInteger(Number(e?.seq)) || Number(e.seq) < 0) fail('seq harus bilangan bulat >= 0');
+      if (typeof e?.text !== 'string') fail('text harus string');
       return { seq: Number(e.seq), stream: String(e.stream ?? 'stdout').slice(0, 20), text: e.text, at: isoTimestamp(e.at ?? new Date().toISOString()) };
     });
     store.logsBatch(run.id, clean);
@@ -514,11 +745,11 @@ export function createApp({ store, runner, token, origins }) {
   // Upload artifact mentah: body biner, query ?kind=&path=
   app.put('/api/runs/:id/artifacts', express.raw({ type: () => true, limit: '100mb' }), requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     const kind = String(req.query.kind ?? 'log');
     if (!['pw-html', 'lh-html', 'pw-json', 'lh-json', 'trace', 'screenshot', 'video', 'log'].includes(kind)) fail('kind tidak dikenal');
     const rel = String(req.query.path ?? '');
-    if (!rel || rel.includes('..') || rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) fail('Invalid path', 400);
+    if (!rel || rel.includes('..') || rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) fail('Path tidak sah', 400);
     const maxMb = Number(store.getSetting('max_upload_mb') ?? 100);
     const body = req.body;
     if (!Buffer.isBuffer(body) || !body.length) fail('Body harus biner (application/octet-stream)');
@@ -528,6 +759,7 @@ export function createApp({ store, runner, token, origins }) {
     await mkdir(dirname(dest), { recursive: true });
     await writeFile(dest, body);
     store.addArtifact({ runId: run.id, kind, path: rel, bytes: body.length });
+    store.audit({ userId: req.user.id, action: 'upload_artifact', entity: 'runs', entityId: run.id, detail: JSON.stringify({ kind, path: rel, bytes: body.length }) });
     res.status(201).json({ path: rel, bytes: body.length });
   }));
 
@@ -541,24 +773,25 @@ export function createApp({ store, runner, token, origins }) {
 
   app.get('/api/runs/:id', requireAuth, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     run.artifacts = store.listArtifacts(run.id);
     run.results = run.tool === 'pw' ? store.listPlaywrightResults(run.id) : store.listLighthouseResults(run.id);
     // PRD §7: console & network dipisah dari logs (dipakai panel §10.3).
-    const raw = store.logsRaw(run.id);
+    // Diambil lewat SQL dengan batas baris: endpoint ini di-poll tiap 1,5 detik.
+    const raw = store.logsByStreams(run.id, ['console', 'network']);
     run.console = raw.filter(e => e.stream === 'console').map(e => ({ seq: e.seq, at: e.at, ...parseConsole(e.text) }));
     run.network = raw.filter(e => e.stream === 'network').map(e => ({ seq: e.seq, at: e.at, ...parseNetwork(e.text) }));
     res.json(run);
   }));
 
   app.get('/api/runs/:id/logs', requireAuth, route(async (req, res) => {
-    if (!store.getRun(id(req.params.id))) fail('Not found', 404);
+    if (!store.getRun(id(req.params.id))) fail('Data tidak ditemukan', 404);
     const after = cursor(req.query.after);
     res.json(await store.logs(req.params.id, after));
   }));
 
   app.get('/api/runs/:id/logs/download', requireAuth, route(async (req, res) => {
-    if (!store.getRun(id(req.params.id))) fail('Not found', 404);
+    if (!store.getRun(id(req.params.id))) fail('Data tidak ditemukan', 404);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.send(await store.logsText(req.params.id));
   }));
@@ -568,12 +801,12 @@ export function createApp({ store, runner, token, origins }) {
 
   app.patch('/api/runs/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const existing = store.getRun(id(req.params.id));
-    if (!existing) fail('Not found', 404);
+    if (!existing) fail('Data tidak ditemukan', 404);
     const b = req.body ?? {};
     const fields = {};
 
     if (b.status !== undefined) {
-      if (!RUN_STATUS.includes(b.status)) fail(`status must be ${RUN_STATUS.join('|')}`);
+      if (!RUN_STATUS.includes(b.status)) fail(`status harus ${RUN_STATUS.join('|')}`);
       fields.status = b.status;
     }
     // PRD §7 pakai camelCase; snake_case tetap diterima (klien lama).
@@ -585,11 +818,11 @@ export function createApp({ store, runner, token, origins }) {
     if (finishedAt !== undefined) fields.finished_at = isoTimestamp(finishedAt);
     if (b.finalized_at !== undefined) fields.finalized_at = isoTimestamp(b.finalized_at);
     if (durationMs !== undefined) {
-      if (!Number.isFinite(Number(durationMs)) || Number(durationMs) < 0) fail('duration_ms must be a non-negative number');
+      if (!Number.isFinite(Number(durationMs)) || Number(durationMs) < 0) fail('duration_ms harus angka >= 0');
       fields.duration_ms = Number(durationMs);
     }
     if (exitCode !== undefined) {
-      if (!Number.isInteger(Number(exitCode))) fail('exit_code must be an integer');
+      if (!Number.isInteger(Number(exitCode))) fail('exit_code harus bilangan bulat');
       fields.exit_code = Number(exitCode);
     }
     if (b.error !== undefined) fields.error = b.error == null ? null : String(b.error).slice(0, 2000);
@@ -604,26 +837,30 @@ export function createApp({ store, runner, token, origins }) {
     }
     const run = store.patchRun(existing.id, fields);
     if (fields.finalized_at) store.markReportsStale(existing.session_id);
+    // Bukti rilis: status final dan siapa yang menuliskannya harus tercatat.
+    store.audit({ userId: req.user.id, action: 'update_run', entity: 'runs', entityId: run.id, detail: JSON.stringify(fields) });
     res.json(run);
   }));
 
   app.post('/api/runs/:id/cancel', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     if (['passed', 'failed', 'cancelled', 'interrupted'].includes(run.status)) fail('Run sudah final', 409);
     // Run yang masih antre belum dipegang runner; tandai langsung.
     if (run.status === 'queued') {
       store.patchRun(run.id, { status: 'cancelled', finished_at: new Date().toISOString() });
       store.markReportsStale(run.session_id);
+      store.audit({ userId: req.user.id, action: 'cancel_run', entity: 'runs', entityId: run.id });
       return res.json(store.getRun(run.id));
     }
     if (!await runner.cancel(run.id)) fail('Run is not active', 409);
+    store.audit({ userId: req.user.id, action: 'cancel_run', entity: 'runs', entityId: run.id });
     res.json(store.getRun(run.id));
   }));
 
   app.delete('/api/runs/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     if (['queued', 'running', 'uploading'].includes(run.status)) fail('Run masih berjalan, batalkan dulu', 409);
     store.deleteRun(req.params.id);
     store.markReportsStale(run.session_id);
@@ -635,7 +872,7 @@ export function createApp({ store, runner, token, origins }) {
   // ─── Reports ─────────────────────────────────────────────────────────────
   // Satu laporan per scope per sesi; isinya run final terbaru per tool.
   function publishReport(sessionId, scope, userId) {
-    if (!['pw', 'lh', 'both'].includes(scope)) fail("scope must be 'pw'|'lh'|'both'", 400);
+    if (!['pw', 'lh', 'both'].includes(scope)) fail('scope harus pw, lh, atau both', 400);
     // cancelled/interrupted sudah selesai; hanya run aktif yang memblokir.
     if (store.countRunsByStatus(sessionId, ['queued', 'running', 'uploading']) > 0) fail('Ada run yang belum final', 409);
     const finals = store.listRunsBySession(sessionId).filter(r => ['passed', 'failed'].includes(r.status));
@@ -655,14 +892,15 @@ export function createApp({ store, runner, token, origins }) {
 
   app.post('/api/sessions/:id/reports', requireAuth, requireAdmin, route(async (req, res) => {
     const session = store.getSession(id(req.params.id));
-    if (!session) fail('Not found', 404);
+    if (!session) fail('Data tidak ditemukan', 404);
     const report = publishReport(session.id, req.body?.scope, req.user.id);
+    store.audit({ userId: req.user.id, action: 'publish_report', entity: 'reports', entityId: report.id, detail: JSON.stringify({ session: session.id, scope: report.scope }) });
     res.status(202).json({ reportId: report.id, runIds: JSON.parse(report.run_ids ?? '[]') });
   }));
 
   app.get('/api/reports/:id', requireAuth, route(async (req, res) => {
     const report = store.getReport(id(req.params.id));
-    if (!report) fail('Not found', 404);
+    if (!report) fail('Data tidak ditemukan', 404);
     res.json(report);
   }));
 
@@ -686,6 +924,59 @@ export function createApp({ store, runner, token, origins }) {
       artifact_retention_days: all.artifact_retention_days,
       report_retention_days: all.report_retention_days,
     });
+  }));
+  // Info untuk tab Bantuan: versi aplikasi + versi tool yang dipakai runner.
+  // Tidak menyentuh DB; package.json dibaca sekali lalu di-cache.
+  let helpInfo = null;
+  const readHelpInfo = async () => {
+    if (helpInfo) return helpInfo;
+    const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+    helpInfo = {
+      version: pkg.version ?? null,
+      node: process.version,
+      playwright: pkg.devDependencies?.['@playwright/test'] ?? null,
+      lighthouse: pkg.devDependencies?.['@lhci/cli'] ?? null,
+      // Update manual: dashboard tidak pernah menjalankan npm sendiri.
+      update_commands: [
+        'npm install -D @playwright/test@latest @lhci/cli@latest',
+        'npx playwright install',
+      ],
+      // null = FEEDBACK_URL belum diisi; UI menampilkan fallback teks.
+      feedback_url: process.env.FEEDBACK_URL || null,
+    };
+    return helpInfo;
+  };
+  app.get('/api/help', requireAuth, route(async (req, res) => { res.json(await readHelpInfo()); }));
+  // Update tool hanya lewat klik admin: dua perintah ini mengubah node_modules,
+  // jadi tidak pernah dijalankan otomatis. Output dialirkan apa adanya ke UI.
+  const UPDATE_COMMANDS = [
+    ['npm', ['install', '-D', '@playwright/test@latest', '@lhci/cli@latest']],
+    ['npx', ['playwright', 'install']],
+  ];
+  app.post('/api/tools/update', requireAuth, requireAdmin, route(async (req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.flushHeaders?.();
+    store.audit({ userId: req.user.id, action: 'update_tools', entity: 'tools' });
+    const before = await readHelpInfo();
+    res.write(`Versi terpasang sekarang: Playwright ${before.playwright ?? '?'}, Lighthouse ${before.lighthouse ?? '?'}\n`);
+    for (const [cmd, args] of UPDATE_COMMANDS) {
+      res.write(`\n$ ${cmd} ${args.join(' ')}\n`);
+      const done = await new Promise(resolve => {
+        // shell di Windows: npm/npx adalah .cmd, spawn tanpa shell akan ENOENT.
+        const child = spawn(cmd, args, { cwd: root, shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+        child.stdout.on('data', b => res.write(b));
+        child.stderr.on('data', b => res.write(b));
+        child.on('close', resolve);
+        child.on('error', e => { res.write(String(e.message) + '\n'); resolve(1); });
+      });
+      if (done !== 0) { res.write(`\nGagal (exit ${done}). Versi terpasang tidak diubah.\n`); return res.end(); }
+    }
+    helpInfo = null;
+    const after = await readHelpInfo();
+    res.write(`\nSelesai. Playwright ${after.playwright ?? '?'}, Lighthouse ${after.lighthouse ?? '?'}\n`);
+    res.write('Restart server dashboard supaya runner memakai versi baru.\n');
+    res.end();
   }));
   app.get('/api/settings', requireAuth, requireAdmin, route(async (req, res) => {
     res.json(store.getSettings());
@@ -712,18 +1003,18 @@ export function createApp({ store, runner, token, origins }) {
 
   app.get('/artifacts/reports/:reportId/*', requireAuth, route(async (req, res) => {
     const report = store.getReport(id(req.params.reportId));
-    if (!report) fail('Not found', 404);
+    if (!report) fail('Data tidak ditemukan', 404);
     // Link ke folder (mis. "<runId>/") dipetakan ke index.html; link lama tetap hidup.
     const asked = (req.params[0] ?? '').replace(/\/$/, '');
     const rel = asked === '' || !/\.[a-z0-9]+$/i.test(asked) ? (asked ? asked + '/index.html' : 'index.html') : asked;
-    if (rel.includes('..')) fail('Invalid path', 400);
+    if (rel.includes('..')) fail('Path tidak sah', 400);
     const base = join(reportsDir, report.id);
     // Report lama tidak punya report.md; susun dari DB supaya tautan tidak 404.
     if (rel === 'report.md') {
       const cached = await realpath(join(base, rel)).catch(() => null);
       if (!cached) {
         const markdown = reportMarkdownFor(store, report.id);
-        if (!markdown) fail('Not found', 404);
+        if (!markdown) fail('Data tidak ditemukan', 404);
         res.type('text/markdown; charset=utf-8');
         res.setHeader('X-Robots-Tag', 'noindex');
         res.send(markdown);
@@ -732,9 +1023,9 @@ export function createApp({ store, runner, token, origins }) {
     }
     // realpath melempar ENOENT kalau file belum ada (mis. report lama tanpa report.md).
     const file = await realpath(join(base, rel)).catch(() => null);
-    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Not found', 404);
+    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Data tidak ditemukan', 404);
     const stat = await lstat(file).catch(() => null);
-    if (!stat?.isFile()) fail('Not found', 404);
+    if (!stat?.isFile()) fail('Data tidak ditemukan', 404);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
@@ -745,16 +1036,16 @@ export function createApp({ store, runner, token, origins }) {
   app.get('/artifacts/:runId/*', requireAuth, route(async (req, res) => {
     const runId = id(req.params.runId);
     const run = store.getRun(runId);
-    if (!run) fail('Not found', 404);
+    if (!run) fail('Data tidak ditemukan', 404);
     // Sama: folder artifact (mis. "playwright-report/") dipetakan ke index.html.
     const asked = (req.params[0] ?? '').replace(/\/$/, '');
     const rel = asked === '' || !/\.[a-z0-9]+$/i.test(asked) ? (asked ? asked + '/index.html' : 'index.html') : asked;
-    if (rel.includes('..')) fail('Invalid path', 400);
+    if (rel.includes('..')) fail('Path tidak sah', 400);
     const base = join(runsDir, runId, 'artifacts');
     const file = await realpath(join(base, rel)).catch(() => null);
-    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Path tidak ada', 404);
+    if (!file || !file.startsWith(await realpath(base).catch(() => base))) fail('Path tidak ditemukan', 404);
     const stat = await lstat(file).catch(() => null);
-    if (!stat?.isFile()) fail('Not found', 404);
+    if (!stat?.isFile()) fail('Data tidak ditemukan', 404);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
@@ -765,7 +1056,7 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   // ─── WebSocket (log streaming) ───────────────────────────────────────────
-  attachWebSocket(app, { store, runner });
+  attachWebSocket(app, { store, runner, resolveUser });
 
   // ─── Error handler ───────────────────────────────────────────────────────
   app.use((err, req, res, next) => {
@@ -777,11 +1068,14 @@ export function createApp({ store, runner, token, origins }) {
   return app;
 }
 
-function attachWebSocket(app, { store, runner }) {
+function attachWebSocket(app, { store, runner, resolveUser }) {
   const server = app.__wssServer ?? createServer(app);
   app.__wssServer = server;
   const wss = new WebSocketServer({ server, path: '/ws' });
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    // Log run memuat data pelanggan; tanpa sesi valid tidak ada yang boleh mendengar.
+    // Resolver-nya sama dengan requireAuth, jadi aturan cookie/bearer tidak bercabang.
+    if (!resolveUser(req)) return ws.close(1008, 'Unauthorized');
     let subscribed = false;
     const onLog = (msg) => { if (subscribed) ws.send(JSON.stringify(msg)); };
     const onStatus = (msg) => { if (subscribed) ws.send(JSON.stringify(msg)); };
@@ -802,7 +1096,7 @@ function attachWebSocket(app, { store, runner }) {
         if (replay.hasMore) ws.send(JSON.stringify({ type: 'replay-truncated', runId, fromSeq: replay.nextAfter }));
         ws.send(JSON.stringify({ type: 'status', run: store.getRun(runId) }));
         ws.send(JSON.stringify({ type: 'replay-complete', runId }));
-      } catch { ws.close(1008, 'Invalid subscription'); }
+      } catch { ws.close(1008, 'Langganan log tidak sah'); }
     });
     ws.on('close', () => { clearTimeout(timer); runner.off('log', onLog); runner.off('status', onStatus); });
     ws.on('error', () => ws.close());
@@ -822,7 +1116,7 @@ export async function main() {
     console.log(`membersihkan ${staleUploads.length} run upload basi`);
   }
   const origins = allowlist(process.env.TARGET_ALLOWLIST);
-  if (!origins.length) throw new Error('TARGET_ALLOWLIST must contain at least one exact origin');
+  if (!origins.length) throw new Error('TARGET_ALLOWLIST harus berisi minimal satu origin persis');
   // PRD §8.6: retensi harian. Opt-in lewat env supaya deployment bisa pakai cron
   // eksternal (scripts/retention.mjs) tanpa dua job jalan bersamaan.
   // PRD §8.6/A60: backup wajib jalan SEBELUM retensi. Kalau RETENTION_INTERVAL_MS
@@ -858,6 +1152,16 @@ export async function main() {
     runsDir: runsDirEnv,
     timeout: Number(process.env.RUN_TIMEOUT_MS ?? 300000),
   });
+  // Sapu run CLI yang menggantung: tanpa ini satu run "Antre" memblokir
+  // sesinya sampai proses di-restart.
+  const sweep = () => {
+    try {
+      const n = store.failStaleRuns(Number(process.env.STALE_RUN_MINUTES ?? 30));
+      if (n) console.log(`run menggantung dilewati: ${n}`);
+    } catch (err) { console.error('[sweep]', err.message); }
+  };
+  sweep();
+  setInterval(sweep, 5 * 60_000).unref();
   const app = createApp({ store, runner, token: null, origins });
   const server = app.__wssServer ?? createServer(app);
   server.listen(Number(process.env.PORT ?? 3001), process.env.HOST ?? '127.0.0.1', () => console.log('QA backend listening', server.address()));

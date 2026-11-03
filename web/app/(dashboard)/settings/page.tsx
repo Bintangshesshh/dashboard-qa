@@ -6,9 +6,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  api, fmtDate,
-  type CliToken, type Project, type Settings, type TestFile,
+  api, fmtDate, fmtTime,
+  type CliToken, type Help, type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
+import LhConfigEditor, {
+  LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig,
+} from "../../_components/lh-config-editor";
 
 const num = (value: string) => Number(value) || 0;
 
@@ -19,8 +22,8 @@ const fmtBytes = (value: string) => {
   if (bytes >= 1024) return `${(bytes / 1024).toLocaleString("id-ID", { maximumFractionDigits: 0 })} KB`;
   return `${bytes.toLocaleString("id-ID")} byte`;
 };
-const fmtClock = (iso: string) =>
-  new Date(iso).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+// Sama dengan badge waktu lain: WIB + titik, bukan jam lokal browser.
+const fmtClock = (iso: string) => fmtTime(iso);
 const fmtMinutes = (value: string) => {
   const minutes = num(value);
   return minutes >= 60
@@ -28,37 +31,26 @@ const fmtMinutes = (value: string) => {
     : `${minutes.toLocaleString("id-ID")} menit`;
 };
 
-type TabId = "pw" | "lh" | "report" | "access";
+type TabId = "project" | "pw" | "lh" | "report" | "bantuan";
 
+// Urutan tab mengikuti alur kerja: siapkan project dulu, baru pengaturan per tool.
 const TABS: { id: TabId; label: string }[] = [
+  { id: "project", label: "Project" },
   { id: "pw", label: "Playwright" },
-  { id: "lh", label: "Lighthouse" },
+  { id: "lh", label: "Lighthouse CI" },
   { id: "report", label: "Report" },
-  { id: "access", label: "Akses" },
+  { id: "bantuan", label: "Bantuan" },
 ];
-
-// Cermin konstanta server: MAX_LH_URLS=3, target sesi memakai 1 slot.
-const MAX_EXTRA_URLS = 2;
-const RUN_CHOICES = [1, 2, 3, 5];
-const CATEGORIES = [
-  { key: "categories:performance", label: "Performance" },
-  { key: "categories:accessibility", label: "Accessibility" },
-  { key: "categories:best-practices", label: "Best practices" },
-  { key: "categories:seo", label: "SEO" },
-];
-
-type Budgets = Record<string, { minScore: number }>;
-type LhConfig = { urls?: string[]; numberOfRuns?: number; budgets?: Budgets };
-
-const parseConfig = (config: string | null): LhConfig => {
-  try { return JSON.parse(config ?? "{}") ?? {}; } catch { return {}; }
-};
 
 type SettingField = {
   key: keyof Settings;
   label: string;
   suffix: string;
   help: string;
+  // Sama dengan SETTING_LIMITS di server; input menolak nilai di luar ini
+  // supaya user tidak menunggu 400 setelah klik Simpan.
+  min: number;
+  max: number;
   format: (value: string) => string;
 };
 
@@ -80,11 +72,13 @@ const SECTIONS: SettingSection[] = [
     fields: [
       {
         key: "max_queue_length", label: "Antrean maksimum", suffix: "run",
+        min: 1, max: 100,
         help: "Run baru ditolak saat antrean sudah mencapai jumlah ini.",
         format: value => `${num(value).toLocaleString("id-ID")} run`,
       },
       {
         key: "log_max_bytes", label: "Batas log per run", suffix: "byte",
+        min: 1024, max: 104857600,
         help: "Log lebih panjang dari ini dipotong agar database tidak membengkak.",
         format: fmtBytes,
       },
@@ -92,25 +86,27 @@ const SECTIONS: SettingSection[] = [
   },
   {
     id: "sesi",
-    tab: "pw",
-    title: "Reuse sesi",
-    desc: "Sesi Playwright yang masih terbuka dipakai ulang supaya laporan tidak terpecah.",
+    tab: "report",
+    title: "Pembagian sesi",
+    desc: "Sesi baru dibuat setelah idle selama ini, jadi run berjauhan tidak menumpuk di satu laporan.",
     fields: [
       {
         key: "session_reuse_minutes", label: "Reuse sesi", suffix: "menit",
-        help: "Sesi yang masih terbuka dipakai ulang bila umurnya belum melewati ini.",
+        min: 1, max: 10080,
+        help: "Idle dihitung dari run terakhir. Lebih pendek = laporan lebih ringkas per sesi.",
         format: fmtMinutes,
       },
     ],
   },
   {
     id: "upload",
-    tab: "lh",
+    tab: "report",
     title: "Upload artifact",
     desc: "Batas ukuran satu upload artifact dari runner.",
     fields: [
       {
         key: "max_upload_mb", label: "Batas upload artifact", suffix: "MB",
+        min: 1, max: 1024,
         help: "Ukuran maksimum satu upload artifact dari runner.",
         format: value => `${num(value).toLocaleString("id-ID")} MB`,
       },
@@ -124,16 +120,19 @@ const SECTIONS: SettingSection[] = [
     fields: [
       {
         key: "artifact_retention_days", label: "Artifact", suffix: "hari",
+        min: 1, max: 365,
         help: "Screenshot, trace, dan file hasil test dihapus setelah umur ini.",
         format: fmtDays,
       },
       {
         key: "report_retention_days", label: "Report HTML", suffix: "hari",
+        min: 1, max: 365,
         help: "Laporan yang dibuka dari dashboard tetap bisa diakses selama ini.",
         format: fmtDays,
       },
       {
         key: "log_retention_days", label: "Log run", suffix: "hari",
+        min: 1, max: 365,
         help: "Teks log runner disimpan selama ini sebelum dipangkas.",
         format: fmtDays,
       },
@@ -147,6 +146,7 @@ const SECTIONS: SettingSection[] = [
     fields: [
       {
         key: "range_default_days", label: "Range default", suffix: "hari",
+        min: 1, max: 365,
         help: "Rentang hari yang dipilih otomatis saat Ringkasan pertama dibuka.",
         format: fmtDays,
       },
@@ -161,9 +161,11 @@ export default function SettingsPage() {
   const [savedAt, setSavedAt] = useState<Record<string, string>>({});
   const [tokens, setTokens] = useState<CliToken[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [groups, setGroups] = useState<ProjectGroup[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [groupName, setGroupName] = useState("");
   const [files, setFiles] = useState<TestFile[]>([]);
-  const [newToken, setNewToken] = useState("");
-  const [label, setLabel] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -172,7 +174,8 @@ export default function SettingsPage() {
     api.settings().then(s => { setSettings(s); setDraft({}); setSavedAt({}); })
       .catch(e => setError(e.message));
     api.cliTokens().then(setTokens).catch(() => {});
-    api.projects().then(setProjects).catch(() => {});
+    api.projects({ all: true }).then(setProjects).catch(() => {});
+    api.projectGroups().then(setGroups).catch(() => {});
     api.testFiles({ all: true }).then(setFiles).catch(() => {});
   };
 
@@ -180,6 +183,13 @@ export default function SettingsPage() {
 
   const sectionDirty = (section: SettingSection) =>
     section.fields.some(f => draft[f.key] !== undefined && draft[f.key] !== settings?.[f.key]);
+
+  const fieldInvalid = (field: SettingField) => {
+    const raw = draft[field.key];
+    if (raw === undefined) return false;
+    const n = Number(raw);
+    return raw === "" || !Number.isSafeInteger(n) || n < field.min || n > field.max;
+  };
 
   const saveSection = async (section: SettingSection) => {
     if (!settings) return;
@@ -217,12 +227,50 @@ export default function SettingsPage() {
     });
   };
 
+  // Error diteruskan ke form: isian tidak boleh hilang saat gagal.
+  const createProject = async (body: Parameters<typeof api.createProject>[0]) => {
+    setError(""); setNotice("");
+    const created = await api.createProject(body);
+    setProjects(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+    reloadGroups();
+    setNotice(`${created.name} ditambahkan.`);
+  };
+
+  const reloadGroups = () => api.projectGroups().then(setGroups).catch(e => setError(e.message));
+
+  const addGroup = async (name: string) => {
+    setError(""); setNotice("");
+    try {
+      const g = await api.createProjectGroup(name);
+      setGroups(prev => [...prev, g].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (e) { setError((e as Error).message); throw e; }
+  };
+
+  const renameGroup = async (id: string, name: string) => {
+    setError(""); setNotice("");
+    try {
+      const g = await api.patchProjectGroup(id, name);
+      setGroups(prev => prev.map(x => (x.id === id ? g : x)));
+      setEditingGroup(null);
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  const removeGroup = async (g: ProjectGroup) => {
+    if (!confirm(`Hapus grup "${g.name}"?`)) return;
+    setError(""); setNotice("");
+    try {
+      await api.deleteProjectGroup(g.id);
+      setGroups(prev => prev.filter(x => x.id !== g.id));
+    } catch (e) { setError((e as Error).message); }
+  };
+
   const saveProject = async (p: Project, patch: Parameters<typeof api.patchProject>[1]) => {
     setError(""); setNotice("");
     try {
       const updated = await api.patchProject(p.id, patch);
       setProjects(prev => prev.map(x => (x.id === p.id ? updated : x)));
-      setNotice(`${p.name} disimpan.`);
+      reloadGroups();
+      setNotice(`${updated.name} disimpan.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -235,13 +283,36 @@ export default function SettingsPage() {
     } catch (e) { setError((e as Error).message); }
   };
 
-  const makeToken = async () => {
+  // Test file milik project. Error diteruskan ke form supaya isian tidak hilang.
+  const addTestFile = async (
+    p: Project,
+    body: Omit<Parameters<typeof api.createTestFile>[0], "projectId">,
+  ) => {
+    setError(""); setNotice("");
+    const created = await api.createTestFile({ projectId: p.id, ...body });
+    setFiles(prev => [...prev, created]);
+    setNotice(`${created.label} ditambahkan.`);
+  };
+
+  const removeTestFile = async (file: TestFile) => {
+    if (!confirm(`Hapus ${file.label} (${file.path})?`)) return;
     setError(""); setNotice("");
     try {
-      const t = await api.createCliToken(label);
-      setNewToken(t.token);
-      setLabel("");
-      api.cliTokens().then(setTokens).catch(() => {});
+      await api.deleteTestFile(file.id);
+      setFiles(prev => prev.filter(x => x.id !== file.id));
+      setNotice(`${file.label} dihapus.`);
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  // Hapus permanen hanya untuk project tanpa riwayat; server menolak dengan 409.
+  const deleteProject = async (p: Project) => {
+    if (!confirm(`Hapus permanen ${p.name}? Tidak bisa dibatalkan.`)) return;
+    setError(""); setNotice("");
+    try {
+      await api.deleteProject(p.id);
+      setProjects(prev => prev.filter(x => x.id !== p.id));
+      reloadGroups();
+      setNotice(`${p.name} dihapus.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -279,20 +350,28 @@ export default function SettingsPage() {
                 <input
                   className="pb-input"
                   type="number"
-                  min={1}
+                  min={field.min}
+                  max={field.max}
+                  step={1}
                   inputMode="numeric"
+                  aria-invalid={fieldInvalid(field)}
                   value={draft[field.key] ?? settings[field.key]}
                   onChange={e => setDraft(d => ({ ...d, [field.key]: e.target.value }))}
                 />
                 <span aria-hidden="true">{field.suffix}</span>
               </span>
-              <span className="pb-set-help">{field.help}</span>
+              <span className="pb-set-help">
+                {field.min.toLocaleString("id-ID")}-{field.max.toLocaleString("id-ID")} {field.suffix}. {field.help}
+              </span>
             </label>
           ))}
         </div>
         <div className="pb-set-foot">
           <button className="pb-btn primary" onClick={() => saveSection(section)}
-            disabled={busy || !dirty}>Simpan</button>
+            disabled={busy || !dirty || section.fields.some(fieldInvalid)}
+            title={section.fields.some(fieldInvalid) ? "Ada nilai di luar rentang." : undefined}>
+            Simpan
+          </button>
           <button className="pb-btn" onClick={() => resetSection(section)}
             disabled={busy || !dirty}>Reset</button>
           <span className="pb-spacer" />
@@ -303,6 +382,13 @@ export default function SettingsPage() {
   };
 
   const tabSections = (id: TabId) => SECTIONS.filter(s => s.tab === id).map(renderSection);
+  const visibleProjects = showArchived ? projects : projects.filter(p => p.active);
+  const byGroup = (id: string | null) =>
+    visibleProjects.filter(p => (p.group_id ?? null) === id)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  const orphans = byGroup(null);
+  const activeProjects = projects.filter(p => p.active)
+    .sort((a, b) => a.name.localeCompare(b.name));
   const pwFiles = files.filter(f => f.tool === "pw");
   const lhFiles = files.filter(f => f.tool === "lh");
 
@@ -310,13 +396,13 @@ export default function SettingsPage() {
     <>
       <div className="pb-head">
         <div>
-          <h1>Seting.</h1>
+          <h1>Pengaturan.</h1>
         </div>
       </div>
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
       {notice && <div className="pb-note flash">{notice}</div>}
 
-      <div className="pb-tabs pb-set-tabbar" role="tablist" aria-label="Bagian seting">
+      <div className="pb-tabs pb-set-tabbar" role="tablist" aria-label="Bagian pengaturan">
         {TABS.map(t => (
           <button key={t.id} role="tab" aria-selected={tab === t.id}
             className={`pb-tab ${tab === t.id ? "active" : ""}`}
@@ -337,6 +423,9 @@ export default function SettingsPage() {
                     Spec nonaktif tetap tersimpan tapi tidak ditawarkan saat memilih run.
                   </div>
                 </div>
+                <span className="pb-set-status">
+                  {pwFiles.filter(f => f.enabled).length} spec aktif dari {pwFiles.length}
+                </span>
               </div>
               {projects.map(p => {
                 const own = pwFiles.filter(f => f.project_id === p.id);
@@ -364,6 +453,26 @@ export default function SettingsPage() {
               {pwFiles.length === 0 && <p className="pb-empty">Belum ada spec Playwright.</p>}
             </section>
             {tabSections("pw")}
+
+            <section className="pb-card">
+              <div className="pb-card-head">
+                <div>
+                  <h2>Setelan Playwright per project</h2>
+                  <div className="pb-card-sub">
+                    Nilai ini ditulis ke <code className="pb-mono">test_files.config</code> spec
+                    pertama project dan dipakai saat config runner digenerate.
+                  </div>
+                </div>
+              </div>
+              {activeProjects.map(p => (
+                <PwCard key={p.id} project={p}
+                  file={pwFiles.find(f => f.project_id === p.id) ?? null}
+                  onSave={saveTestFile} />
+              ))}
+              {activeProjects.length === 0 && (
+                <p className="pb-empty">Belum ada project aktif.</p>
+              )}
+            </section>
           </>
         )}
 
@@ -379,12 +488,16 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              {projects.map(p => {
-                const file = lhFiles.find(f => f.project_id === p.id);
-                if (!file) return null;
-                return <LhciCard key={p.id} project={p} file={file} onSave={saveTestFile} />;
+              {activeProjects.map(p => {
+                const file = lhFiles.find(f => f.project_id === p.id) ?? null;
+                return (
+                  <LhciCard key={p.id} project={p} file={file}
+                    onSave={saveTestFile} onAddFile={addTestFile} />
+                );
               })}
-              {lhFiles.length === 0 && <p className="pb-empty">Belum ada config Lighthouse.</p>}
+              {activeProjects.length === 0 && (
+                <p className="pb-empty">Belum ada project aktif.</p>
+              )}
             </section>
             {tabSections("lh")}
           </>
@@ -410,45 +523,122 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "access" && (
+        {tab === "project" && (
           <>
             <section className="pb-card">
               <div className="pb-card-head">
                 <div>
-                  <h2>Project</h2>
+                  <h2>Grup & project</h2>
                   <div className="pb-card-sub">
-                    Alamat target per environment dan origin yang boleh diakses runner.
+                    Grup mengelompokkan project di Overview dan filter. Project arsip tetap
+                    menyimpan riwayat tapi tidak bisa dijalankan.
                   </div>
                 </div>
+                <label className="pb-row" style={{ gap: 6, fontSize: 12 }}>
+                  <input type="checkbox" checked={showArchived}
+                    onChange={e => setShowArchived(e.target.checked)} />
+                  Tampilkan arsip
+                </label>
               </div>
-              {projects.length === 0
-                ? <p className="pb-empty">Belum ada project.</p>
-                : projects.map(p => <ProjectRow key={p.id} project={p} onSave={saveProject} />)}
+
+              {/* Tambah grup dan project di satu panel: keduanya soal struktur. */}
+              <div className="pb-add-panel">
+                <div className="pb-add-row">
+                  <span className="pb-card-sub">Grup baru</span>
+                  <NewGroupForm onCreate={addGroup} />
+                </div>
+                <div className="pb-add-row col">
+                  <span className="pb-card-sub">
+                    Project baru. base_url wajib; slug dipakai sebagai kunci di CLI dan URL report.
+                  </span>
+                  <NewProjectForm groups={groups} onCreate={createProject} />
+                </div>
+              </div>
+
+              {groups.length === 0 && orphans.length === 0 && (
+                <p className="pb-empty">
+                  Belum ada project. Tambahkan grup dulu, lalu project di dalamnya.
+                </p>
+              )}
+
+              {groups.map(g => {
+                const own = byGroup(g.id);
+                const editing = editingGroup === g.id;
+                return (
+                  <div className="pb-group" key={g.id}>
+                    <div className="pb-group-head">
+                      {editing ? (
+                        <>
+                          <input className="pb-input" value={groupName} autoFocus
+                            aria-label="Nama grup"
+                            onChange={e => setGroupName(e.target.value)} />
+                          <button className="pb-btn sm primary"
+                            onClick={() => renameGroup(g.id, groupName)}
+                            disabled={!groupName.trim()}>Simpan</button>
+                          <button className="pb-btn sm"
+                            onClick={() => setEditingGroup(null)}>Batal</button>
+                        </>
+                      ) : (
+                        <>
+                          <strong>{g.name}</strong>
+                          <span className="pb-muted pb-mono">{own.length} project</span>
+                          <span className="pb-spacer" />
+                          <button className="pb-btn sm"
+                            onClick={() => { setEditingGroup(g.id); setGroupName(g.name); }}>
+                            Ganti nama
+                          </button>
+                          <button className="pb-btn sm danger" disabled={own.length > 0}
+                            title={own.length > 0 ? "Pindahkan project dulu" : undefined}
+                            onClick={() => removeGroup(g)}>Hapus grup</button>
+                        </>
+                      )}
+                    </div>
+                    {own.length === 0
+                      ? <p className="pb-empty sm">Belum ada project di grup ini.</p>
+                      : own.map(p => (
+                        <ProjectRow key={p.id} project={p} groups={groups} files={files}
+                          onSave={saveProject} onAddFile={addTestFile}
+                          onRemoveFile={removeTestFile} onDelete={deleteProject} />
+                      ))}
+                  </div>
+                );
+              })}
+
+              {orphans.length > 0 && (
+                <div className="pb-group">
+                  <div className="pb-group-head">
+                    <strong>Tanpa grup</strong>
+                    <span className="pb-muted pb-mono">{orphans.length} project</span>
+                  </div>
+                  {orphans.map(p => (
+                    <ProjectRow key={p.id} project={p} groups={groups} files={files}
+                      onSave={saveProject} onAddFile={addTestFile}
+                      onRemoveFile={removeTestFile} onDelete={deleteProject} />
+                  ))}
+                </div>
+              )}
             </section>
 
+          </>
+        )}
+
+        {tab === "bantuan" && (
+          <>
+            <Bantuan />
             <section className="pb-card">
               <div className="pb-card-head">
                 <div>
                   <h2>Token CLI</h2>
                   <div className="pb-card-sub">
-                    Dipakai playbook CLI di laptop untuk memicu run tanpa login.
+                    Dipakai playbook CLI di laptop untuk memicu run tanpa login. Token ini
+                    bukan kredensial login dashboard, dan pembuatannya lewat CLI
+                    (<code className="pb-mono">playbook login</code>).
                   </div>
                 </div>
               </div>
-              <div className="pb-row pb-mb-3">
-                <input className="pb-input pb-input-narrow" placeholder="label (mis. laptop-budi)"
-                  value={label} onChange={e => setLabel(e.target.value)} />
-                <button className="pb-btn primary" onClick={makeToken} disabled={!label.trim()}>Buat token</button>
-              </div>
-              {newToken && (
-                <div className="pb-note warn flash">
-                  <p className="pb-note-title">Salin sekarang — token hanya tampil sekali.</p>
-                  <code className="pb-mono" style={{ wordBreak: "break-all" }}>{newToken}</code>
-                </div>
-              )}
               {tokens.length === 0
                 ? <p className="pb-empty">Belum ada token.</p>
-                : <table className="pb-table">
+                : <div className="pb-table-wrap"><table className="pb-table">
                   <thead><tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th /></tr></thead>
                   <tbody>
                     {tokens.map(t => (
@@ -464,156 +654,421 @@ export default function SettingsPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>}
+                </table></div>}
             </section>
           </>
         )}
+
       </div>
     </>
   );
 }
 
-// Editor config lhci per project. Bentuk JSON sama dengan /lighthouse supaya run
-// dari dua halaman tidak saling menimpa nilai.
-function LhciCard({ project, file, onSave }: {
+// Editor config lhci per project, memakai komponen bersama LhConfigEditor
+// supaya bentuk JSON-nya sama dengan /lighthouse (PRD T09).
+function LhciCard({ project, file, onSave, onAddFile }: {
   project: Project;
-  file: TestFile;
+  file: TestFile | null;
   onSave: (file: TestFile, patch: Parameters<typeof api.patchTestFile>[1]) => Promise<void>;
+  onAddFile: (p: Project, body: Omit<Parameters<typeof api.createTestFile>[0], "projectId">) => Promise<void>;
 }) {
-  const cfg = parseConfig(file.config);
-  const baselineUrls = cfg.urls ?? [];
-  const [runs, setRuns] = useState(cfg.numberOfRuns ?? 1);
-  const [extraUrls, setExtraUrls] = useState<string[]>(baselineUrls);
-  const [scores, setScores] = useState<Record<string, number>>(
-    Object.fromEntries(CATEGORIES.map(c => [c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100)])),
-  );
+  const target = project.base_url || "";
+  const [config, setConfig] = useState(file?.config ?? "");
   const [saving, setSaving] = useState(false);
-
-  const extra = extraUrls.map(s => s.trim()).filter(Boolean);
-  const dirty =
-    runs !== (cfg.numberOfRuns ?? 1) ||
-    extra.join("\n") !== baselineUrls.join("\n") ||
-    CATEGORIES.some(c => (scores[c.key] ?? 60) !== Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100));
+  const [error, setError] = useState("");
+  const dirty = !!file && config !== (file.config ?? "");
 
   const save = async () => {
-    setSaving(true);
+    if (!file) return;
+    const cfg = parseLhConfig(config);
+    const msg = lhConfigError({
+      target, extra: extraUrlsOf(cfg, project),
+      runs: cfg.numberOfRuns ?? 1,
+      scores: Object.fromEntries(LH_CATEGORIES.map(c => [
+        c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100),
+      ])),
+    });
+    if (msg) { setError(msg); return; }
+    setSaving(true); setError("");
+    try { await onSave(file, { config }); }
+    catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  };
+
+  // Config default dari URL project: target utama selalu ikut diaudit runner.
+  const create = async () => {
+    setSaving(true); setError("");
     try {
-      await onSave(file, {
-        config: JSON.stringify({
-          urls: extra,
-          numberOfRuns: runs,
-          budgets: Object.fromEntries(CATEGORIES.map(c => [c.key, { minScore: (scores[c.key] ?? 60) / 100 }])),
-        }),
+      await onAddFile(project, {
+        tool: "lh",
+        path: `lighthouserc.${project.slug}.js`,
+        config: {
+          urls: [], numberOfRuns: 1,
+          budgets: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, { minScore: 0.6 }])),
+        },
       });
-    } finally { setSaving(false); }
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
   };
 
   return (
     <div className="pb-proj-card">
       <div className="pb-row pb-proj-head">
         <strong>{project.name}</strong>
-        <span className="pb-muted pb-mono">{file.path}</span>
+        <span className="pb-muted pb-mono">{file?.path ?? "belum ada config"}</span>
       </div>
 
-      <div className="pb-lh-form">
-        <div className="pb-lh-field">
-          <span className="pb-set-label">Jumlah run per URL</span>
-          <div className="pb-seg">
-            {RUN_CHOICES.map(n => (
-              <button key={n} className={runs === n ? "active" : ""}
-                onClick={() => setRuns(n)} aria-pressed={runs === n}>{n}×</button>
-            ))}
-          </div>
+      {!target.trim() && (
+        <div className="pb-note warn">
+          Project ini belum punya <code className="pb-mono">base_url</code>. Isi dulu di tab
+          Project supaya target audit bisa ditentukan.
         </div>
+      )}
 
-        <div className="pb-lh-field">
-          <span className="pb-set-label">
-            URL tambahan ({extra.length}/{MAX_EXTRA_URLS})
-          </span>
-          <div className="pb-lh-urls">
-            <div className="pb-row">
-              <input className="pb-input" value={project.base_url} readOnly aria-label="Target utama" />
-              <span className="pb-badge closed">target utama</span>
-            </div>
-            {extraUrls.map((u, i) => (
-              <div className="pb-row" key={i}>
-                <input className="pb-input" value={u} placeholder="https://…"
-                  aria-label={`URL tambahan ${i + 1}`}
-                  onChange={e => setExtraUrls(list => list.map((x, j) => (j === i ? e.target.value : x)))} />
-                <button className="pb-btn sm" onClick={() => setExtraUrls(list => list.filter((_, j) => j !== i))}>
-                  Hapus
-                </button>
-              </div>
-            ))}
-            {extraUrls.length < MAX_EXTRA_URLS && (
-              <button className="pb-btn sm" onClick={() => setExtraUrls(list => [...list, ""])}>
-                + Tambah URL
-              </button>
-            )}
-          </div>
-        </div>
+      {file ? (
+        <LhConfigEditor project={project} value={config} target={target}
+          onChange={setConfig} idPrefix={`set-${project.id}`} />
+      ) : (
+        <p className="pb-hint">
+          Config default dibuat dari URL project: target utama, 1 run, budget 60.
+        </p>
+      )}
 
-        <div className="pb-lh-field">
-          <span className="pb-set-label">Skor minimum per kategori</span>
-          <div className="pb-lh-budgets">
-            {CATEGORIES.map(c => (
-              <label className="pb-lh-budget" key={c.key}>
-                <span className="pb-lh-budget-top">
-                  <span>{c.label}</span>
-                  <output>{scores[c.key] ?? 60}%</output>
-                </span>
-                <input type="range" min={0} max={100} step={5}
-                  value={scores[c.key] ?? 60} aria-label={"Skor minimum " + c.label}
-                  onChange={e => {
-                    const v = Number(e.target.value);
-                    setScores(s => ({ ...s, [c.key]: v }));
-                  }} />
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
+      {error && <div className="pb-err" role="alert">{error}</div>}
 
       <div className="pb-row pb-proj-foot">
-        <span className="pb-set-status">{dirty ? "Belum disimpan" : "Tersimpan"}</span>
+        <span className="pb-set-status">
+          {!file ? "Belum ada config" : dirty ? "Belum disimpan" : "Tersimpan"}
+        </span>
         <span className="pb-spacer" />
-        <button className="pb-btn sm primary" onClick={save} disabled={saving || !dirty}>
-          Simpan config
+        {file ? (
+          <button className="pb-btn sm primary" onClick={save}
+            disabled={saving || !dirty || !target.trim()}>
+            Simpan config
+          </button>
+        ) : (
+          <button className="pb-btn sm primary" onClick={create}
+            disabled={saving || !target.trim()}>
+            Buat config default
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Setelan Playwright per project (PRD S03). Disimpan di config spec pertama
+// supaya tidak perlu tabel baru; spec lain dibiarkan apa adanya.
+type PwCfg = { env?: string; timeout?: number; workers?: number; retries?: number };
+
+function PwCard({ project, file, onSave }: {
+  project: Project;
+  file: TestFile | null;
+  onSave: (file: TestFile, patch: Parameters<typeof api.patchTestFile>[1]) => Promise<void>;
+}) {
+  const parsed = (() => {
+    try { return (JSON.parse(file?.config ?? "{}") ?? {}) as PwCfg; } catch { return {} as PwCfg; }
+  })();
+  const [pw, setPw] = useState<PwCfg>({
+    env: parsed.env ?? "local",
+    timeout: parsed.timeout ?? 120000,
+    workers: parsed.workers ?? 1,
+    retries: parsed.retries ?? 0,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    if (!file) return;
+    setSaving(true); setError("");
+    try { await onSave(file, { config: JSON.stringify({ ...parsed, ...pw }) }); }
+    catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="pb-proj-card">
+      <div className="pb-row pb-proj-head">
+        <strong>{project.name}</strong>
+        <span className="pb-muted pb-mono">{file?.path ?? "belum ada spec"}</span>
+      </div>
+      {file ? (
+        <div className="pb-set-grid">
+          <label className="pb-set-field">
+            <span className="pb-set-label">Env default</span>
+            <select className="pb-select" value={pw.env}
+              onChange={e => setPw(v => ({ ...v, env: e.target.value }))}>
+              {["local", "staging", "production"].map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+            <span className="pb-set-help">Env yang terpilih otomatis saat halaman run dibuka.</span>
+          </label>
+          <label className="pb-set-field">
+            <span className="pb-set-label">Timeout per test</span>
+            <span className="pb-input-unit">
+              <input className="pb-input" type="number" min={10000} max={900000} step={1000}
+                inputMode="numeric" value={pw.timeout}
+                onChange={e => setPw(v => ({ ...v, timeout: Number(e.target.value) || 0 }))} />
+              <span aria-hidden="true">ms</span>
+            </span>
+            <span className="pb-set-help">10.000-900.000 ms. Test lebih lama dari ini ditandai gagal.</span>
+          </label>
+          <label className="pb-set-field">
+            <span className="pb-set-label">Workers</span>
+            <span className="pb-input-unit">
+              <input className="pb-input" type="number" min={1} max={8} inputMode="numeric"
+                value={pw.workers}
+                onChange={e => setPw(v => ({ ...v, workers: Number(e.target.value) || 1 }))} />
+              <span aria-hidden="true">worker</span>
+            </span>
+            <span className="pb-set-help">Spec eureka memakai state bersama; 1 worker paling aman.</span>
+          </label>
+          <label className="pb-set-field">
+            <span className="pb-set-label">Retries</span>
+            <span className="pb-input-unit">
+              <input className="pb-input" type="number" min={0} max={3} inputMode="numeric"
+                value={pw.retries}
+                onChange={e => setPw(v => ({ ...v, retries: Number(e.target.value) || 0 }))} />
+              <span aria-hidden="true">kali</span>
+            </span>
+            <span className="pb-set-help">Test gagal diulang sebanyak ini sebelum dinyatakan gagal.</span>
+          </label>
+        </div>
+      ) : (
+        <p className="pb-hint">Tambahkan spec Playwright dulu di daftar Spec Playwright.</p>
+      )}
+      {error && <div className="pb-err" role="alert">{error}</div>}
+      <div className="pb-row pb-proj-foot">
+        <span className="pb-spacer" />
+        <button className="pb-btn sm primary" onClick={save} disabled={saving || !file}>
+          Simpan setelan
         </button>
       </div>
     </div>
   );
 }
 
-function ProjectRow({ project, onSave }: {
-  project: Project;
-  onSave: (p: Project, patch: Parameters<typeof api.patchProject>[1]) => Promise<void>;
+// Tambah grup baru. Enter di kolom = simpan.
+function NewGroupForm({ onCreate }: { onCreate: (name: string) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    try { await onCreate(name.trim()); setName(""); }
+    catch { /* pesan sudah tampil di halaman; isian dibiarkan */ }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="pb-row pb-mb-3" style={{ gap: 8 }}>
+      <input className="pb-input pb-input-narrow" placeholder="nama grup baru"
+        value={name} aria-label="Nama grup baru"
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter") submit(); }} />
+      <button className="pb-btn sm primary" onClick={submit} disabled={busy || !name.trim()}>
+        + Grup
+      </button>
+    </div>
+  );
+}
+
+// Tambah project. base_url wajib (server menolak yang kosong); error dari
+// onCreate diteruskan balik supaya isian tidak hilang saat gagal.
+function NewProjectForm({ groups, onCreate }: {
+  groups: ProjectGroup[];
+  onCreate: (body: Parameters<typeof api.createProject>[0]) => Promise<void>;
 }) {
-  const [base, setBase] = useState(project.base_url);
+  const [name, setName] = useState("");
+  const [base, setBase] = useState("");
+  const [local, setLocal] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setBusy(true); setError("");
+    try {
+      await onCreate({
+        name: name.trim(),
+        base_url: base.trim(),
+        local_url: local.trim() || null,
+        groupId: groupId || null,
+      });
+      setName(""); setBase(""); setLocal(""); setGroupId("");
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="pb-proj-card">
+      <div className="pb-grid two">
+        <label className="pb-field">nama
+          <input className="pb-input" value={name} onChange={e => setName(e.target.value)} />
+        </label>
+        <label className="pb-field">grup
+          <select className="pb-select" value={groupId} onChange={e => setGroupId(e.target.value)}>
+            <option value="">tanpa grup</option>
+            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </label>
+        <label className="pb-field">base_url (wajib)
+          <input className="pb-input" placeholder="https://…" value={base}
+            onChange={e => setBase(e.target.value)} />
+        </label>
+        <label className="pb-field">local_url
+          <input className="pb-input" placeholder="http://localhost:5173" value={local}
+            onChange={e => setLocal(e.target.value)} />
+        </label>
+      </div>
+      {error && <div className="pb-err" role="alert">{error}</div>}
+      <div className="pb-row pb-proj-foot">
+        <span className="pb-set-status">
+          {name.trim() && base.trim() ? "" : "nama dan base_url wajib diisi"}
+        </span>
+        <span className="pb-spacer" />
+        <button className="pb-btn sm primary" onClick={submit}
+          disabled={busy || !name.trim() || !base.trim()}>
+          {busy ? "Menyimpan…" : "Tambah project"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Template spec minimal: server menolak code kosong.
+const SPEC_TEMPLATE = `import { test, expect } from "@playwright/test";
+
+test("halaman utama terbuka", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("body")).toBeVisible();
+});
+`;
+
+// Satu project di pohon grup: pindah grup, arsip/pulihkan, dan detail URL.
+function ProjectRow({ project, groups, files, onSave, onAddFile, onRemoveFile, onDelete }: {
+  project: Project;
+  groups: ProjectGroup[];
+  files: TestFile[];
+  onSave: (p: Project, patch: Parameters<typeof api.patchProject>[1]) => Promise<void>;
+  onAddFile: (p: Project, body: Omit<Parameters<typeof api.createTestFile>[0], "projectId">) => Promise<void>;
+  onRemoveFile: (f: TestFile) => Promise<void>;
+  onDelete: (p: Project) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const archived = !project.active;
+
+  return (
+    <div className={`pb-proj-row ${archived ? "archived" : ""}`}>
+      <div className="pb-proj-row-head">
+        <button className="pb-proj-toggle" onClick={() => setOpen(o => !o)}
+          aria-expanded={open}>
+          <span className="pb-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
+          <strong>{project.name}</strong>
+          <span className="pb-muted pb-mono">{project.slug}</span>
+        </button>
+        {archived && <span className="pb-badge closed">Arsip</span>}
+        <span className="pb-spacer" />
+        <select className="pb-select sm" value={project.group_id ?? ""}
+          aria-label={"Grup untuk " + project.name}
+          onChange={e => onSave(project, { groupId: e.target.value || null })}>
+          <option value="">tanpa grup</option>
+          {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+        <button className="pb-btn sm" onClick={() => onSave(project, { active: archived ? 1 : 0 })}>
+          {archived ? "Pulihkan" : "Arsipkan"}
+        </button>
+      </div>
+      {open && (
+        <ProjectDetail project={project} files={files} onSave={onSave}
+          onAddFile={onAddFile} onRemoveFile={onRemoveFile} onDelete={onDelete} />
+      )}
+    </div>
+  );
+}
+
+// Detail URL/origin project + test file miliknya. Slug read-only karena dipakai
+// CLI dan URL report.
+function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDelete }: {
+  project: Project;
+  files: TestFile[];
+  onSave: (p: Project, patch: Parameters<typeof api.patchProject>[1]) => Promise<void>;
+  onAddFile: (p: Project, body: Omit<Parameters<typeof api.createTestFile>[0], "projectId">) => Promise<void>;
+  onRemoveFile: (f: TestFile) => Promise<void>;
+  onDelete: (p: Project) => Promise<void>;
+}) {
+  const [name, setName] = useState(project.name);
+  const [base, setBase] = useState(project.base_url ?? "");
   const [staging, setStaging] = useState(project.staging_url ?? "");
   const [local, setLocal] = useState(project.local_url ?? "");
   const [origins, setOrigins] = useState(project.origins.join(", "));
   const [allowProd, setAllowProd] = useState(!!project.allow_production);
+  const [addOpen, setAddOpen] = useState(false);
+  const [path, setPath] = useState(`tests/${project.slug}.spec.ts`);
+  const [code, setCode] = useState(SPEC_TEMPLATE);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const own = files.filter(f => f.project_id === project.id);
+  const hasLh = own.some(f => f.tool === "lh");
+  // Petunjuk untuk UI saja; server tetap penjaga terakhir lewat 409.
+  const deletable = !own.length && !project.lastRunAt;
 
   const save = () => onSave(project, {
-    base_url: base,
-    staging_url: staging || null,
-    local_url: local || null,
+    name: name.trim(),
+    base_url: base.trim(),
+    staging_url: staging.trim() || null,
+    local_url: local.trim() || null,
     origins: origins.split(",").map(s => s.trim()).filter(Boolean),
     allow_production: allowProd ? 1 : 0,
   });
 
+  const addSpec = async () => {
+    setBusy(true); setErr("");
+    try {
+      await onAddFile(project, { tool: "pw", path: path.trim(), code });
+      setAddOpen(false);
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  // Config default dari URL project: target utama selalu ikut diaudit runner.
+  const addLhConfig = async () => {
+    setBusy(true); setErr("");
+    try {
+      await onAddFile(project, {
+        tool: "lh",
+        path: `lighthouserc.${project.slug}.js`,
+        config: {
+          urls: [], numberOfRuns: 1,
+          budgets: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, { minScore: 0.6 }])),
+        },
+      });
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
   return (
-    <div className="pb-proj-card">
-      <div className="pb-row pb-proj-head">
-        <strong>{project.name}</strong>
-        <span className="pb-muted pb-mono">{project.slug}</span>
-      </div>
+    <div className="pb-proj-body">
       <div className="pb-grid two">
-        <label className="pb-field">base_url<input className="pb-input" value={base} onChange={e => setBase(e.target.value)} /></label>
-        <label className="pb-field">staging_url<input className="pb-input" value={staging} onChange={e => setStaging(e.target.value)} /></label>
-        <label className="pb-field">local_url<input className="pb-input" value={local} onChange={e => setLocal(e.target.value)} /></label>
-        <label className="pb-field">origins (pisah koma)<input className="pb-input" value={origins} onChange={e => setOrigins(e.target.value)} /></label>
+        <label className="pb-field">nama
+          <input className="pb-input" value={name} onChange={e => setName(e.target.value)} />
+        </label>
+        <label className="pb-field">slug (tidak bisa diubah)
+          <input className="pb-input pb-mono" value={project.slug} readOnly />
+        </label>
+        <label className="pb-field">base_url
+          <input className="pb-input" value={base} onChange={e => setBase(e.target.value)} />
+        </label>
+        <label className="pb-field">staging_url
+          <input className="pb-input" value={staging} onChange={e => setStaging(e.target.value)} />
+        </label>
+        <label className="pb-field">local_url
+          <input className="pb-input" value={local} onChange={e => setLocal(e.target.value)} />
+        </label>
+        <label className="pb-field">origins (pisah koma)
+          <input className="pb-input" value={origins} onChange={e => setOrigins(e.target.value)} />
+        </label>
       </div>
       <div className="pb-row pb-proj-foot">
         <label className="pb-row" style={{ gap: 6 }}>
@@ -623,6 +1078,216 @@ function ProjectRow({ project, onSave }: {
         <span className="pb-spacer" />
         <button className="pb-btn sm primary" onClick={save}>Simpan project</button>
       </div>
+
+      <div className="pb-file-list">
+        <div className="pb-spec-head">
+          <strong>Test file</strong>
+          <span className="pb-muted pb-mono">{own.length}</span>
+        </div>
+        {own.map(f => (
+          <div className="pb-spec-row" key={f.id}>
+            <span className={`pb-badge ${f.enabled ? "passed" : "closed"}`}>
+              {f.tool === "pw" ? "Playwright" : "Lighthouse"}
+            </span>
+            <span className="pb-spec-name">{f.label}</span>
+            <span className="pb-spec-path">{f.path}</span>
+            <button className="pb-btn sm danger" onClick={() => onRemoveFile(f)}>Hapus</button>
+          </div>
+        ))}
+        {!own.length && <p className="pb-hint">Belum ada spec atau config untuk project ini.</p>}
+
+        <div className="pb-row pb-proj-foot" style={{ gap: 8 }}>
+          <button className="pb-btn sm" onClick={() => setAddOpen(o => !o)} disabled={busy}>
+            {addOpen ? "Batal" : "+ Spec Playwright"}
+          </button>
+          {!hasLh && (
+            <button className="pb-btn sm" onClick={addLhConfig} disabled={busy}>
+              Buat config Lighthouse
+            </button>
+          )}
+        </div>
+
+        {addOpen && (
+          <div className="pb-lh-field pb-proj-foot">
+            <label className="pb-field">path spec
+              <input className="pb-input pb-mono" value={path}
+                onChange={e => setPath(e.target.value)} />
+            </label>
+            <label className="pb-field">code
+              <textarea className="pb-input pb-mono" rows={8} value={code}
+                onChange={e => setCode(e.target.value)} />
+            </label>
+            <div className="pb-row">
+              <button className="pb-btn sm primary" onClick={addSpec} disabled={busy}>
+                {busy ? "Menyimpan…" : "Tambah spec"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!deletable && (
+          <p className="pb-hint">
+            Project ini sudah punya riwayat. Pakai Arsipkan supaya report tetap bisa dibuka.
+          </p>
+        )}
+        {deletable && (
+          <div className="pb-row pb-proj-foot">
+            <button className="pb-btn sm danger" onClick={() => onDelete(project)}>
+              Hapus permanen
+            </button>
+          </div>
+        )}
+        {err && <div className="pb-err" role="alert">{err}</div>}
+      </div>
     </div>
   );
+}
+
+// FAQ ringkas + versi tool + perintah update manual. Dijawab dari data server,
+// bukan teks statis, supaya versi yang tampil tidak pernah bohong.
+const FAQ: { q: string; a: string }[] = [
+  {
+    q: "Apa beda sesi dan run?",
+    a: "Sesi adalah wadah per project + environment + user. Run adalah satu eksekusi spec. "
+      + "Sesi terbuka dipakai ulang selama umurnya belum lewat batas reuse, supaya report tidak terpecah.",
+  },
+  {
+    q: "Kenapa waktu tampil WIB?",
+    a: "Semua timestamp disimpan UTC dan ditampilkan dalam WIB agar jadwal run tim tidak beda-beda.",
+  },
+  {
+    q: "Bagaimana token CLI dipakai?",
+    a: "Token hanya untuk playbook CLI di laptop, bukan login dashboard. Setiap user "
+      + "punya tokennya sendiri, dibuat otomatis saat playbook login. Cabut dari tabel "
+      + "Token CLI di bawah kalau perangkat hilang; password tidak perlu diganti.",
+  },
+  {
+    q: "Kenapa config Lighthouse ditolak?",
+    a: "Total URL maksimal 5 (1 target project + 4 URL tambahan), numberOfRuns 1-10, "
+      + "dan setiap URL harus satu origin dengan URL project yang diizinkan.",
+  },
+  {
+    q: "Apa beda grup dan project?",
+    a: "Grup hanya pengelompokan tampilan (Overview + filter). Project menyimpan URL, "
+      + "spec, dan config. Project berriwayat diarsipkan, tidak dihapus.",
+  },
+];
+
+function Bantuan() {
+  const [help, setHelp] = useState<Help | null>(null);
+
+  useEffect(() => { api.help().then(setHelp).catch(() => {}); }, []);
+
+  const rows: { label: string; value: string }[] = help ? [
+    { label: "Versi dashboard", value: help.version },
+    { label: "Node", value: help.node },
+    { label: "Playwright", value: help.playwright },
+    { label: "Lighthouse CI", value: help.lighthouse },
+  ] : [];
+
+  return (
+    <>
+      <section className="pb-card">
+        <div className="pb-card-head">
+          <div>
+            <h2>Versi & update</h2>
+            <div className="pb-card-sub">
+              Tombol Perbarui tools menjalankan npm di mesin server. Hanya admin, hanya saat
+              diklik, dan output-nya tampil di bawah.
+            </div>
+          </div>
+        </div>
+        {help ? (
+          <div className="pb-kv">
+            {rows.map(r => (
+              <div className="pb-kv-row" key={r.label}>
+                <span>{r.label}</span>
+                <code className="pb-mono">{r.value ?? "tidak diketahui"}</code>
+              </div>
+            ))}
+          </div>
+        ) : <p className="pb-empty sm">Memuat versi…</p>}
+
+        <UpdateTools />
+
+        {help && (
+          <div className="pb-lh-field pb-proj-foot">
+            {help.update_commands.map(cmd => (
+              <div className="pb-row" key={cmd}>
+                <code className="pb-mono pb-cmd">{cmd}</code>
+                <button className="pb-btn sm" onClick={() => copy(cmd)}>Salin</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="pb-card">
+        <div className="pb-card-head">
+          <div>
+            <h2>FAQ</h2>
+            <div className="pb-card-sub">Pertanyaan yang paling sering muncul saat pakai dashboard.</div>
+          </div>
+        </div>
+        {FAQ.map(item => (
+          <details className="pb-faq" key={item.q}>
+            <summary>{item.q}</summary>
+            <p>{item.a}</p>
+          </details>
+        ))}
+      </section>
+
+      <section className="pb-card">
+        <div className="pb-card-head">
+          <div>
+            <h2>Masukan</h2>
+            <div className="pb-card-sub">Laporan bug dan permintaan fitur.</div>
+          </div>
+        </div>
+        {help?.feedback_url
+          ? <a className="pb-link" href={help.feedback_url} target="_blank" rel="noreferrer">
+            Buka form masukan
+          </a>
+          : <p className="pb-hint">
+            Belum ada tautan masukan. Hubungi admin dashboard untuk mengaktifkan
+            tombol masukan.
+          </p>}
+      </section>
+    </>
+  );
+}
+
+// Tombol update tool (PRD S05): admin-only di server, sekali klik, output dialirkan.
+// Tidak pernah jalan otomatis - versi tool ikut menentukan hasil run.
+function UpdateTools() {
+  const [out, setOut] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    if (!confirm("Perbarui Playwright dan Lighthouse sekarang? Run yang sedang jalan sebaiknya ditunggu.")) return;
+    setBusy(true); setOut("");
+    try { await api.updateTools(t => setOut(prev => prev + t)); }
+    catch (e) { setOut(prev => prev + "\n" + (e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="pb-lh-field pb-proj-foot">
+      <div className="pb-row" style={{ gap: 8, alignItems: "center" }}>
+        <button className="pb-btn sm primary" onClick={run} disabled={busy}>
+          {busy ? "Memperbarui…" : "Perbarui tools"}
+        </button>
+        <span className="pb-set-help">
+          @playwright/test dan @lhci/cli ke versi terbaru, lalu npx playwright install.
+          Restart server setelah selesai.
+        </span>
+      </div>
+      {out && <pre className="pb-mono pb-tools-out">{out}</pre>}
+    </div>
+  );
+}
+
+// navigator.clipboard tidak ada di konteks non-secure; gagal = diamkan saja.
+function copy(text: string) {
+  navigator.clipboard?.writeText(text).catch(() => {});
 }

@@ -24,6 +24,7 @@
   --accent: #2563eb;
   --accent-on: #ffffff;
   --accent-soft: rgba(37, 99, 235, .1);
+  --panel: #f8fafc;
 
   --ok: #15803d;
   --warn: #b45309;
@@ -40,7 +41,7 @@
 
   --shadow: rgba(15, 23, 42, .06) 0 4px 24px;
   --elev-raised: 0 8px 28px rgba(15, 23, 42, .08);
-  --focus-ring: 0 0 0 4px rgba(37, 99, 235, .28);
+  --focus-ring: 0 0 0 3px #2563eb;
 
   --font-display: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
   --font: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
@@ -70,6 +71,7 @@
   --accent: #60a5fa;
   --accent-on: #06111f;
   --accent-soft: rgba(96, 165, 250, .16);
+  --panel: #0e1424;
   --ok: #22c55e;
   --warn: #fbbf24;
   --bad: #fb7185;
@@ -78,7 +80,7 @@
   --bad-bg: rgba(251, 113, 133, .12);
   --shadow: 0 0 0 1px #293653;
   --elev-raised: 0 24px 72px rgba(0, 0, 0, .36);
-  --focus-ring: 0 0 0 4px rgba(96, 165, 250, .28);
+  --focus-ring: 0 0 0 3px #60a5fa;
 }
 
 * { box-sizing: border-box; }
@@ -379,7 +381,7 @@ button { cursor: pointer; }
 /* 4 KPI di overview, sesuai grid-4 prototype. */
 .pb-grid.kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; }
 .pb-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-.pb-grid.chart-2-1 { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); align-items: start; }
+.pb-grid.chart-2-1 { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); align-items: stretch; }
 
 .pb-kpi {
   min-height: 132px;
@@ -502,11 +504,14 @@ button { cursor: pointer; }
 .pb-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--text); }
 .pb-swatch.bad { background: color-mix(in oklab, var(--bad) 70%, var(--card)); }
 
+/* Kartu grafik ikut setinggi kartu kanan; batang tumbuh mengisi sisa tinggi. */
+.pb-grid.chart-2-1 > .pb-card { display: flex; flex-direction: column; }
 .pb-bars {
   display: flex;
   align-items: flex-end;
   gap: 6px;
-  height: 150px;
+  flex: 1 1 auto;
+  min-height: 150px;
   margin-top: 4px;
 }
 .pb-bar-col {
@@ -550,7 +555,9 @@ button { cursor: pointer; }
 }
 
 /* Daftar kegagalan */
-.pb-fail-list { display: flex; flex-direction: column; }
+/* Daftar kegagalan terbaru, bukan seluruh riwayat: batasi tinggi supaya
+   kartu kanan tidak memanjang jauh melebihi grafik di kiri. */
+.pb-fail-list { display: flex; flex-direction: column; max-height: 344px; overflow-y: auto; }
 .pb-fail-item {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;
@@ -648,7 +655,9 @@ button { cursor: pointer; }
 .pb-input::placeholder { color: var(--meta); }
 /* Select di baris flex tidak boleh full-width, kalau tidak filter memakan satu baris. */
 .pb-filters .pb-select, .pb-row .pb-select, .pb-row .pb-input { width: auto; min-width: 150px; }
-label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+/* .pb-field dipakai di <label> maupun <div> (editor LH); ::before tidak dipakai
+   supaya aturan ini aman untuk keduanya. */
 
 .pb-btn {
   display: inline-flex;
@@ -682,12 +691,13 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-btn.primary:active { background: color-mix(in oklab, var(--accent), black 14%); }
 .pb-btn.danger { color: var(--bad); border-color: color-mix(in oklab, var(--bad) 35%, transparent); }
 .pb-btn.danger:hover { background: var(--bad-bg); color: var(--bad); }
-.pb-btn:disabled { opacity: .45; cursor: not-allowed; }
+.pb-btn:disabled { opacity: .6; cursor: not-allowed; }
 .pb-btn.sm { height: 30px; padding: 0 10px; font-size: 12px; border-radius: var(--radius-sm); }
 .pb-icon-btn { width: 30px; padding: 0; flex: none; }
 .pb-icon-btn svg { display: block; }
 
 /* Table */
+.pb-table-wrap { overflow-x: auto; }
 .pb-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .pb-table th {
   text-align: left;
@@ -722,7 +732,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   pointer-events: none; white-space: nowrap;
 }
 .pb-set-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
-/* Tab seting: bar tab menempel di atas, isi tab menumpuk dengan jarak sama. */
+/* Tab pengaturan: bar tab menempel di atas, isi tab menumpuk dengan jarak sama. */
 .pb-set-tabbar { margin-bottom: 16px; }
 .pb-set-tab-body { display: grid; gap: 16px; }
 /* Daftar spec Playwright per project. */
@@ -827,6 +837,91 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 }
 .pb-muted { color: var(--muted); }
 .pb-empty { color: var(--meta); text-align: center; padding: 36px 12px; }
+/* ---------- Pohon grup project (Pengaturan > Project) ---------- */
+.pb-empty.sm { padding: 14px 12px; font-size: 12px; }
+/* Panel tambah: grup dan project satu tempat, tidak lagi kartu terpisah. */
+.pb-add-panel {
+  border: 1px solid var(--line); border-radius: var(--radius-md);
+  padding: 12px 14px; margin-bottom: 4px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.pb-add-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pb-add-row > .pb-card-sub { flex: 0 0 auto; margin: 0; }
+.pb-add-row.col { flex-direction: column; align-items: stretch; gap: 8px; }
+/* Isi panel sudah punya bingkai sendiri: jangan bingkai dua kali. */
+.pb-add-panel .pb-proj-card { border: 0; padding: 0; background: none; }
+.pb-add-panel .pb-mb-3 { margin-bottom: 0; }
+
+.pb-group { border: 1px solid var(--line); border-radius: 10px; margin-top: 12px; }
+.pb-group-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+  border-radius: 10px 10px 0 0;
+}
+.pb-group-head .pb-input { max-width: 240px; }
+.pb-proj-row { border-top: 1px solid var(--line); padding: 8px 12px; }
+.pb-proj-row:first-of-type { border-top: 0; }
+/* Arsip tetap terbaca: jangan turunkan opasitas terlalu jauh. */
+.pb-proj-row.archived { opacity: .8; }
+.pb-proj-row-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pb-proj-toggle {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: none; border: 0; padding: 0; cursor: pointer; color: inherit;
+  font: inherit; text-align: left;
+}
+.pb-proj-toggle:hover strong { color: var(--accent); }
+.pb-caret { width: 10px; color: var(--meta); font-size: 10px; }
+.pb-proj-body { padding: 12px 0 4px 18px; }
+/* Blok test file di dalam detail project. */
+.pb-file-list { margin-top: 14px; }
+/* Tab Bantuan: daftar versi, perintah update, dan FAQ lipat. */
+.pb-kv { display: grid; gap: 6px; margin-bottom: 4px; }
+/* Overview: satu blok per grup, judul kecil di atas grid kartu project. */
+.pb-group-block + .pb-group-block { margin-top: 18px; }
+/* Grup berisi satu project: kartu melebar penuh, bukan menyisakan slot grid kosong.
+   Kartu jadi baris mendatar supaya tidak terlihat melar ke bawah. */
+.pb-group-block .pb-project-grid > :only-child {
+  grid-column: 1 / -1;
+  flex-direction: row; align-items: center; flex-wrap: wrap; gap: 14px;
+}
+.pb-group-block .pb-project-grid > :only-child > .pb-pcard-top { flex: 1 1 260px; }
+.pb-group-block .pb-project-grid > :only-child > .pb-pcard-bar { flex: 1 1 120px; max-width: 220px; }
+.pb-group-block .pb-project-grid > :only-child > .pb-pcard-foot { flex: 1 1 200px; margin: 0; }
+.pb-group-label {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 10px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+}
+.pb-group-label strong { font-size: 12px; font-weight: 600; letter-spacing: .06em; }
+.pb-group-label .pb-muted { text-transform: none; letter-spacing: 0; }
+.pb-set-summary .pb-kv { margin: 0; }
+.pb-kv-row {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
+}
+.pb-kv-row span { color: var(--muted); }
+.pb-cmd {
+  flex: 1 1 220px; min-width: 0; font-size: 11.5px;
+  background: var(--card-hi); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 6px 9px; overflow-x: auto; white-space: nowrap;
+}
+.pb-tools-out {
+  margin: 8px 0 0;
+  max-height: 240px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-sunken, #f4f4f5);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.pb-faq { border-bottom: 1px solid var(--border); padding: 9px 0; font-size: 12.5px; }
+.pb-faq summary { cursor: pointer; font-weight: 600; }
+.pb-faq p { margin: 8px 0 0; color: var(--muted); line-height: 1.55; }
+.pb-link { color: var(--accent); font-size: 12.5px; }
+.pb-file-list .pb-spec-head { margin-top: 4px; }
+.pb-select.sm { padding: 4px 8px; font-size: 12px; }
+
 .pb-err {
   background: var(--bad-bg);
   border: 1px solid color-mix(in oklab, var(--bad) 30%, transparent);
@@ -965,7 +1060,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-editor .cm-line { padding: 0 14px; }
 .pb-editor .cm-gutters {
   background: #0d1117;
-  color: #4b5563;
+  color: #8b949e;
   border-right: 1px solid #1f2937;
   padding-left: 6px;
 }
@@ -1017,6 +1112,9 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   .pb-kpi { min-height: 104px; }
   .pb-kpi-val { font-size: 30px; }
   .pb-project-grid { grid-template-columns: minmax(0, 1fr); }
+  /* Mobile: kartu tunggal kembali menumpuk vertikal. */
+  .pb-group-block .pb-project-grid > :only-child { flex-direction: column; align-items: stretch; }
+  .pb-group-block .pb-project-grid > :only-child > .pb-pcard-bar { max-width: none; }
   .pb-audit-row { grid-template-columns: minmax(0, 1fr) auto; }
   .pb-audit-what { grid-area: 1 / 1; }
   .pb-audit-time { grid-area: 1 / 2; }
@@ -1332,8 +1430,9 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 /* ---------- Segmented control ---------- */
 .pb-seg {
   display: inline-flex;
-  padding: 2px;
-  gap: 2px;
+  align-items: center;
+  padding: 3px;
+  gap: 4px;
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1347,7 +1446,18 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 }
 .pb-seg button:hover:not(:disabled) { color: var(--text); }
 .pb-seg button.active { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
-.pb-seg button:disabled { opacity: .5; cursor: not-allowed; }
+.pb-seg button:disabled { opacity: .6; cursor: not-allowed; }
+/* Input angka custom ikut tinggi tombol segmen; tanpa ini tinggi 37px vs 28px
+   membuat kontrol terlihat menempel dan tidak sejajar. */
+.pb-seg .pb-input {
+  width: 60px; max-width: 60px; height: 28px;
+  padding: 0 6px; border: 0; background: transparent;
+  font-family: var(--mono); font-size: 11.5px; text-align: center;
+  border-radius: 6px;
+  /* Jarak dari tombol preset: input ini nilai bebas, bukan salah satu preset. */
+  margin-left: 6px; box-shadow: inset 1px 0 0 var(--border);
+}
+.pb-seg .pb-input:hover { border: 0; }
 
 /* ---------- Feed run terakhir (Ringkasan) ---------- */
 .pb-run-feed { display: flex; flex-direction: column; }
@@ -1397,9 +1507,58 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-lh-budget-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .pb-lh-budget-top output { font-family: var(--mono); font-size: 11.5px; color: var(--text); }
 .pb-lh-budget input[type="range"] { width: 100%; accent-color: var(--accent); }
+/* Pratinjau config: tertutup default supaya form tidak jadi dinding teks. */
+.pb-lh-preview summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.pb-lh-preview summary:hover { color: var(--text); }
+.pb-lh-preview pre {
+  margin: 8px 0 0; padding: 12px; max-height: 260px; overflow: auto;
+  font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+}
 
 @media (max-width: 720px) {
   .pb-lh-budgets { grid-template-columns: minmax(0, 1fr); }
   .pb-run-row { grid-template-columns: 74px minmax(0, 1fr); }
   .pb-run-dur { display: none; }
+}
+
+/* ---------- T17: responsif Pengaturan (900px / 640px) ---------- */
+@media (max-width: 900px) {
+  /* Tab bar bisa digeser, bukan memaksa lebar halaman melebar. */
+  .pb-set-tabbar { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; }
+  .pb-set-tabbar .pb-tab { flex: 0 0 auto; white-space: nowrap; }
+  .pb-group-head .pb-input { max-width: none; flex: 1 1 180px; }
+  .pb-proj-body { padding-left: 12px; }
+  .pb-spec-row { grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .pb-lh-budgets { gap: 10px 14px; }
+  .pb-group-label { margin-bottom: 8px; }
+}
+
+@media (max-width: 640px) {
+  .pb-set-tabbar .pb-tab { padding: 6px 8px; font-size: 11px; }
+  .pb-group-head { gap: 8px; padding: 8px 10px; }
+  .pb-group-head .pb-input { flex: 1 1 100%; }
+  .pb-proj-row { padding: 8px 10px; }
+  .pb-proj-row-head { gap: 8px; }
+  .pb-proj-body { padding: 10px 0 2px; }
+  /* Nama dan path spec menumpuk; kontrol turun ke baris sendiri. */
+  .pb-spec-row { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+  .pb-spec-name, .pb-spec-path { flex: 1 1 100%; }
+  .pb-file-list .pb-spec-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .pb-lh-budgets { grid-template-columns: minmax(0, 1fr); }
+  .pb-lh-urls .pb-row { flex-direction: column; align-items: stretch; }
+  .pb-lh-urls .pb-row > * { width: 100%; }
+  .pb-kv-row { gap: 2px; }
+  .pb-group-label { gap: 6px; }
+  .pb-cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
+}
+
+/* Perangkat sentuh: target minimal 44px (WCAG 2.5.5). Desktop tetap padat. */
+@media (pointer: coarse) {
+  .pb-btn { min-height: 44px; }
+  .pb-btn.sm { height: 44px; padding: 0 14px; font-size: 13px; }
+  .pb-icon-btn { width: 44px; height: 44px; }
+  .pb-seg button { height: 44px; }
+  .pb-seg .pb-input { height: 44px; }
+  .pb-select { min-height: 44px; }
 }

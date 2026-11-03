@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   api, fmtDate, fmtDur, runStatusLabel,
-  type Project, type RunRow, type Session, type Stats,
+  type Project, type RunRow, type Session, type Settings, type Stats, type User,
 } from "../../lib/playbook";
 
 const RANGES = [7, 14, 30];
@@ -20,6 +20,18 @@ export default function OverviewPage() {
   // Feed "Run terakhir": semua status, termasuk yang sedang berjalan.
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
+  // Kartu "Pengaturan aktif" hanya untuk admin; viewer tidak boleh lihat nilainya.
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    api.me().then(u => {
+      if (u.role !== "admin") return;
+      setIsAdmin(true);
+      // Nilai dari DB, bukan konstanta UI.
+      api.settings().then(setSettings).catch(() => {});
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.projects().then(setProjects).catch(e => setError(e.message));
@@ -63,6 +75,42 @@ export default function OverviewPage() {
     return () => { alive = false; };
   }, [projects, range]);
 
+  // Kartu project dipakai di dalam tiap grup; pass rate dari stats per project.
+  const projectCard = (p: Project) => {
+    const ps = perProject[p.id];
+    const prate = ps?.passRate == null ? null : Math.round(ps.passRate * 100);
+    const tone = prate == null ? "" : prate >= 90 ? "ok" : prate >= 75 ? "warn" : "bad";
+    return (
+      <Link className="pb-card pb-pcard" key={p.id} href={`/reports/project/${p.id}`}>
+        <div className="pb-pcard-top">
+          <div>
+            <h3>{p.name}</h3>
+            <div className="pb-pcard-meta">{ps?.sessions ?? 0} sesi · {ps?.runs ?? 0} run</div>
+          </div>
+          <span className={`pb-badge ${tone === "ok" ? "passed" : tone === "bad" ? "failed" : "queued"}`}>
+            {tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : prate == null ? "Belum ada" : "Waspada"}
+          </span>
+        </div>
+        <div className="pb-pcard-bar"><span style={{ width: `${prate ?? 0}%` }} /></div>
+        <div className="pb-pcard-foot">
+          <span>tingkat lulus <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
+          <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
+        </div>
+      </Link>
+    );
+  };
+
+  // Grup diturunkan dari projects (urutan server sudah nama project);
+  // project tanpa grup masuk bucket "Tanpa grup".
+  const grouped: { id: string; name: string; items: Project[] }[] = [];
+  for (const p of projects) {
+    const id = p.group_id ?? "";
+    let g = grouped.find(x => x.id === id);
+    if (!g) { g = { id, name: p.group_name ?? "Tanpa grup", items: [] }; grouped.push(g); }
+    g.items.push(p);
+  }
+  grouped.sort((a, b) => (a.id === "" ? 1 : b.id === "" ? -1 : a.name.localeCompare(b.name)));
+
   const rate = stats?.passRate == null ? null : Math.round(stats.passRate * 100);
   const rateClass = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
   const lh = stats?.lighthouse ?? null;
@@ -95,14 +143,14 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
 
       <div className="pb-grid kpi" style={{ marginBottom: 16 }}>
         <article className="pb-card pb-kpi">
           <div className="pb-kpi-label">Total sesi</div>
           <div>
             <div className="pb-kpi-val">{stats?.sessions ?? "-"}</div>
-            <div className="pb-kpi-foot"><span className="dot" /><strong>{projects.length} project</strong> · {stats?.runs ?? 0} run</div>
+            <div className="pb-kpi-foot"><span className="dot" /><strong>{projectId ? 1 : projects.length} project</strong> · {stats?.runs ?? 0} run</div>
           </div>
         </article>
 
@@ -156,12 +204,12 @@ export default function OverviewPage() {
           ) : (
             <div className="pb-bars" role="img" aria-label="Grafik jumlah run per hari">
               {daily.map(d => {
-                const h = Math.max(4, (d.total / maxDay) * 128);
-                const hp = d.total ? (d.passed / d.total) * h : 0;
+                const h = Math.max(3, (d.total / maxDay) * 100);
+                const hp = d.total ? (d.passed / d.total) * 100 : 0;
                 return (
                   <div className="pb-bar-col" key={d.day} title={`${d.day}: ${d.total} run, ${d.passed} lulus`}>
-                    <span className="pb-bar" style={{ height: h }}>
-                      <span className="pb-bar-passed" style={{ height: hp }} />
+                    <span className="pb-bar" style={{ height: `${h}%` }}>
+                      <span className="pb-bar-passed" style={{ height: `${hp}%` }} />
                     </span>
                     <small>{d.day.slice(5)}</small>
                   </div>
@@ -206,36 +254,50 @@ export default function OverviewPage() {
 
       <div className="pb-section-title">
         <h2>Project</h2>
-        <span className="eyebrow">{projects.length} aktif</span>
+        <span className="eyebrow">{projectId ? 1 : projects.length} aktif</span>
       </div>
       {projects.length === 0 ? (
         <p className="pb-empty">Belum ada project.</p>
       ) : (
-        <div className="pb-project-grid">
-          {projects.map(p => {
-            const ps = perProject[p.id];
-            const prate = ps?.passRate == null ? null : Math.round(ps.passRate * 100);
-            const tone = prate == null ? "" : prate >= 90 ? "ok" : prate >= 75 ? "warn" : "bad";
-            return (
-              <Link className="pb-card pb-pcard" key={p.id} href={`/reports/project/${p.id}`}>
-                <div className="pb-pcard-top">
-                  <div>
-                    <h3>{p.name}</h3>
-                    <div className="pb-pcard-meta">{ps?.sessions ?? 0} sesi · {ps?.runs ?? 0} run</div>
-                  </div>
-                  <span className={`pb-badge ${tone === "ok" ? "passed" : tone === "bad" ? "failed" : "queued"}`}>
-                    {tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : prate == null ? "Belum ada" : "Waspada"}
-                  </span>
-                </div>
-                <div className="pb-pcard-bar"><span style={{ width: `${prate ?? 0}%` }} /></div>
-                <div className="pb-pcard-foot">
-                  <span>tingkat lulus <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
-                  <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+        // Grup hanya pengelompokan tampilan; daftarnya diturunkan dari
+        // projects.group_name, jadi tidak butuh endpoint agregasi baru.
+        grouped.map(g => (
+          <section className="pb-group-block" key={g.id}>
+            <div className="pb-group-label">
+              <strong>{g.name}</strong>
+              <span className="pb-muted pb-mono">{g.items.length} project</span>
+            </div>
+            <div className="pb-project-grid">
+              {g.items.map(p => projectCard(p))}
+            </div>
+          </section>
+        ))
+      )}
+
+      {isAdmin && (
+        <section className="pb-card pb-set-summary" style={{ marginTop: 16 }}>
+          <div className="pb-card-head">
+            <div>
+              <h2>Pengaturan aktif</h2>
+              <div className="pb-card-sub">
+                Nilai yang sedang dipakai runner, dibaca dari tabel settings.
+              </div>
+            </div>
+            <Link className="pb-link-muted" href="/settings">Buka Pengaturan</Link>
+          </div>
+          {settings ? (
+            <div className="pb-kv">
+              <div className="pb-kv-row"><span>Reuse sesi</span>
+                <code className="pb-mono">{settings.session_reuse_minutes} menit</code></div>
+              <div className="pb-kv-row"><span>Antrean maksimum</span>
+                <code className="pb-mono">{settings.max_queue_length} run</code></div>
+              <div className="pb-kv-row"><span>Retensi report</span>
+                <code className="pb-mono">{settings.report_retention_days} hari</code></div>
+              <div className="pb-kv-row"><span>Range default</span>
+                <code className="pb-mono">{settings.range_default_days} hari</code></div>
+            </div>
+          ) : <p className="pb-empty sm">Memuat pengaturan…</p>}
+        </section>
       )}
 
       <section className="pb-card" style={{ marginTop: 16 }}>

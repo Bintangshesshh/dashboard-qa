@@ -18,42 +18,85 @@ const pwCapture = require.resolve('./scripts/pw-capture.cjs').replaceAll('\\', '
 
 // Config Playwright untuk spec yang datang dari database. testDir = folder spec
 // asli supaya import relatif (`./creds`) tetap jalan.
-const runConfig = (testDir, specFile) => `import { defineConfig, devices } from '@playwright/test';
+const runConfig = (testDir, specFile, cfg = {}) => `import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: ${JSON.stringify(testDir)},
   testMatch: ${JSON.stringify(specFile)},
   fullyParallel: false,
-  workers: 1,
-  timeout: 120000,
-  retries: 0,
+  workers: ${cfg.workers ?? 1},
+  timeout: ${cfg.timeout ?? 120000},
+  retries: ${cfg.retries ?? 0},
   reporter: [
     ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME }],
     ['html', { outputDir: process.env.PLAYWRIGHT_HTML_OUTPUT_DIR, open: 'never' }],
   ],
-  use: { ...devices['Desktop Chrome'], navigationTimeout: 90000 },
+  // ignoreHTTPSErrors: target lokal sering pakai sertifikat self-signed (basicSsl).
+  use: { ...devices['Desktop Chrome'], navigationTimeout: 90000, ignoreHTTPSErrors: true },
 });
 `;
 
-// Each URL is a full Lighthouse pass; past this a run times out before
-// lhci uploads, which leaves no scores and no report on disk.
-export const MAX_LH_URLS = 3;
+// Lighthouse (PRD FR-04/FR-05): target sesi + maksimal 4 URL tambahan.
+export const MAX_LH_URLS = 5;
+export const MAX_LH_RUNS = 10;
+// Lantai 15 menit: killing lhci mid-run membuang report, jadi 1 URL pun dapat lantai.
 const MIN_LH_TIMEOUT_MS = 900_000;
+const LH_TIMEOUT_CAP_MS = 120 * 60_000;
+
+// timeout = max(15 menit, 5 menit + URL x run x 90 detik), cap 120 menit.
+// Flat 900.000 ms aman untuk 1-2 URL, tapi tidak proporsional untuk 5 URL x 10 run.
+export function lhTimeout(urlCount, runsPerUrl = 1) {
+  const urls = Math.max(1, Number(urlCount) || 1);
+  const runs = Math.max(1, Number(runsPerUrl) || 1);
+  const dynamic = 5 * 60_000 + urls * runs * 90_000;
+  return Math.min(Math.max(MIN_LH_TIMEOUT_MS, dynamic), LH_TIMEOUT_CAP_MS);
+}
+
+// Jumlah audit untuk timeout: URL sesi ikut dihitung, duplikat dibuang.
+export function lhAuditShape(testFile, targetUrl) {
+  const cfg = (() => { try { return JSON.parse(testFile?.config ?? 'null'); } catch { return null; } })();
+  const urls = lhUrls(cfg, targetUrl);
+  return [urls.length || 1, cfg?.numberOfRuns ?? 1];
+}
 
 export function lhUrls(cfg, targetUrl) {
   return [...new Set([...(targetUrl ? [targetUrl] : []), ...(cfg?.urls ?? [])])];
 }
 
-export function lhConfig(cfg, targetUrl, outDir) {
+// Target lokal HTTPS biasanya self-signed (vite basicSsl). Hanya loopback yang
+// dilewati cek sertifikat; staging/production tetap divalidasi penuh.
+// ignoreHTTPSErrors TIDAK dipakai: LHCI collect mengabaikannya, yang jalan hanya
+// chromeFlags (diverifikasi dengan sertifikat self-signed di localhost).
+const isLoopback = h => h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost');
+const localHttps = urls => urls.some(u => { try { const x = new URL(u); return x.protocol === 'https:' && isLoopback(x.hostname); } catch { return false; } });
+
+export function lhConfig(cfg, targetUrl, outDir, { allowedOrigins = [] } = {}) {
   const urls = lhUrls(cfg, targetUrl);
   if (!urls.length) throw new Error('Tidak ada URL untuk diaudit: sesi tanpa targetUrl dan config tanpa urls');
   if (urls.length > MAX_LH_URLS) throw new Error(`Maksimal ${MAX_LH_URLS} URL per run Lighthouse (diminta ${urls.length})`);
+  // URL tambahan dicek sebelum spawn: bentuk URL + origin yang diizinkan project.
+  for (const u of urls) {
+    let origin;
+    try { origin = new URL(u).origin; } catch { throw new Error(`URL tidak valid: ${u}`); }
+    if (allowedOrigins.length && !allowedOrigins.includes(origin)) {
+      throw new Error(`Origin ${origin} tidak diizinkan untuk project ini`);
+    }
+  }
+  const runs = cfg?.numberOfRuns ?? 1;
+  if (!Number.isInteger(runs) || runs < 1 || runs > MAX_LH_RUNS) {
+    throw new Error(`numberOfRuns harus bilangan bulat 1-${MAX_LH_RUNS}`);
+  }
+  // Budget memakai 'error': skor di bawah batas = run failed (PRD FR-04).
   const assertions = Object.fromEntries(
-    Object.entries(cfg?.budgets ?? {}).map(([k, v]) => [k, ['warn', { minScore: v?.minScore ?? 0.6 }]]),
+    Object.entries(cfg?.budgets ?? {}).map(([k, v]) => [k, ['error', { minScore: v?.minScore ?? 0.6 }]]),
   );
   return `module.exports = ${JSON.stringify({
     ci: {
-      collect: { numberOfRuns: cfg?.numberOfRuns ?? 1, url: urls },
+      collect: {
+        numberOfRuns: runs,
+        url: urls,
+        ...(localHttps(urls) ? { settings: { chromeFlags: ['--ignore-certificate-errors'] } } : {}),
+      },
       assert: { assertions },
       upload: { target: 'filesystem', outputDir: String(outDir).replaceAll('\\', '/') },
     },
@@ -169,16 +212,22 @@ export class Runner extends EventEmitter {
     this.emit('status', { type: 'status', runId: this.active?.runId, run: await this.store.patchRun(this.active?.runId, patch) });
   }
 
+  // Origin yang boleh ditembak runner: allowlist server + project (origin
+  // base/staging/local + projects.origins). env local ikut dicek, termasuk di sini.
+  allowedOriginsFor(state) {
+    const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
+    const project = session ? this.store.getProject(session.project_id) : null;
+    const declared = [project?.base_url, project?.staging_url, project?.local_url]
+      .filter(Boolean).map(v => { try { return new URL(v).origin; } catch { return null; } }).filter(Boolean);
+    return [...this.origins, ...(project?.origins ?? []), ...declared];
+  }
+
   async execute(state) {
     const { runId, testFile } = state;
     // PRD Â§7/G11: runner tidak percaya pemanggil - target harus tetap di allowlist.
     // Origin milik project (dari sesi) ikut diizinkan, sama seperti resolveTarget.
     if (state.targetUrl) {
-      const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
-      const project = session ? this.store.getProject(session.project_id) : null;
-      const declared = [project?.base_url, project?.staging_url, project?.local_url]
-        .filter(Boolean).map(v => { try { return new URL(v).origin; } catch { return null; } }).filter(Boolean);
-      const allowed = [...this.origins, ...(project?.origins ?? []), ...declared];
+      const allowed = this.allowedOriginsFor(state);
       try { state.targetUrl = validateTarget(state.targetUrl, allowed); }
       catch (error) {
         await this.store.patchRun(runId, { status: 'failed', error: stripAnsi(error.message), finished_at: new Date().toISOString() });
@@ -190,7 +239,7 @@ export class Runner extends EventEmitter {
     await mkdir(dir, { recursive: true });
     await this.store.patchRun(runId, { status: 'running', started_at: new Date().toISOString() });
     this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
-    this.arm(state, testFile.tool === 'lh' ? Math.max(this.timeout, MIN_LH_TIMEOUT_MS) : this.timeout);
+    this.arm(state, testFile.tool === 'lh' ? lhTimeout(...lhAuditShape(testFile, state.targetUrl)) : this.timeout);
 
     const started = Date.now();
     try {
@@ -229,7 +278,8 @@ export class Runner extends EventEmitter {
       PLAYWRIGHT_HTML_OUTPUT_DIR: join(dir, 'artifacts', 'playwright-report'),
     };
     // `config` opsional: { configPath } untuk config Playwright khusus (quick check).
-    let cfgPath = (() => { try { return JSON.parse(testFile.config ?? '{}')?.configPath ?? null; } catch { return null; } })();
+    const pwCfg = (() => { try { return JSON.parse(testFile.config ?? '{}') ?? {}; } catch { return {}; } })();
+    let cfgPath = pwCfg.configPath ?? null;
     // Kode dari DB (editor dashboard) menang atas file di disk. Ditulis di sebelah
     // spec aslinya karena spec eureka mengimpor `./creds` - memindahkan file ke
     // folder run akan memutus import relatif. Config ditaruh di root repo supaya
@@ -239,9 +289,16 @@ export class Runner extends EventEmitter {
     if (testFile.code?.trim()) {
       const original = join(root, testFile.path);
       generated = join(dirname(original), `.playbook-${runId.slice(0, 8)}.spec.ts`);
-      await writeFile(generated, testFile.code);
+      // Folder spec bisa belum ada (mis. project baru). Buat dulu; tanpa ini
+      // error-nya ENOENT mentah yang tidak bisa dimengerti user.
+      try {
+        await mkdir(dirname(generated), { recursive: true });
+        await writeFile(generated, testFile.code);
+      } catch (err) {
+        throw new Error(`Folder spec tidak bisa dibuat: ${dirname(generated)} (${err.code ?? err.message})`);
+      }
       generatedCfg = join(root, `.playbook-${runId.slice(0, 8)}.config.mjs`);
-      await writeFile(generatedCfg, runConfig(dirname(original), basename(generated)));
+      await writeFile(generatedCfg, runConfig(dirname(original), basename(generated), pwCfg));
       cfgPath = generatedCfg;
       specPath = basename(generated);
       await this.log(state, 'system', `[runner] Spec dari database â†’ ${basename(generated)}\n`);
@@ -275,16 +332,17 @@ export class Runner extends EventEmitter {
     await stopTail();
     await this.ingestCapture(state, captureFile);
     await this.collectArtifacts(runId, dir, 'pw');
-    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw' });
+    const finishedAt = new Date().toISOString();
+    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw', finishedAt });
     // Status final di-patch paling akhir: UI berhenti polling begitu status final,
     // jadi artifact harus sudah masuk DB sebelum itu.
     await this.store.patchRun(runId, {
       status,
       error,
-      finished_at: new Date().toISOString(),
+      finished_at: finishedAt,
       exit_code: code,
       duration_ms: Date.now() - state.startTime,
-      finalized_at: new Date().toISOString(),
+      finalized_at: finishedAt,
     });
     this.store.markReportsStale(state.sessionId);
   }
@@ -301,7 +359,9 @@ export class Runner extends EventEmitter {
     let configPath = isAbsolute(testFile.path) ? testFile.path : join(root, testFile.path);
     if (cfg) {
       configPath = join(dir, 'lighthouserc.cjs');
-      await writeFile(configPath, lhConfig(cfg, targetUrl, outDir));
+      // Origin URL tambahan divalidasi di sini juga: config bisa ditulis CLI.
+      const allowed = this.allowedOriginsFor(state);
+      await writeFile(configPath, lhConfig(cfg, targetUrl, outDir, { allowedOrigins: allowed }));
       const audited = lhUrls(cfg, targetUrl);
       await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${audited.length} URL)\n`);
     }
@@ -323,15 +383,16 @@ export class Runner extends EventEmitter {
     // PRD Â§8.8: runWarnings LH juga tampil di terminal, bukan cuma kolom warnings.
     for (const line of warningLines(results)) await this.log(state, 'system', line);
     await this.collectArtifacts(runId, dir, 'lh');
-    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'lh' });
+    const finishedAt = new Date().toISOString();
+    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'lh', finishedAt });
     // Sama seperti Playwright: artifact dulu, status final terakhir.
     await this.store.patchRun(runId, {
       status,
       error,
-      finished_at: new Date().toISOString(),
+      finished_at: finishedAt,
       exit_code: code,
       duration_ms: Date.now() - state.startTime,
-      finalized_at: new Date().toISOString(),
+      finalized_at: finishedAt,
     });
     this.store.markReportsStale(state.sessionId);
   }
@@ -524,7 +585,7 @@ export class Runner extends EventEmitter {
   }
   // Snapshot run untuk pipeline laporan HTML (scripts/build-report-docs.mjs).
   // Hanya fakta run; kode spec sengaja tidak ikut supaya tidak bocor ke report statis.
-  async writeRunJson(state, dir, { status, exitCode, error, mode }) {
+  async writeRunJson(state, dir, { status, exitCode, error, mode, finishedAt }) {
     const run = this.store.getRun(state.runId);
     const data = {
       id: state.runId,
@@ -533,7 +594,7 @@ export class Runner extends EventEmitter {
       mode,
       status,
       startedAt: run?.started_at ?? null,
-      finishedAt: run?.finished_at ?? null,
+      finishedAt: finishedAt ?? run?.finished_at ?? null,
       durationMs: run?.duration_ms ?? null,
       exitCode: exitCode ?? null,
       error: error ?? null,

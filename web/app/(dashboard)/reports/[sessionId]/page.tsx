@@ -110,6 +110,13 @@ export default function SessionDetail() {
     catch (e) { setError((e as Error).message); }
   };
 
+  const closeSession = async () => {
+    if (!confirm("Tutup sesi ini? Run baru akan membuat sesi terpisah.")) return;
+    setBusy("close"); setError(""); setNotice("");
+    try { await api.closeSession(sessionId); setNotice("Sesi ditutup."); load(); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(""); }
+  };
+
   const deleteRun = async (run: Run) => {
     if (!confirm("Hapus run ini beserta artifact-nya?")) return;
     setBusy(run.id); setError(""); setNotice("");
@@ -145,7 +152,7 @@ export default function SessionDetail() {
           <div className="pb-btn-group">
             <button className="pb-btn sm primary" onClick={() => publish(hasBoth ? "both" : hasPw ? "pw" : "lh")}
               disabled={(!hasPw && !hasLh) || !!busy}>
-              {busy ? "…" : hasBoth ? "Buat dokumen (Gabungan)" : hasPw ? "Buat dokumen (Playwright)" : "Buat dokumen (Lighthouse)"}
+              {busy ? "…" : hasBoth ? "Buat laporan (Gabungan)" : hasPw ? "Buat laporan (Playwright)" : "Buat laporan (Lighthouse)"}
             </button>
             {/* Scope tunggal hanya relevan kalau dua-duanya punya run final. */}
             {hasBoth && (
@@ -155,11 +162,16 @@ export default function SessionDetail() {
               </>
             )}
           </div>
+          <button className="pb-btn sm" onClick={closeSession}
+            disabled={!!busy || !!session.closed_at || active > 0}
+            title={active > 0 ? "Tunggu run selesai dulu." : "Run baru akan memakai sesi baru."}>
+            Tutup sesi
+          </button>
           <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
         </div>
       </div>
 
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
       {notice && <div className="pb-card pb-notice">{notice}</div>}
 
       <div className="pb-kpi-grid">
@@ -208,14 +220,14 @@ export default function SessionDetail() {
                       <span className="mono">{fmtDate(r.finalized_at ?? r.started_at ?? r.queued_at)} · exit {r.exit_code ?? "-"}</span>
                     </div>
                   </div>
-                  <span className={`pb-badge ${r.status}`}>{r.status}</span>
+                  <span className={`pb-badge ${r.status}`}>{runStatusLabel(r.status)}</span>
                   <div className="pb-runrow-act">
                     {!FINAL.includes(r.status) && (
                       <button className="pb-btn sm" onClick={() => cancelRun(r)} disabled={busy === r.id}>
                         {busy === r.id ? "…" : "Cancel"}
                       </button>
                     )}
-                    <button className="pb-btn sm" onClick={() => openRunDetail(r)}>Hasil</button>
+                    <button className="pb-btn sm" onClick={() => openRunDetail(r)}>Lihat hasil run</button>
                     {FINAL.includes(r.status) && (
                       <button className="pb-btn sm" onClick={() => deleteRun(r)} disabled={busy === r.id}>Hapus</button>
                     )}
@@ -265,7 +277,7 @@ export default function SessionDetail() {
                     <div className="pb-repcard-act">
                       {canOpen
                         ? <ArtifactLink className="pb-btn sm primary" href={reportUrl(rep.id)}
-                            missing="report hilang - build ulang">Buka</ArtifactLink>
+                            missing="report hilang - perbarui laporan">Buka HTML</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>{publishNote(rep)}</span>}
                       {rep.status === "ready" && (
                         <ArtifactLink href={reportUrl(rep.id, "report.md")}
@@ -275,7 +287,7 @@ export default function SessionDetail() {
                       {canOpen && <CopyRingkas reportId={rep.id} runIds={ids} />}
                       <button className="pb-btn sm" onClick={() => publish(rep.scope)}
                         disabled={busy === rep.scope || !canPublish(rep)}>
-                        {busy === rep.scope ? "…" : rep.status === "ready" || rep.status === "stale" ? "Build ulang" : "Terbitkan"}
+                        {busy === rep.scope ? "…" : rep.status === "ready" ? "Perbarui laporan" : rep.status === "stale" ? "Perbarui laporan" : "Terbitkan"}
                       </button>
                     </div>
                   </div>
@@ -314,23 +326,23 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
           {run.error ? ` Error: ${run.error}` : ""}
         </p>
       ) : isPw ? (
-        <table className="pb-table">
+        <div className="pb-table-wrap"><table className="pb-table">
           <thead><tr><th>TC</th><th>Judul</th><th>Status</th><th>Durasi</th><th>Retry</th><th>Error</th></tr></thead>
           <tbody>
             {(results as PlaywrightResult[]).map(r => (
               <tr key={r.id}>
                 <td className="mono">{r.tc_id ?? "-"}</td>
                 <td>{r.title}</td>
-                <td><span className={`pb-badge ${r.status}`}>{r.status}</span></td>
+                <td><span className={`pb-badge ${r.status}`}>{runStatusLabel(r.status)}</span></td>
                 <td className="mono">{fmtDur(r.duration_ms)}</td>
                 <td className="mono">{r.retry}</td>
                 <td className="mono" style={{ maxWidth: 380, overflowWrap: "anywhere" }}>{r.error ?? "-"}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       ) : (
-        <table className="pb-table">
+        <div className="pb-table-wrap"><table className="pb-table">
           <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
           <tbody>
             {(results as LighthouseResult[]).map(r => (
@@ -350,7 +362,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       <RunTerminal runId={run.id} />

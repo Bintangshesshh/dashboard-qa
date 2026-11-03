@@ -4,16 +4,21 @@
 // WS /ws → subscribe {runId, after} → log | status | replay-complete.
 // Tampilan diserahkan ke RunPanel; di sini hanya pengambilan data.
 import { useEffect, useState } from "react";
-import { api, type LogEntry } from "../../lib/playbook";
+import { api, type LogEntry, type Run } from "../../lib/playbook";
 import { RunPanel } from "./run-panel";
 
 const MAX_LINES = 4000;
+
+// Bentuk pesan WS /ws setelah subscribe; sisanya diabaikan.
+type WsMessage = { type: "log"; seq: number; stream: string; text: string; at: string }
+  | { type: "status"; run: Run }
+  | { type: "replay-complete" };
 
 export function RunTerminal({ runId }: { runId: string }) {
   const [lines, setLines] = useState<LogEntry[]>([]);
   const [live, setLive] = useState(true);
   // Snapshot run untuk stopwatch + status; diperbarui oleh WS.
-  const [run, setRun] = useState<any>(null);
+  const [run, setRun] = useState<Run | null>(null);
 
   // Log awal (paginasi) → baru WS dari seq terakhir. Urutan ini penting:
   // WS subscribe `after: 0` akan memutar ulang semua log dan menduplikasi baris
@@ -34,7 +39,7 @@ export function RunTerminal({ runId }: { runId: string }) {
           all = [...all, ...more.logs];
         }
         setLines(all);
-        const r: any = await api.run(runId);
+        const r = await api.run(runId);
         if (!alive) return;
         setRun(r);
         after = all.length ? all[all.length - 1].seq : 0;
@@ -45,7 +50,7 @@ export function RunTerminal({ runId }: { runId: string }) {
       ws = new WebSocket(`${proto}//${location.host}/ws`);
       ws.onopen = () => ws!.send(JSON.stringify({ type: "subscribe", runId, after }));
       ws.onmessage = ev => {
-        let msg: any;
+        let msg: WsMessage;
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg.type === "log") {
           const entry: LogEntry = { seq: msg.seq, stream: msg.stream, text: msg.text, at: msg.at };

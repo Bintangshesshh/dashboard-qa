@@ -5,45 +5,38 @@
 // Layout menumpuk: Project → Config → Terminal → Run → Hasil.
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
+import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig } from "../../_components/lh-config-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, pct, runStatusLabel,
+  api, artifactUrl, fmtTime, groupProjects, pct, runStatusLabel,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
 
-type Budgets = Record<string, { minScore: number }>;
+type Env = "local" | "staging" | "production";
+const ENVS: Env[] = ["local", "staging", "production"];
 
-// Matches MAX_LH_URLS on the server: the session target takes one slot.
-const MAX_EXTRA_URLS = 2;
-type LhConfig = { urls?: string[]; numberOfRuns?: number; budgets?: Budgets };
-
-const CATEGORIES = [
-  { key: "categories:performance", label: "Performance" },
-  { key: "categories:accessibility", label: "Accessibility" },
-  { key: "categories:best-practices", label: "Best practices" },
-  { key: "categories:seo", label: "SEO" },
-];
-
-// Env UI disembunyikan untuk demo: audit selalu ke web online (base_url).
-// ponytail: kalau perlu local/staging lagi, kembalikan resolvedUrl(env).
-const liveUrl = (p: Project | undefined) => p?.base_url ?? "";
+// Target ikut env. Kosong = project belum mengisi URL untuk env itu.
+const resolvedUrl = (p: Project | undefined, e: Env) =>
+  !p ? "" : e === "local" ? p.local_url ?? "" : e === "staging" ? p.staging_url ?? "" : p.base_url;
 
 export default function LighthousePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<TestFile[]>([]);
   const [projectId, setProjectId] = useState("");
-  const env = "production";
+  // Default local: kasus utama menguji web yang jalan di laptop sendiri.
+  const [env, setEnv] = useState<Env>("local");
+  // Konfirmasi production: ketik nama project. Guard sama ada di server.
+  const [confirmName, setConfirmName] = useState("");
 
-  // Draft config. Skor disimpan 0-1 di backend, ditampilkan 0-100 di slider.
-  const [runs, setRuns] = useState(1);
-  const [extraUrls, setExtraUrls] = useState<string[]>([]);
-  const [scores, setScores] = useState<Record<string, number>>({});
+  // Draft config berupa string JSON apa adanya; editor bersama yang mengubahnya.
+  const [config, setConfig] = useState("");
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  // Jam simpan terakhir supaya status tidak cuma kata "Tersimpan".
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   // Run + terminal, dipisah per project seperti halaman Playwright.
@@ -85,17 +78,17 @@ export default function LighthousePage() {
 
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
-  const target = liveUrl(project);
+  const target = resolvedUrl(project, env);
+  // Server juga menolak production kalau project belum mengizinkannya; tombol
+// jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
+const productionOk = env !== "production"
+  || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
   const running = !!run && !FINAL.includes(run.status);
 
-  // Muat config ke form hanya saat file berganti. Kalau bergantung pada
-  // `selected`, autosave yang menulis balik akan mereset ketikan user.
+  // Muat config hanya saat file berganti. Kalau bergantung pada `selected`,
+  // autosave yang menulis balik akan mereset ketikan user.
   useEffect(() => {
-    const cfg: LhConfig = (() => { try { return JSON.parse(selected?.config ?? "{}"); } catch { return {}; } })();
-    setRuns(cfg.numberOfRuns ?? 1);
-    setExtraUrls(cfg.urls ?? []);
-    setScores(Object.fromEntries(CATEGORIES.map(c => [c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100)])));
-    setDirty(false);
+    setConfig(selected?.config ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id]);
 
@@ -120,24 +113,31 @@ export default function LighthousePage() {
     return () => { alive = false; clearTimeout(timer); };
   }, [runId]);
 
-  const extraUrlList = extraUrls.map(s => s.trim()).filter(Boolean);
+  const dirty = !!selected && config !== (selected.config ?? "");
+
+  // Validasi client sebelum simpan: server tetap memeriksa hal yang sama.
+  const validate = () => {
+    if (!project) return "Project tidak ditemukan.";
+    const cfg = parseLhConfig(config);
+    return lhConfigError({
+      target,
+      extra: extraUrlsOf(cfg, project),
+      runs: cfg.numberOfRuns ?? 1,
+      scores: Object.fromEntries(LH_CATEGORIES.map(c => [
+        c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100),
+      ])),
+    });
+  };
 
   const saveConfig = async () => {
     if (!selected) return;
-    if (extraUrlList.length > MAX_EXTRA_URLS) {
-      setError(`Maksimal ${MAX_EXTRA_URLS} URL tambahan (target sesi memakai 1 slot dari 3).`);
-      return;
-    }
+    const msg = validate();
+    if (msg) { setError(msg); return; }
     setSaving(true); setError("");
     try {
-      const config: LhConfig = {
-        urls: extraUrlList,
-        numberOfRuns: runs,
-        budgets: Object.fromEntries(CATEGORIES.map(c => [c.key, { minScore: (scores[c.key] ?? 60) / 100 }])),
-      };
-      const updated = await api.patchTestFile(selected.id, { config: JSON.stringify(config) });
+      const updated = await api.patchTestFile(selected.id, { config });
       setFiles([updated]);
-      setDirty(false);
+      setSavedAt(new Date().toISOString());
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
 
@@ -149,21 +149,25 @@ export default function LighthousePage() {
     pending.current = setTimeout(() => { saveConfig(); }, 1000);
     return () => { if (pending.current) clearTimeout(pending.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, extraUrls, scores, dirty, selected?.id]);
+  }, [config, dirty, selected?.id]);
 
-  const touch = () => setDirty(true);
-  const saveState = saving ? "Menyimpan…" : dirty ? "Belum disimpan" : selected ? "Tersimpan" : "";
+  const saveState = saving ? "Menyimpan…" : dirty ? "Belum disimpan"
+    : selected ? (savedAt ? `Tersimpan ${fmtTime(savedAt)}` : "Tersimpan") : "";
 
   const start = async () => {
     setStarting(true); setError("");
     setRunId(null); setRun(null); setLogs([]);
     try {
-      if (!target) throw new Error("Project ini belum punya URL.");
+      if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
+      if (env === "production" && confirmName.trim() !== project?.name)
+        throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya konfigurasi Lighthouse.");
+      const msg = validate();
+      if (msg) throw new Error(msg);
       // Flush autosave yang masih menunggu supaya run memakai config terbaru.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; await saveConfig(); }
-      // Konfirmasi production diisi otomatis: UI tidak menampilkan env/konfirmasi.
-      const created = await api.createSession(projectId, env, project?.name);
+      // Konfirmasi production diketik user; guard yang sama ada di server.
+      const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`lh-run:${projectId}`, runId);
       setRunsByProject(prev => ({ ...prev, [projectId]: runId }));
@@ -193,26 +197,51 @@ export default function LighthousePage() {
         <div className="pb-filters">
           <span className="pb-save-state" aria-live="polite">{saveState}</span>
           <button className="pb-btn primary" onClick={start}
-            disabled={starting || running || !selected || !target}>
+            disabled={starting || running || !selected || !target || !productionOk}>
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
           </button>
           {running && <button className="pb-btn" onClick={stop}>Stop</button>}
         </div>
       </div>
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
         <div className="pb-row" style={{ justifyContent: "space-between", gap: 16 }}>
           <label className="pb-field" style={{ minWidth: 240 }}>
             Project
-            <select className="pb-select" value={projectId} onChange={e => setProjectId(e.target.value)}>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <select className="pb-select" value={projectId}
+              onChange={e => { setProjectId(e.target.value); setConfirmName(""); }}>
+              {groupProjects(projects).map(g => (
+                <optgroup key={g.id} label={g.name}>
+                  {g.items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <label className="pb-field">
+            Environment
+            <select className="pb-select" value={env}
+              onChange={e => { setEnv(e.target.value as Env); setConfirmName(""); }}>
+              {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
           <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-            Target: <span className="pb-mono">{target || "belum diisi di project"}</span>
+            Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
           </p>
+          {env === "local" && (
+          <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
+            Env local dijalankan dari mesin server dashboard. Kalau dashboard dihosting,
+            isi local_url dengan URL tunnel (cloudflared/ngrok) ke web lokal, bukan 127.0.0.1.
+            Origin-nya wajib terdaftar di origins project atau TARGET_ALLOWLIST.
+          </p>
+          )}
         </div>
+        {env === "production" && (
+          <label className="pb-field" style={{ marginTop: 12 }}>
+            Ketik <strong>{project?.name ?? "nama project"}</strong> untuk konfirmasi production
+            <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
+          </label>
+        )}
       </section>
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
@@ -222,64 +251,9 @@ export default function LighthousePage() {
             <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada konfigurasi"}</div>
           </div>
         </div>
-        {selected ? (
-          <div className="pb-lh-form">
-            <div className="pb-field">
-              <span>Jumlah run per URL</span>
-              <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
-                {[1, 2, 3, 5].map(n => (
-                  <button key={n} type="button" className={runs === n ? "active" : ""}
-                    aria-pressed={runs === n} disabled={running}
-                    onClick={() => { setRuns(n); touch(); }}>{n}×</button>
-                ))}
-              </div>
-            </div>
-
-            <div className="pb-field">
-              <span>URL tambahan ({extraUrls.filter(u => u.trim()).length}/{MAX_EXTRA_URLS})</span>
-              <span className="pb-lh-urls">
-                {extraUrls.map((u, i) => (
-                  <span className="pb-row" key={i} style={{ gap: 8 }}>
-                    <input className="pb-input pb-mono" value={u}
-                      placeholder="https://contoh.test/halaman-lain" disabled={running}
-                      onChange={e => {
-                        const v = e.target.value;
-                        setExtraUrls(list => list.map((x, j) => j === i ? v : x));
-                        touch();
-                      }} />
-                    <button type="button" className="pb-btn sm danger" disabled={running}
-                      aria-label={"Hapus URL " + (i + 1)}
-                      onClick={() => { setExtraUrls(list => list.filter((_, j) => j !== i)); touch(); }}>Hapus</button>
-                  </span>
-                ))}
-                {extraUrls.length < MAX_EXTRA_URLS && (
-                  <button type="button" className="pb-btn sm" disabled={running}
-                    onClick={() => { setExtraUrls(list => [...list, ""]); touch(); }}>+ Tambah URL</button>
-                )}
-              </span>
-            </div>
-
-            <div className="pb-field">
-              <span>Skor minimum per kategori</span>
-              <div className="pb-lh-budgets">
-                {CATEGORIES.map(c => (
-                  <label className="pb-lh-budget" key={c.key}>
-                    <span className="pb-lh-budget-top">
-                      <span>{c.label}</span>
-                      <output>{scores[c.key] ?? 60}%</output>
-                    </span>
-                    <input type="range" min={0} max={100} step={5} disabled={running}
-                      value={scores[c.key] ?? 60} aria-label={"Skor minimum " + c.label}
-                      onChange={e => {
-                        const v = Number(e.target.value);
-                        setScores(s => ({ ...s, [c.key]: v }));
-                        touch();
-                      }} />
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
+        {selected && project ? (
+          <LhConfigEditor project={project} value={config} target={target}
+            disabled={running} onChange={setConfig} idPrefix="lh-page" />
         ) : <p className="pb-empty">Project ini belum punya konfigurasi Lighthouse.</p>}
       </section>
 
@@ -301,7 +275,7 @@ export default function LighthousePage() {
           {results.length === 0 ? (
             <p className="pb-empty">Tidak ada hasil Lighthouse pada run ini.</p>
           ) : (
-            <table className="pb-table">
+            <div className="pb-table-wrap"><table className="pb-table">
               <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
               <tbody>
                 {results.map(r => (
@@ -327,7 +301,7 @@ export default function LighthousePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
           <div className="pb-row" style={{ marginTop: 12 }}>
             <Link className="pb-btn sm" href={`/reports/${run.session_id}`}>Detail sesi</Link>

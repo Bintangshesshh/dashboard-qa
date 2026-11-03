@@ -7,13 +7,13 @@ COPY web/ ./
 RUN npm run build
 
 FROM node:22-bookworm-slim AS web
-ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000
+ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3100
 WORKDIR /app
 COPY --from=web-build --chown=node:node /app/web/.next/standalone ./
 COPY --from=web-build --chown=node:node /app/web/.next/static ./.next/static
 COPY --from=web-build --chown=node:node /app/web/public ./public
 USER node
-EXPOSE 3000
+EXPOSE 3100
 CMD ["node", "server.js"]
 
 FROM mcr.microsoft.com/playwright:v1.63.0-noble AS runner-build

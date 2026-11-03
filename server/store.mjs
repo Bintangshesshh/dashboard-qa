@@ -32,6 +32,17 @@ export class Store {
     if (this.path !== ':memory:') mkdirSync(dirname(this.path), { recursive: true });
     this.db = new DatabaseSync(this.path);
     this.logBytesCache = new Map();
+    // 88 pemanggilan this.db.prepare(...) tersebar di kelas ini dan sebagian
+    // dijalankan tiap 1,5 detik. prepare() native tidak murah, jadi hasilnya
+    // di-memo per string SQL: satu titik, nol perubahan di call site.
+    // String SQL di repo ini berhingga, jadi map ini tidak tumbuh liar.
+    const prepare = this.db.prepare.bind(this.db);
+    const stmts = new Map();
+    this.db.prepare = sql => {
+      let st = stmts.get(sql);
+      if (!st) { st = prepare(sql); stmts.set(sql, st); }
+      return st;
+    };
   }
 
   async init() {
@@ -114,15 +125,53 @@ export class Store {
   listCliTokens(userId) { return this.db.prepare('SELECT id, label, created_at, last_used_at, revoked_at FROM cli_tokens WHERE user_id=? ORDER BY created_at DESC').all(userId); }
   revokeCliToken(id) { return this.db.prepare('UPDATE cli_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL').run(new Date().toISOString(), id).changes > 0; }
 
-  // ─── Projects ────────────────────────────────────────────────────────────
-  listProjects() {
-    return this.db.prepare(`SELECT p.*,
-      (SELECT MAX(r.finished_at) FROM runs r JOIN sessions s2 ON s2.id = r.session_id WHERE s2.project_id = p.id) AS lastRunAt
-      FROM projects p WHERE p.active=1 ORDER BY p.name`).all().map(parseOrigins);
+  // ─── Project groups ──────────────────────────────────────────────────────
+  // Grup hanya wadah: tidak punya URL, spec, config, run, atau report.
+  listProjectGroups() {
+    return this.db.prepare(`SELECT g.id, g.name, g.created_at,
+      (SELECT COUNT(*) FROM projects p WHERE p.group_id = g.id) AS project_count
+      FROM project_groups g ORDER BY g.name`).all();
   }
-  getProject(id) { const row = this.db.prepare('SELECT * FROM projects WHERE id=?').get(id); return row ? parseOrigins(row) : row; }
+  getProjectGroup(id) { return this.db.prepare('SELECT * FROM project_groups WHERE id=?').get(id); }
+  projectGroupByName(name) { return this.db.prepare('SELECT * FROM project_groups WHERE name=? COLLATE NOCASE').get(name); }
+  countProjectsInGroup(groupId) {
+    return this.db.prepare('SELECT COUNT(*) AS n FROM projects WHERE group_id=?').get(groupId).n;
+  }
+  createProjectGroup({ id, name }) {
+    this.db.prepare('INSERT INTO project_groups (id, name, created_at) VALUES (?,?,?)')
+      .run(id, name, new Date().toISOString());
+    return this.getProjectGroup(id);
+  }
+  patchProjectGroup(id, name) {
+    this.db.prepare('UPDATE project_groups SET name=? WHERE id=?').run(name, id);
+    return this.getProjectGroup(id);
+  }
+  deleteProjectGroup(id) { return this.db.prepare('DELETE FROM project_groups WHERE id=?').run(id).changes > 0; }
+
+  // ─── Projects ────────────────────────────────────────────────────────────
+  // includeArchived dipakai report/breadcrumb/Pengaturan: `active=0` = arsip.
+  listProjects({ includeArchived = false } = {}) {
+    return this.db.prepare(`SELECT p.*, g.name AS group_name,
+      (SELECT MAX(r.finished_at) FROM runs r JOIN sessions s2 ON s2.id = r.session_id WHERE s2.project_id = p.id) AS lastRunAt
+      FROM projects p LEFT JOIN project_groups g ON g.id = p.group_id
+      ${includeArchived ? '' : 'WHERE p.active=1'} ORDER BY p.name`).all().map(parseOrigins);
+  }
+  getProject(id) {
+    const row = this.db.prepare(`SELECT p.*, g.name AS group_name FROM projects p
+      LEFT JOIN project_groups g ON g.id = p.group_id WHERE p.id=?`).get(id);
+    return row ? parseOrigins(row) : row;
+  }
+  projectByName(name) { return this.db.prepare('SELECT * FROM projects WHERE name=? COLLATE NOCASE').get(name); }
+  createProject({ id, slug, name, base_url, group_id = null, staging_url = null, local_url = null, origins = [], allow_production = 0 }) {
+    this.db.prepare('INSERT INTO projects (id, slug, name, group_id, base_url, staging_url, local_url, origins, allow_production, active, created_at)'
+      + ' VALUES (?,?,?,?,?,?,?,?,?,1,?)').run(
+      id, slug, name, group_id, base_url, staging_url, local_url, JSON.stringify(origins), allow_production, new Date().toISOString(),
+    );
+    return this.getProject(id);
+  }
+  projectBySlug(slug) { const row = this.db.prepare('SELECT * FROM projects WHERE slug=?').get(slug); return row ? parseOrigins(row) : row; }
   patchProject(id, fields) {
-    const allowed = ['name', 'base_url', 'staging_url', 'local_url', 'origins', 'allow_production', 'active'];
+    const allowed = ['name', 'group_id', 'base_url', 'staging_url', 'local_url', 'origins', 'allow_production', 'active'];
     const set = []; const vals = [];
     for (const k of allowed) if (k in fields) { set.push(`${k}=?`); vals.push(k === 'origins' ? JSON.stringify(fields[k]) : fields[k]); }
     if (!set.length) return this.getProject(id);
@@ -130,9 +179,18 @@ export class Store {
     this.db.prepare(`UPDATE projects SET ${set.join(', ')} WHERE id=?`).run(...vals);
     return this.getProject(id);
   }
+  // Hapus permanen hanya untuk project tanpa riwayat.
+  projectHistory(projectId) {
+    return this.db.prepare(`SELECT
+      (SELECT COUNT(*) FROM test_files WHERE project_id=?) AS testFiles,
+      (SELECT COUNT(*) FROM sessions WHERE project_id=?) AS sessions,
+      (SELECT COUNT(*) FROM runs r JOIN sessions s ON s.id=r.session_id WHERE s.project_id=?) AS runs`)
+      .get(projectId, projectId, projectId);
+  }
+  deleteProject(id) { return this.db.prepare('DELETE FROM projects WHERE id=?').run(id).changes > 0; }
 
   // ─── Test files ──────────────────────────────────────────────────────────
-  // includeDisabled dipakai halaman seting: spec nonaktif tetap harus kelihatan
+  // includeDisabled dipakai halaman pengaturan: spec nonaktif tetap harus kelihatan
   // supaya bisa dinyalakan lagi. Semua pemanggil run memakai default (aktif saja).
   listTestFiles({ projectId, tool, includeDisabled = false } = {}) {
     let sql = 'SELECT * FROM test_files WHERE ' + (includeDisabled ? '1=1' : 'enabled=1'); const vals = [];
@@ -160,22 +218,39 @@ export class Store {
 
   // ─── Sessions ────────────────────────────────────────────────────────────
   getSession(id, withRuns = false) {
-    const row = this.db.prepare(`SELECT s.*, ${SESSION_STATUS_SQL} AS status FROM sessions s WHERE s.id=?`).get(id);
+    const row = this.db.prepare(`SELECT s.*, ${SESSION_STATUS_SQL} AS status,
+      (SELECT MAX(COALESCE(finished_at, started_at, queued_at)) FROM runs WHERE session_id=s.id) AS last_run_at
+      FROM sessions s WHERE s.id=?`).get(id);
     if (!row) return undefined;
     if (withRuns) row.runs = this.listRunsBySession(id);
     return row;
   }
+  // Sesi dipakai ulang hanya bila: belum ditutup, belum punya report, tidak ada
+  // run aktif, dan run terakhirnya selesai kurang dari session_reuse_minutes.
+  // Patokannya run terakhir, bukan waktu sesi dibuat: satu sesi = satu sesi kerja,
+  // bukan satu hari. Lewat jendela, sesi ditutup dan run berikutnya mulai baru.
   findOpenSession(projectId, env, createdBy) {
     const row = this.db.prepare('SELECT id, created_at FROM sessions WHERE project_id=? AND env=? AND created_by=? AND closed_at IS NULL').get(projectId, env, createdBy);
     if (!row) return undefined;
-    // ponytail: sesi lama yang lewat jendela ditutup di sini (bukan job retensi)
-    // supaya index sessions_one_open bebas untuk sesi baru.
-    const minutes = Number(this.getSetting('session_reuse_minutes') ?? 240);
+    const minutes = Number(this.getSetting('session_reuse_minutes') ?? 20);
     if (!Number.isFinite(minutes) || minutes <= 0) return undefined;
-    const ageMin = (Date.now() - Date.parse(row.created_at)) / 60000;
-    if (ageMin <= minutes) return { id: row.id };
-    this.closeSession(row.id);
-    return undefined;
+    // Sesi tanpa run sama sekali belum punya aktivitas: pakai waktu dibuat.
+    const last = this.db.prepare(
+      "SELECT COALESCE(MAX(COALESCE(finished_at, started_at, created_at)), ?) AS last FROM runs WHERE session_id=?",
+    ).get(row.created_at, row.id).last;
+    const idleMin = (Date.now() - Date.parse(last)) / 60000;
+    // Lolos jendela: tutup supaya index sessions_one_open bebas untuk sesi baru.
+    if (idleMin > minutes) { this.closeSession(row.id); return undefined; }
+    // Report sudah jadi: sesi itu milik laporan lama, jangan ditambahi run.
+    if (this.listReportsBySession(row.id).length) { this.closeSession(row.id); return undefined; }
+    // Run masih jalan: pemanggil yang memutuskan 409, bukan reuse diam-diam.
+    if (this.countRunsByStatus(row.id, ['queued', 'running', 'uploading']) > 0) return undefined;
+    return { id: row.id };
+  }
+  // Sesi terbuka tanpa syarat reuse: dipakai untuk memutuskan 409 vs tutup.
+  openSession(projectId, env, createdBy) {
+    return this.db.prepare('SELECT id, created_at FROM sessions WHERE project_id=? AND env=? AND created_by=? AND closed_at IS NULL')
+      .get(projectId, env, createdBy);
   }
   createSession({ id, projectId, env, targetUrl, label, createdBy }) {
     // sessions_one_open (partial unique index) → 409 pada duplikat.
@@ -183,23 +258,61 @@ export class Store {
       .run(id, projectId, env, targetUrl, label, createdBy ?? null, new Date().toISOString());
   }
   closeSession(id) { this.db.prepare('UPDATE sessions SET closed_at=? WHERE id=? AND closed_at IS NULL').run(new Date().toISOString(), id); }
-  listSessions({ projectId, status, from, to } = {}) {
-    // Ringkasan run dihitung di SQL (PRD §10.5: jumlah run per tool + gagal),
-    // bukan dengan memuat semua baris run ke klien.
-    let sql = `SELECT s.*, ${SESSION_STATUS_SQL} AS status,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id) AS run_count,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.tool='pw') AS pw_count,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.tool='lh') AS lh_count,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.status IN ('failed','cancelled','interrupted')) AS failed_count,
-      (SELECT COUNT(*) FROM runs r WHERE r.session_id=s.id AND r.status IN ('queued','running','uploading')) AS active_count
-      FROM sessions s WHERE 1=1`; const vals = [];
-    if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
-    if (from) { sql += ' AND s.created_at>=?'; vals.push(from); }
-    if (to) { sql += ' AND s.created_at<=?'; vals.push(to); }
-    sql += ' ORDER BY s.created_at DESC';
-    const rows = this.db.prepare(sql).all(...vals);
-    for (const row of rows) row.reports = this.listReportsBySession(row.id);
-    return status ? rows.filter(r => r.status === status) : rows;
+  // Daftar sesi satu query: hitungan run diagregasi LEFT JOIN (sebelumnya 5
+  // subquery per baris), report diambil sekali untuk semua sesi, dan filter
+  // status pindah ke SQL supaya LIMIT benar-benar membatasi baris.
+  listSessions({ projectId, status, from, to, limit = 200 } = {}) {
+    const where = ['1=1'];
+    const vals = [];
+    if (projectId) { where.push('s.project_id=?'); vals.push(projectId); }
+    if (from) { where.push('s.created_at>=?'); vals.push(from); }
+    if (to) { where.push('s.created_at<=?'); vals.push(to); }
+    const rows = this.db.prepare(
+      'SELECT s.*, ' + SESSION_STATUS_SQL + ' AS status,' +
+      ' coalesce(c.run_count, 0) AS run_count,' +
+      ' coalesce(c.pw_count, 0) AS pw_count,' +
+      ' coalesce(c.lh_count, 0) AS lh_count,' +
+      ' coalesce(c.failed_count, 0) AS failed_count,' +
+      ' coalesce(c.active_count, 0) AS active_count' +
+      ' FROM sessions s LEFT JOIN (' +
+      '   SELECT session_id, COUNT(*) AS run_count,' +
+      "     SUM(CASE WHEN tool='pw' THEN 1 ELSE 0 END) AS pw_count," +
+      "     SUM(CASE WHEN tool='lh' THEN 1 ELSE 0 END) AS lh_count," +
+      "     SUM(CASE WHEN status IN ('failed','cancelled','interrupted') THEN 1 ELSE 0 END) AS failed_count," +
+      "     SUM(CASE WHEN status IN ('queued','running','uploading') THEN 1 ELSE 0 END) AS active_count" +
+      '   FROM runs GROUP BY session_id' +
+      ') c ON c.session_id = s.id' +
+      ' WHERE ' + where.join(' AND ') +
+      ' ORDER BY s.created_at DESC LIMIT ?'
+    ).all(...vals, Math.min(Math.max(Number(limit) || 200, 1), 1000));
+    if (!rows.length) return [];
+    const reports = new Map();
+    const ids = rows.map(r => r.id);
+    const marks = ids.map(() => '?').join(',');
+    const repSql = 'SELECT * FROM reports WHERE session_id IN (' + marks + ') ORDER BY created_at DESC';
+    for (const rep of this.db.prepare(repSql).all(...ids)) {
+      const list = reports.get(rep.session_id) ?? [];
+      list.push(rep);
+      reports.set(rep.session_id, list);
+    }
+    const out = [];
+    for (const row of rows) {
+      if (status && row.status !== status) continue;
+      row.reports = reports.get(row.id) ?? [];
+      out.push(row);
+    }
+    return out;
+  }
+  // Beberapa mutasi menyentuh lebih dari satu tabel (sesi + run + audit).
+  // Bila satu langkah gagal, semuanya harus dibatalkan supaya tidak ada run
+  // tanpa sesi atau audit tanpa barisnya.
+  tx(fn) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const out = fn();
+      this.db.exec('COMMIT');
+      return out;
+    } catch (e) { this.db.exec('ROLLBACK'); throw e; }
   }
   deleteSession(id) {
     this.db.exec('BEGIN IMMEDIATE');
@@ -211,6 +324,24 @@ export class Store {
   }
 
   // ─── Runs ────────────────────────────────────────────────────────────────
+  // Run dari CLI (`POST /api/runs/local`) yang tidak pernah di-start akan
+  // menggantung "queued" selamanya dan memblokir sesinya (409). Anggap
+  // interrupted setelah batas waktu supaya sesi bisa dipakai lagi.
+  failStaleRuns(maxAgeMinutes = 30) {
+    const cut = new Date(Date.now() - maxAgeMinutes * 60_000).toISOString();
+    const rows = this.db.prepare(`SELECT id, session_id FROM runs
+      WHERE status='queued' AND started_at IS NULL AND queued_at < ?`).all(cut);
+    if (!rows.length) return 0;
+    const upd = this.db.prepare(`UPDATE runs SET status='interrupted', finished_at=?,
+      error=? WHERE id=? AND status='queued'`);
+    const now = new Date().toISOString();
+    const msg = 'Run tidak pernah dimulai dan dilewati otomatis setelah ' + maxAgeMinutes + ' menit.';
+    for (const r of rows) {
+      upd.run(now, msg, r.id);
+      this.markReportsStale(r.session_id);
+    }
+    return rows.length;
+  }
   createRun({ id, sessionId, testFileId, tool }) {
     this.db.prepare('INSERT INTO runs (id, session_id, test_file_id, tool, status, queued_at, created_at) VALUES (?,?,?,?,?,?,?)')
       .run(id, sessionId, testFileId ?? null, tool, 'queued', new Date().toISOString(), new Date().toISOString());
@@ -332,6 +463,17 @@ export class Store {
     return { logs, hasMore, nextAfter };
   }
   logsRaw(runId, after = 0) { return this.db.prepare('SELECT seq, stream, text, at FROM run_logs WHERE run_id=? AND seq>? ORDER BY seq').all(runId, after); }
+  // Panel console/network: saring stream di SQL dan batasi barisnya. Tanpa ini
+  // GET /api/runs/:id memuat seluruh log run (hingga 5 MB) tiap 1,5 detik.
+  logsByStreams(runId, streams = ['console', 'network'], limit = 2000) {
+    const list = streams.filter(s => ['stdout', 'stderr', 'system', 'console', 'network'].includes(s));
+    if (!list.length) return [];
+    const safeLimit = Math.min(Math.max(Number(limit) || 2000, 1), 10000);
+    const marks = list.map(() => '?').join(',');
+    return this.db.prepare(
+      `SELECT seq, stream, text, at FROM run_logs WHERE run_id=? AND stream IN (${marks}) ORDER BY seq DESC LIMIT ?`,
+    ).all(runId, ...list, safeLimit).reverse();
+  }
   async logsText(runId) { return this.db.prepare('SELECT text FROM run_logs WHERE run_id=? ORDER BY seq').all(runId).map(r => r.text).join(''); }
 
   // ─── Playwright results ──────────────────────────────────────────────────
@@ -451,6 +593,44 @@ export class Store {
         performance: lh.perf, accessibility: lh.a11y, bestPractices: lh.bp, seo: lh.seo,
       } : null,
     };
+  }
+
+  // Satu putaran query untuk semua project: Overview sebelumnya memanggil
+  // /api/stats sekali per project (10 project = 55 query tiap 5 detik).
+  statsByProject({ from } = {}) {
+    const w = from ? 'WHERE r.queued_at>=?' : '';
+    const vals = from ? [from] : [];
+    const rows = new Map();
+    const row = id => {
+      let r = rows.get(id);
+      if (!r) { r = { projectId: id, sessions: 0, runs: 0, failedRuns: 0, activeRuns: 0, avgDurationMs: null, tcPassed: 0, tcFailed: 0, passRate: null }; rows.set(id, r); }
+      return r;
+    };
+    for (const r of this.db.prepare(`SELECT s.project_id AS id, count(*) AS n FROM sessions s
+      ${from ? 'WHERE s.created_at>=?' : ''} GROUP BY s.project_id`).all(...vals)) row(r.id).sessions = r.n;
+    for (const r of this.db.prepare(`SELECT s.project_id AS id, count(*) AS n, avg(r.duration_ms) AS avg_ms,
+      sum(CASE WHEN r.status IN ('failed','cancelled','interrupted') THEN 1 ELSE 0 END) AS failed
+      FROM runs r JOIN sessions s ON s.id = r.session_id WHERE r.finalized_at IS NOT NULL
+      ${from ? 'AND r.queued_at>=?' : ''} GROUP BY s.project_id`).all(...vals)) {
+      const t = row(r.id);
+      t.runs = r.n; t.failedRuns = r.failed ?? 0;
+      t.avgDurationMs = r.avg_ms == null ? null : Math.round(r.avg_ms);
+    }
+    for (const r of this.db.prepare(`SELECT s.project_id AS id,
+      sum(CASE WHEN pr.status IN ('passed','flaky') THEN 1 ELSE 0 END) AS passed,
+      sum(CASE WHEN pr.status='failed' THEN 1 ELSE 0 END) AS failed
+      FROM playwright_results pr JOIN runs r ON r.id=pr.run_id JOIN sessions s ON s.id=r.session_id
+      WHERE r.tool='pw' AND r.finalized_at IS NOT NULL ${from ? 'AND r.queued_at>=?' : ''}
+      GROUP BY s.project_id`).all(...vals)) {
+      const t = row(r.id);
+      t.tcPassed = r.passed ?? 0; t.tcFailed = r.failed ?? 0;
+      const total = t.tcPassed + t.tcFailed;
+      t.passRate = total ? t.tcPassed / total : null;
+    }
+    for (const r of this.db.prepare(`SELECT s.project_id AS id, count(*) AS n FROM runs r
+      JOIN sessions s ON s.id=r.session_id WHERE r.status IN ('queued','running','uploading')
+      ${from ? 'AND r.queued_at>=?' : ''} GROUP BY s.project_id`).all(...vals)) row(r.id).activeRuns = r.n;
+    return Object.fromEntries(rows);
   }
 
   // PRD 10.2: "Kegagalan terbaru → klik ke /reports/<sessionId>".

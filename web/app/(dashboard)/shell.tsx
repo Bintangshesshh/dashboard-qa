@@ -34,7 +34,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(ping, [ping, path]);
 
-  useEffect(() => { api.projects().then(setProjects).catch(() => {}); }, []);
+  // all=true: breadcrumb project arsip masih perlu namanya.
+  useEffect(() => { api.projects({ all: true }).then(setProjects).catch(() => {}); }, []);
 
   const seg = path.split("/").filter(Boolean);
   const isSession = seg[0] === "reports" && seg[1] && seg[1] !== "project";
@@ -62,7 +63,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // Crumb berlayer: tiap level bisa diklik, level terakhir tebal.
   const crumbs: { label: string; href: string }[] = [{ label: "Playbook", href: "/" }];
   if (seg[0] === "reports") {
-    crumbs.push({ label: "Reports", href: "/reports" });
+    crumbs.push({ label: "Laporan", href: "/reports" });
     if (seg[1] === "project" && seg[2]) {
       const p = projects.find(x => x.id === seg[2]);
       crumbs.push({ label: p?.name ?? "Project", href: `/reports/project/${seg[2]}` });
@@ -163,7 +164,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 // Preferensi tema: sistem / terang / gelap. Disimpan di localStorage 'pb-theme'.
 // Skrip inline di layout.tsx sudah menerapkan tema sebelum paint; ini hanya toggle.
 const PREFS = [
-  { pref: "system", label: "Sistem" },
+  { pref: "system", label: "Ikuti OS" },
   { pref: "light", label: "Terang" },
   { pref: "dark", label: "Gelap" },
 ] as const;

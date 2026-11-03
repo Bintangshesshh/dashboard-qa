@@ -2,7 +2,6 @@
   "name": "dashboard-qa",
   "version": "1.0.0",
   "description": "QA dashboard - Playwright + Lighthouse CI (Eureka Group: jaja, masdis, ebh)",
-  "main": "index.js",
   "bin": {
     "playbook": "bin/playbook.mjs"
   },
@@ -24,7 +23,6 @@
   "type": "commonjs",
   "devDependencies": {
     "@lhci/cli": "^0.15.1",
-    "@playwright/test": "^1.63.0",
-    "typescript": "^7.0.2"
+    "@playwright/test": "^1.63.0"
   }
 }

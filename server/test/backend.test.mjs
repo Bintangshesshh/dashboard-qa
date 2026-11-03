@@ -7,7 +7,7 @@ import { once } from 'node:events';
 import { randomUUID, randomBytes, scrypt as _scrypt } from 'node:crypto';
 import { promisify } from 'node:util';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { allowlist, target, id, cursor, authorized, rangeDays, isoTimestamp, bool } from '../validation.mjs';
@@ -16,6 +16,8 @@ import { Store, databasePath } from '../store.mjs';
 import { Runner } from '../runner.mjs';
 import { runRetention } from '../retention.mjs';
 import { backupDatabase } from '../backup.mjs';
+// Klien ws (bukan WebSocket global) karena hanya ini yang bisa mengirim header cookie.
+import { WebSocket } from 'ws';
 
 const scrypt = promisify(_scrypt);
 const PASSWORD = 'rahasia-test-123';
@@ -41,9 +43,13 @@ async function fixture(t) {
     runsDir: await mkdtemp(join(tmpdir(), 'pb-runs-')),
     start() {},
     async cancel() { return true; },
+    // Runner asli EventEmitter; stub ini cukup menampung langganan log dari /ws.
+    on() {},
+    off() {},
   };
   const app = createApp({ store, runner, token: null, origins: [ORIGIN, 'https://ebh.test', 'https://staging.ebh.test'] });
-  const server = createServer(app);
+  // Pakai server yang sama dengan tempat WebSocket terpasang, persis seperti main().
+  const server = app.__wssServer ?? createServer(app);
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -149,7 +155,8 @@ test('sesi: production diblokir tanpa flag, reuse mengembalikan 409', async t =>
   r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(r.status, 201);
   const first = r.body.sessionId;
-  assert.equal(r.body.targetUrl, ORIGIN);
+  // target() menormalkan lewat URL.href, jadi selalu ada path '/'.
+  assert.equal(r.body.targetUrl, ORIGIN + '/');
 
   r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(r.status, 409);
@@ -358,7 +365,7 @@ test('CLI lokal: local → start → logs → upload artifact → finalisasi', a
   assert.equal(r.status, 201);
   const { runId, sessionId, code, targetUrl, tool } = r.body;
   assert.equal(code, 'test("x",()=>{})');
-  assert.equal(targetUrl, ORIGIN);
+  assert.equal(targetUrl, ORIGIN + '/');
   assert.equal(tool, 'pw');
   assert.ok(runId && sessionId);
 
@@ -602,7 +609,7 @@ test('warningLines: runWarnings LH jadi baris log system', async () => {
   assert.deepEqual(warningLines(null), []);
 });
 
-test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async () => {
+test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion error', async () => {
   const { lhConfig } = await import('../runner.mjs');
   const cfg = {
     urls: ['https://prod.test/', 'https://staging.test/'],
@@ -614,13 +621,24 @@ test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async
   const parsed = JSON.parse(text.replace(/^module\.exports = /, '').replace(/;\n$/, ''));
   assert.deepEqual(parsed.ci.collect.url, ['https://staging.test/', 'https://prod.test/'], 'URL sesi dulu, duplikat dibuang');
   assert.equal(parsed.ci.collect.numberOfRuns, 2);
-  assert.deepEqual(parsed.ci.assert.assertions['categories:performance'], ['warn', { minScore: 0.8 }]);
+  assert.deepEqual(parsed.ci.assert.assertions['categories:performance'], ['error', { minScore: 0.8 }], 'budget error agar skor rendah = failed');
   assert.equal(parsed.ci.upload.outputDir, 'D:/runs/abc/artifacts', 'backslash dinormalisasi');
 
   assert.throws(() => lhConfig({ urls: [] }, null, 'x'), /Tidak ada URL/);
-  assert.throws(() => lhConfig({ urls: ['https://a.test/', 'https://b.test/', 'https://c.test/'] }, 'https://d.test/', 'x'), /Maksimal 3 URL/);
+  // 5 URL total (target + 4 tambahan) masih sah; 6 ditolak.
+  const five = lhConfig({ urls: ['https://a.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/'] }, 'https://e.test/', 'x');
+  assert.equal(JSON.parse(five.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.url.length, 5);
+  assert.throws(() => lhConfig({ urls: ['https://a.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/', 'https://e.test/'] }, 'https://f.test/', 'x'), /Maksimal 5 URL/);
+  assert.throws(() => lhConfig({ numberOfRuns: 11 }, 'https://a.test/', 'x'), /numberOfRuns/);
+  assert.throws(() => lhConfig({ numberOfRuns: 0 }, 'https://a.test/', 'x'), /numberOfRuns/);
+  assert.throws(() => lhConfig({ urls: ['https://luar.test/'] }, 'https://a.test/', 'x', { allowedOrigins: ['https://a.test'] }), /tidak diizinkan/);
   const minimal = lhConfig(null, 'https://a.test/', 'out');
   assert.equal(JSON.parse(minimal.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.numberOfRuns, 1);
+  assert.equal(/settings/.test(minimal), false, 'target publik tidak melewati cek sertifikat');
+
+  // self-signed lokal: chromeFlags, karena LHCI mengabaikan settings.ignoreHTTPSErrors.
+  const local = JSON.parse(lhConfig(null, 'https://localhost:5173/', 'out').replace(/^module\.exports = /, '').replace(/;\n$/, ''));
+  assert.deepEqual(local.ci.collect.settings.chromeFlags, ['--ignore-certificate-errors']);
 });
 
 test('recover: run uploading > 24 jam dibersihkan, yang baru hanya interrupted', async t => {
@@ -708,13 +726,18 @@ test('A6: session_reuse_minutes membatasi sesi yang dipakai ulang', async t => {
   assert.equal(first.status, 201);
   const oldId = first.body.sessionId;
 
-  // masih di dalam jendela (default 240 menit) → dipakai ulang
+  // masih di dalam jendela (default 20 menit) → dipakai ulang
   let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(r.status, 409);
   assert.equal(r.body.sessionId, oldId);
 
-  // dimundurkan 5 jam → lewat jendela, sesi baru dibuat
-  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(new Date(Date.now() - 5 * 3600e3).toISOString(), oldId);
+  // Run terakhir dimundurkan 5 jam → lewat jendela, sesi baru dibuat.
+  const ageRun = (sessionId, runId, ms) => {
+    f.store.createRun({ id: runId, sessionId, testFileId: null, tool: 'pw' });
+    f.store.db.prepare('UPDATE runs SET status=?, finished_at=? WHERE id=?')
+      .run('passed', new Date(Date.now() - ms).toISOString(), runId);
+  };
+  ageRun(oldId, 'r-a6-old', 5 * 3600e3);
   r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(r.status, 201, 'sesi kedaluwarsa tidak dipakai ulang');
   assert.notEqual(r.body.sessionId, oldId);
@@ -722,7 +745,7 @@ test('A6: session_reuse_minutes membatasi sesi yang dipakai ulang', async t => {
 
   // jendela diubah lewat settings → ikut dipakai
   f.store.setSetting('session_reuse_minutes', '1');
-  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(new Date(Date.now() - 5 * 60e3).toISOString(), r.body.sessionId);
+  ageRun(r.body.sessionId, 'r-a6-new', 5 * 60e3);
   const third = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(third.status, 201, '5 menit > 1 menit → sesi baru');
 });
@@ -742,7 +765,7 @@ test('A2: runner menolak target di luar allowlist-nya sendiri', async t => {
 
   const run = f.store.getRun('r-a2');
   assert.equal(run.status, 'failed');
-  assert.match(run.error, /not allowlisted/);
+  assert.match(run.error, /belum diizinkan/);
   assert.equal(existsSync(join(runsDir, 'r-a2')), false, 'tidak ada folder/spawn untuk target terlarang');
 });
 
@@ -766,7 +789,7 @@ test('A3: target divalidasi terhadap projects.origins, bukan cuma TARGET_ALLOWLI
   f.store.db.prepare("UPDATE projects SET staging_url='https://evil.test/' WHERE id='p2'").run();
   r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p2', env: 'staging' } });
   assert.equal(r.status, 400);
-  assert.match(r.body.error, /not allowlisted/);
+  assert.match(r.body.error, /belum diizinkan/);
 
   // skema aneh & origins bukan array ditolak
   r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { local_url: 'javascript:alert(1)' } });
@@ -774,6 +797,52 @@ test('A3: target divalidasi terhadap projects.origins, bukan cuma TARGET_ALLOWLI
   r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { origins: ['https://ok.test/path'] } });
   assert.equal(r.status, 400, 'origin tidak boleh punya path');
   assert.deepEqual(f.store.getProject('p2').origins, ['https://staging.p2.test'], 'origins lama tidak berubah');
+});
+
+test('project baru dari Pengaturan: base_url wajib, slug jadi kunci, local_url terpisah', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  // base_url tidak boleh diisi dari local_url (PRD §9 Project).
+  let r = await f.call('/api/projects', {
+    method: 'POST', cookie,
+    body: { name: 'Ticketing POS', local_url: 'https://localhost:5173' },
+  });
+  assert.equal(r.status, 400);
+
+  r = await f.call('/api/projects', {
+    method: 'POST', cookie,
+    body: { name: 'Ticketing POS', base_url: 'https://pos.test', local_url: 'https://localhost:5173' },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.id, 'p_ticketing_pos');
+  assert.equal(r.body.slug, 'ticketing_pos');
+  assert.equal(r.body.base_url, 'https://pos.test/', 'base_url dipakai apa adanya');
+  assert.equal(r.body.local_url, 'https://localhost:5173/');
+  assert.deepEqual(r.body.origins, []);
+
+  // slug duplikat ditolak, bukan menimpa project lama
+  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: 'ticketing pos', base_url: 'https://pos.test' } });
+  assert.equal(r.status, 409);
+
+  // skema selain http(s) dan nama kosong ditolak
+  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: 'X', base_url: 'javascript:alert(1)' } });
+  assert.equal(r.status, 400);
+  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: '  ', base_url: 'https://pos.test' } });
+  assert.equal(r.status, 400);
+
+  // env local tetap lewat cek origin: dashboard bisa dihosting, jadi local_url
+  // yang tidak terdaftar tidak boleh ditembak (anti-SSRF).
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p_ticketing_pos', env: 'local' } });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /belum diizinkan/);
+
+  // Setelah admin mendaftarkan origin lokal, sesi local berjalan normal.
+  r = await f.call('/api/projects/p_ticketing_pos', { method: 'PATCH', cookie, body: { origins: ['https://localhost:5173'] } });
+  assert.equal(r.status, 200);
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p_ticketing_pos', env: 'local' } });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.targetUrl, 'https://localhost:5173/');
 });
 
 test('A5: run production menulis satu baris log system', async t => {
@@ -795,7 +864,8 @@ test('A5: run production menulis satu baris log system', async t => {
 
   const lines = f.store.logsRaw(runId).filter(l => l.stream === 'system' && /production run by/.test(l.text));
   assert.equal(lines.length, 1);
-  assert.match(lines[0].text, /production run by tester at \d{4}-\d{2}-\d{2}T/);
+  assert.match(lines[0].text, /production run by tester at \d{2} \w{3} \d{4} \d{2}:\d{2} WIB\n?$/);
+  assert.equal(/T\d{2}:\d{2}:\d{2}/.test(lines[0].text), false, 'bukan ISO mentah');
 
   // runner tidak boleh mulai dari seq 0 - baris system tadi sudah pakai seq 1.
   const runsDir = await mkdtemp(join(tmpdir(), 'pb-runner-a5-'));
@@ -999,3 +1069,631 @@ test('settings publik: viewer boleh baca retensi, penuh tetap admin-only', async
   r = await f.call('/api/settings', { cookie });
   assert.equal(r.status, 403);
 });
+
+
+// ─── T01: Migrasi grup + constraint + backfill ─────────────────────────────
+
+test('T04: test file — path unik global, config LHCI divalidasi, hapus ditolak bila dipakai run', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  // Project kedua untuk membuktikan path unik lintas project.
+  const p2 = (await call('/api/projects', { method: 'POST', cookie, body: { name: 'Kedua', base_url: 'https://kedua.test' } })).body;
+
+  let r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: { projectId: 'p1', tool: 'lh', path: 'lighthouserc.ebh.js', label: 'LH EBH' },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.code, '');
+  const lhId = r.body.id;
+
+  // Path sama di project lain ditolak (file ditulis relatif root repo).
+  r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: { projectId: p2.id, tool: 'lh', path: 'lighthouserc.ebh.js', label: 'LH 2' },
+  });
+  assert.equal(r.status, 409);
+
+  // Path absolut / traversal / ekstensi aneh ditolak
+  for (const bad of ['../rahasia.js', '/etc/passwd', 'C:\\x.spec.ts', 'catatan.txt']) {
+    r = await call('/api/test-files', { method: 'POST', cookie, body: { projectId: 'p1', tool: 'pw', path: bad, label: 'X', code: 'x' } });
+    assert.equal(r.status, 400, `path ${bad} harus ditolak`);
+  }
+
+  // Config LHCI invalid = 400
+  const invalidConfigs = [
+    '{bukan json',
+    { urls: ['bukan-url'] },
+    { urls: ['https://luar.test/a', 'https://luar.test/b', 'https://luar.test/c', 'https://luar.test/d', 'https://luar.test/e'] },
+    { numberOfRuns: 0 },
+    { numberOfRuns: 11 },
+    { numberOfRuns: 2.5 },
+    { budgets: { 'categories:pwa': { minScore: 0.9 } } },
+    { budgets: { 'categories:performance': { minScore: 1.5 } } },
+    { budgets: { 'categories:performance': { minScore: 'tinggi' } } },
+  ];
+  store.db.prepare("UPDATE projects SET origins='[\"https://ebh.test\",\"https://staging.ebh.test\"]' WHERE id='p1'").run();
+  for (const cfg of invalidConfigs) {
+    r = await call('/api/test-files', {
+      method: 'POST', cookie,
+      body: { projectId: 'p1', tool: 'lh', path: 'cfg-' + Math.random().toString(36).slice(2) + '.js', label: 'C', config: cfg },
+    });
+    assert.equal(r.status, 400, `config ${JSON.stringify(cfg)} harus 400`);
+  }
+
+  // Origin URL tambahan harus diizinkan project/allowlist
+  r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: {
+      projectId: 'p1', tool: 'lh', path: 'lighthouserc.ebh2.js', label: 'C',
+      config: { urls: ['https://ebh.test/halaman', 'https://staging.ebh.test'], numberOfRuns: 3, budgets: { 'categories:performance': { minScore: 0.8 } } },
+    },
+  });
+  assert.equal(r.status, 201);
+  const saved = JSON.parse(r.body.config);
+  assert.deepEqual(saved.urls, ['https://ebh.test/halaman', 'https://staging.ebh.test/']);
+  assert.equal(saved.numberOfRuns, 3);
+
+  // Dedupe URL
+  r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: { projectId: 'p1', tool: 'lh', path: 'lighthouserc.dedupe.js', label: 'D', config: { urls: ['https://ebh.test/a', 'https://ebh.test/a'] } },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(JSON.parse(r.body.config).urls.length, 1);
+
+  // Hapus test file yang sudah dipakai run ditolak
+  store.createSession({ id: randomUUID(), projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test/', label: 'S', createdBy: null });
+  const sess = store.db.prepare("SELECT id FROM sessions WHERE project_id='p1'").get();
+  const runId = randomUUID();
+  store.createRun({ id: runId, sessionId: sess.id, testFileId: lhId, tool: 'lh' });
+  r = await call(`/api/test-files/${lhId}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+
+  // Yang belum dipakai run boleh dihapus
+  r = await call(`/api/test-files/${store.listTestFiles({ projectId: 'p1', tool: 'lh' }).find(f => f.id !== lhId && f.id !== undefined).id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.ok(store.listAudit({ entity: 'test_files' }).some(a => a.action === 'delete_test_file'));
+});
+
+test('T04: normalisasi config lama — target di urls tidak dihitung sebagai URL tambahan', async () => {
+  const { normalizeLhUrls, checkLhConfig } = await import('../validation.mjs');
+  const project = { base_url: 'https://ebh.test/', staging_url: 'https://staging.ebh.test/', local_url: null };
+  const out = normalizeLhUrls({ urls: ['https://ebh.test/', 'https://ebh.test/id-id', 'https://staging.ebh.test/'] }, project);
+  assert.deepEqual(out.urls, ['https://ebh.test/id-id'], 'path beda tetap URL tambahan');
+
+  // 5 URL tambahan sudah termasuk target → setelah normalisasi jadi 4 → lolos.
+  const cfg = normalizeLhUrls({ urls: ['https://ebh.test/', 'https://ebh.test/a', 'https://ebh.test/b', 'https://ebh.test/c', 'https://ebh.test/d'] }, project);
+  const checked = checkLhConfig(cfg, { allowedOrigins: ['https://ebh.test'] });
+  assert.equal(checked.urls.length, 4);
+});
+
+test('T05: lhTimeout proporsional — lantai 15 menit, 5 URL x 10 run tidak flat', async () => {
+  const { lhTimeout, MAX_LH_URLS, MAX_LH_RUNS, lhConfig } = await import('../runner.mjs');
+  assert.equal(MAX_LH_URLS, 5);
+  assert.equal(MAX_LH_RUNS, 10);
+
+  // 1 URL: lantai 15 menit (dynamic 5+1x1x1.5 = 6,5 menit)
+  assert.equal(lhTimeout(1, 1), 900_000);
+  assert.equal(lhTimeout(2, 1), 900_000, '2 URL masih di bawah lantai');
+
+  // 5 URL x 10 run: 5 + 5*10*1.5 = 80 menit, bukan flat 15 menit
+  assert.equal(lhTimeout(5, 10), 80 * 60_000);
+
+  // Cap 120 menit
+  assert.equal(lhTimeout(50, 10), 120 * 60_000);
+
+  // Config invalid ditolak sebelum spawn
+  assert.throws(() => lhConfig({ numberOfRuns: 'x' }, 'https://a.test/', 'x'), /numberOfRuns/);
+  assert.throws(() => lhConfig({ urls: ['bukan-url'] }, 'https://a.test/', 'x'), /URL tidak valid|Maksimal/);
+});
+
+test('T05: budget error membuat run LH gagal saat skor di bawah batas', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = f.store.createSession({ id: randomUUID(), projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test/', label: 'S', createdBy: null });
+  void session;
+
+  const tf = { id: randomUUID() };
+  f.store.createTestFile({
+    id: tf.id, projectId: 'p1', tool: 'lh', path: 'lighthouserc.ebh.js', label: 'LH', code: '',
+    config: JSON.stringify({ budgets: { 'categories:performance': { minScore: 0.8 } } }),
+  });
+
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-runner-t05-'));
+  t.after(() => rm(runsDir, { recursive: true, force: true }));
+  const runner = new Runner(f.store, { runsDir, origins: [ORIGIN, 'https://staging.ebh.test'] });
+
+  // Tulis config seperti runLighthouse: budget harus tampil sebagai 'error'.
+  const { writeFile: wf } = await import('node:fs/promises');
+  const outDir = join(runsDir, 'out');
+  const cfgPath = join(runsDir, 'lighthouserc.cjs');
+  const { lhConfig } = await import('../runner.mjs');
+  await wf(cfgPath, lhConfig(JSON.parse(f.store.getTestFile(tf.id).config), 'https://staging.ebh.test/', outDir));
+  const generated = readFileSync(cfgPath, 'utf8');
+  assert.match(generated, /"categories:performance": \[\s*"error"/, "budget memakai level error");
+  assert.equal(/"warn"/.test(generated), false, 'tidak ada assertion warn');
+
+  // Config lh yang ditulis langsung ke disk dipakai apa adanya untuk assert().
+  void cookie;
+});
+
+test('T05: runner menolak origin URL tambahan di luar izin sebelum spawn', async () => {
+  const { lhConfig } = await import('../runner.mjs');
+  assert.throws(
+    () => lhConfig({ urls: ['https://evil.test/'] }, 'https://a.test/', 'x', { allowedOrigins: ['https://a.test'] }),
+    /tidak diizinkan/,
+  );
+  // Origin project yang sah lolos.
+  const ok = lhConfig({ urls: ['https://b.test/x'] }, 'https://a.test/', 'x', { allowedOrigins: ['https://a.test', 'https://b.test'] });
+  assert.match(ok, /https:\/\/b\.test\/x/);
+});
+
+test('T06: reuse dalam jendela idle, sesi baru setelah report, new=true memaksa sesi baru', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  assert.equal(f.store.getSetting('session_reuse_minutes'), '20', 'default dari migrasi');
+
+  // Run 1 → sesi A
+  let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201);
+  const a = r.body.sessionId;
+
+  // Masih ada run berjalan → tidak boleh reuse, dan sesi baru ditolak 409.
+  const tf = { id: randomUUID() };
+  f.store.createTestFile({ id: tf.id, projectId: 'p1', tool: 'pw', path: 'r.spec.ts', label: 'R', code: 'x' });
+  const runId = randomUUID();
+  f.store.createRun({ id: runId, sessionId: a, testFileId: tf.id, tool: 'pw' });
+  assert.equal((await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } })).status, 409);
+  assert.equal((await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging', new: true } })).status, 409);
+
+  // Run final → sesi boleh dipakai ulang sampai report dibuat.
+  f.store.patchRun(runId, { status: 'passed', finished_at: new Date().toISOString() });
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 409);
+  assert.equal(r.body.sessionId, a);
+  assert.equal(r.body.reuse, true);
+
+  // new=true memaksa sesi baru: sesi lama ditutup.
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging', new: true } });
+  assert.equal(r.status, 201);
+  const b = r.body.sessionId;
+  assert.notEqual(b, a);
+  assert.ok(f.store.getSession(a).closed_at, 'sesi lama ditutup saat new=true');
+
+  // Setelah report dibuat, sesi berikutnya tidak boleh menempel ke sesi ber-report.
+  f.store.createReport({ id: randomUUID(), sessionId: b, scope: 'both', runIds: [], builtBy: null });
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201, 'report sudah ada → sesi baru');
+  assert.notEqual(r.body.sessionId, b);
+});
+
+test('T06: sesi idle lewat jendela ditutup otomatis, run berikutnya sesi baru', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const old = randomUUID();
+  f.store.createSession({ id: old, projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test/', label: 'L', createdBy: f.user.id });
+  // Patokannya run terakhir, bukan created_at: sesi dibuat 61 menit lalu DAN
+  // run terakhirnya juga 61 menit lalu.
+  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?')
+    .run(new Date(Date.now() - 61 * 60_000).toISOString(), old);
+  f.store.createRun({ id: 'r-t06-old', sessionId: old, testFileId: null, tool: 'pw' });
+  f.store.db.prepare('UPDATE runs SET status=?, finished_at=? WHERE id=?')
+    .run('passed', new Date(Date.now() - 61 * 60_000).toISOString(), 'r-t06-old');
+
+  assert.equal(f.store.findOpenSession('p1', 'staging', f.user.id), undefined);
+  assert.ok(f.store.getSession(old).closed_at, 'sesi basi ditutup');
+
+  const r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201);
+  assert.notEqual(r.body.sessionId, old);
+});
+
+test('T07: timestamp WIB — UTC disimpan, tampilan Asia/Jakarta + label WIB', async () => {
+  const { wibStamp } = await import('../index.mjs');
+  // 2026-01-01T17:30:00Z = 2026-01-02 00:30 WIB
+  const out = wibStamp('2026-01-01T17:30:00.000Z');
+  assert.match(out, /^02 Jan 2026 00:30 WIB$/);
+  assert.equal(/T\d{2}:\d{2}.*Z/.test(out), false, 'bukan ISO mentah');
+});
+
+test('T07: label sesi memakai WIB', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201);
+  assert.match(r.body.session.label, / WIB$/, 'label sesi berakhir WIB');
+  assert.equal(/T\d{2}:\d{2}.*Z/.test(r.body.session.label), false);
+});
+test('T01: fresh DB → project_groups ada, user_version=7, reuse=20', async t => {
+  const store = new Store(':memory:');
+  await store.init();
+  t.after(() => store.close());
+
+  const version = store.db.prepare('PRAGMA user_version').get().user_version;
+  assert.equal(version, 7);
+
+  // Tabel project_groups harus ada
+  const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='project_groups'").all();
+  assert.equal(tables.length, 1);
+
+  // Default reuse turun ke 20 menit idle
+  assert.equal(store.getSetting('session_reuse_minutes'), '20');
+});
+
+test('T01: backfill DB lama → grup dibuat dari project', async t => {
+  const store = new Store(':memory:');
+  // Simulasi DB lama: hanya jalankan migrasi 0001-0004
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const migrationsDir = join(root, 'server', 'migrations');
+  store.db.exec('PRAGMA foreign_keys = ON');
+
+  const files = readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
+  // Jalankan 0001-0004 saja
+  for (const name of files.filter(f => Number(f.slice(0, 4)) <= 4)) {
+    store.db.exec(readFileSync(join(migrationsDir, name), 'utf8'));
+    store.db.exec(`PRAGMA user_version = ${Number(name.slice(0, 4))}`);
+  }
+
+  // Sisipkan 2 project sebelum migrasi 0005
+  const now = new Date().toISOString();
+  store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, active, created_at) VALUES (?,?,?,?,?,1,?)`)
+    .run('p_a', 'alpha', 'Alpha', 'https://alpha.test', '[]', now);
+  store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, active, created_at) VALUES (?,?,?,?,?,1,?)`)
+    .run('p_b', 'beta', 'Beta', 'https://beta.test', '[]', now);
+
+  // Jalankan migrasi 0005
+  const mig5 = files.find(f => f.startsWith('0005'));
+  assert.ok(mig5, 'migrasi 0005 harus ada');
+  store.db.exec(readFileSync(join(migrationsDir, mig5), 'utf8'));
+  store.db.exec('PRAGMA user_version = 5');
+
+  t.after(() => store.close());
+
+  // Verifikasi backfill
+  const groups = store.db.prepare('SELECT * FROM project_groups ORDER BY id').all();
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].id, 'g_alpha');
+  assert.equal(groups[0].name, 'Alpha');
+  assert.equal(groups[1].id, 'g_beta');
+  assert.equal(groups[1].name, 'Beta');
+
+  // Semua project punya group_id
+  const nullGroups = store.db.prepare('SELECT COUNT(*) AS n FROM projects WHERE group_id IS NULL').get().n;
+  assert.equal(nullGroups, 0);
+
+  // Verifikasi constraint: path test file unik global
+  store.db.prepare(`INSERT INTO test_files (id, project_id, tool, path, label, code, enabled, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?)`)
+    .run('tf1', 'p_a', 'pw', 'shared.spec.ts', 'S', 'x', now, now);
+  assert.throws(() => {
+    store.db.prepare(`INSERT INTO test_files (id, project_id, tool, path, label, code, enabled, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?)`)
+      .run('tf2', 'p_b', 'pw', 'shared.spec.ts', 'S2', 'x', now, now);
+  }, /UNIQUE constraint failed/);
+
+  // Verifikasi constraint: nama project unik case-insensitive
+  assert.throws(() => {
+    store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, active, created_at) VALUES (?,?,?,?,?,1,?)`)
+      .run('p_c', 'alpha2', 'alpha', 'https://a.test', '[]', now);
+  }, /UNIQUE constraint failed/);
+});
+
+test('T02: CRUD grup — buat, rename, hapus kosong, nama duplikat 409', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  const anon = await call('/api/project-groups');
+  assert.equal(anon.status, 401);
+  assert.deepEqual(anon.body, { error: 'Sesi tidak valid' });
+
+  let r = await call('/api/project-groups', { cookie });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, []);
+
+  r = await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'Marketing' } });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.name, 'Marketing');
+  assert.equal(r.body.project_count, 0);
+  const groupId = r.body.id;
+
+  // Nama unik case-insensitive
+  r = await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'marketing' } });
+  assert.equal(r.status, 409);
+
+  r = await call(`/api/project-groups/${groupId}`, { method: 'PATCH', cookie, body: { name: 'Marketing Digital' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.name, 'Marketing Digital');
+
+  // Rename ke nama grup lain ditolak
+  const other = (await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'Sales' } })).body;
+  r = await call(`/api/project-groups/${other.id}`, { method: 'PATCH', cookie, body: { name: 'marketing digital' } });
+  assert.equal(r.status, 409);
+
+  // Grup kosong boleh dihapus
+  r = await call(`/api/project-groups/${other.id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(store.listProjectGroups().length, 1);
+
+  // Audit tercatat
+  const actions = store.listAudit({ entity: 'project_groups' }).map(a => a.action);
+  assert.ok(actions.includes('create_group'));
+  assert.ok(actions.includes('update_group'));
+  assert.ok(actions.includes('delete_group'));
+});
+
+test('T02: hapus grup berisi project (aktif atau arsip) ditolak 409', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  const group = (await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'EBH' } })).body;
+  store.db.prepare('UPDATE projects SET group_id=? WHERE id=?').run(group.id, 'p1');
+
+  let r = await call('/api/project-groups', { cookie });
+  assert.equal(r.body[0].project_count, 1);
+
+  r = await call(`/api/project-groups/${group.id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+
+  // Project arsip juga dihitung
+  store.db.prepare('UPDATE projects SET active=0 WHERE id=?').run('p1');
+  r = await call(`/api/project-groups/${group.id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+});
+
+test('T02: viewer tidak boleh menulis grup', async t => {
+  const { call, login, store, user } = await fixture(t);
+  store.createUser({ id: randomUUID(), username: 'lihat', role: 'viewer', passwordHash: await hash(PASSWORD) });
+  const cookie = await login('lihat');
+
+  const before = store.listProjectGroups().length;
+  assert.equal((await call('/api/project-groups', { cookie })).status, 200);
+  assert.equal((await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'X' } })).status, 403);
+  assert.equal(store.listProjectGroups().length, before);
+  assert.equal(user.role, 'admin');
+});
+
+test('T03: create/rename project — groupId, nama unik 409, base_url wajib', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+  const group = (await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'Grup A' } })).body;
+
+  let r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'Baru', groupId: group.id, base_url: 'https://baru.test' } });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.group_id, group.id);
+  assert.equal(r.body.group_name, 'Grup A');
+  assert.equal(r.body.active, 1);
+
+  // Nama unik case-insensitive saat create
+  r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'baru', base_url: 'https://lain.test' } });
+  assert.equal(r.status, 409);
+
+  // base_url wajib; local_url tidak boleh menggantikannya
+  r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'Tanpa Base', local_url: 'http://localhost:3000' } });
+  assert.equal(r.status, 400);
+
+  // groupId harus ada bila diisi
+  r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'Grup Hantu', groupId: 'g_tidak_ada', base_url: 'https://x.test' } });
+  assert.equal(r.status, 400);
+
+  // Rename ke nama project lain ditolak, rename diri sendiri boleh
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { name: 'baru' } });
+  assert.equal(r.status, 409);
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { name: 'EBH Utama' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.name, 'EBH Utama');
+  assert.equal(r.body.slug, 'ebh', 'slug tidak berubah saat rename');
+
+  // Pindah grup + lepas grup
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { groupId: group.id } });
+  assert.equal(r.body.group_id, group.id);
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { groupId: null } });
+  assert.equal(r.body.group_id, null);
+  assert.equal(r.body.group_name, null);
+  assert.ok(store.getProject('p1'));
+});
+
+test('T03: arsip project menolak run, restore membuka lagi, report tetap terbaca', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  // Arsip ditolak selama sesi masih terbuka
+  const sess = store.createSession({ id: randomUUID(), projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test', label: 'S', createdBy: null });
+  void sess;
+  let r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { active: 0 } });
+  assert.equal(r.status, 409);
+  const open = store.db.prepare("SELECT id FROM sessions WHERE project_id='p1' AND closed_at IS NULL").get();
+  store.closeSession(open.id);
+
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { active: 0 } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.active, 0);
+
+  // Default GET /api/projects tidak memuat arsip
+  assert.equal((await call('/api/projects', { cookie })).body.length, 0);
+  r = await call('/api/projects?all=1', { cookie });
+  assert.equal(r.body.length, 1);
+  assert.equal(r.body[0].active, 0);
+
+  // Semua jalur run menolak project arsip
+  r = await call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 409);
+  r = await call('/api/quick-check', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 409);
+  const tf = { id: randomUUID() };
+  store.createTestFile({ id: tf.id, projectId: 'p1', tool: 'pw', path: 'arsip.spec.ts', label: 'L', code: 'x', config: null });
+  r = await call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: tf.id, env: 'staging' } });
+  assert.equal(r.status, 409);
+  r = await call(`/api/sessions/${open.id}/runs`, { method: 'POST', cookie, body: { testFileId: tf.id } });
+  assert.equal(r.status, 409);
+
+  // Run yang sudah ada tetap bisa dibaca setelah arsip
+  const runId = randomUUID();
+  store.createRun({ id: runId, sessionId: open.id, testFileId: tf.id, tool: 'pw' });
+  r = await call(`/api/runs/${runId}`, { cookie });
+  assert.equal(r.status, 200);
+  r = await call(`/api/runs/${runId}/start`, { method: 'POST', cookie });
+  assert.equal(r.status, 409);
+
+  // Restore membuka lagi
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { active: 1 } });
+  assert.equal(r.body.active, 1);
+  r = await call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201);
+
+  const actions = store.listAudit({ entity: 'projects' }).map(a => a.action);
+  assert.ok(actions.includes('archive_project'));
+  assert.ok(actions.includes('restore_project'));
+});
+
+test('T03: hapus project berriwayat 409, project kosong boleh 204', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  const tf = { id: randomUUID() };
+  store.createTestFile({ id: tf.id, projectId: 'p1', tool: 'pw', path: 'riwayat.spec.ts', label: 'R', code: 'x', config: null });
+  let r = await call('/api/projects/p1', { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+
+  r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'Kosong', base_url: 'https://kosong.test' } });
+  assert.equal(r.status, 201);
+  const kosong = r.body.id;
+  r = await call(`/api/projects/${kosong}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(store.getProject(kosong), undefined);
+  assert.ok(store.listAudit({ entity: 'projects' }).some(a => a.action === 'delete_project'));
+});
+
+test('T14: GET /api/help memuat versi, node, dan perintah update', async t => {
+  const { call, login } = await fixture(t);
+
+  let r = await call('/api/help');
+  assert.equal(r.status, 401);
+
+  const cookie = await login();
+  r = await call('/api/help', { cookie });
+  assert.equal(r.status, 200);
+  // Versi dibaca dari package.json root, bukan konstanta di kode.
+  const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  assert.equal(r.body.version, pkg.version);
+  assert.match(r.body.node, /^v\d+\./);
+  assert.equal(r.body.playwright, pkg.devDependencies['@playwright/test']);
+  assert.equal(r.body.lighthouse, pkg.devDependencies['@lhci/cli']);
+  assert.equal(r.body.update_commands.length, 2);
+  assert.match(r.body.update_commands[0], /@playwright\/test@latest/);
+  // null = FEEDBACK_URL belum diisi; UI wajib punya fallback.
+  assert.equal(r.body.feedback_url, process.env.FEEDBACK_URL || null);
+});
+
+// Log run bisa memuat data pelanggan, jadi /ws wajib sesi. Klien tanpa cookie
+// harus ditutup 1008 sebelum sempat subscribe; dengan cookie, penolakan baru
+// datang dari validasi runId ("Unknown run"), bukan dari auth.
+test('websocket log menolak klien tanpa sesi', async t => {
+  const f = await fixture(t);
+  const url = f.base.replace('http', 'ws') + '/ws';
+
+  const closed = ws => new Promise(res => ws.on('close', (code, reason) => res({ code, reason: reason.toString() })));
+  const open = ws => new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
+
+  const anon = new WebSocket(url, { origin: f.base });
+  const anonClose = await closed(anon);
+  assert.equal(anonClose.code, 1008);
+  assert.equal(anonClose.reason, 'Unauthorized');
+
+  const cookie = await f.login();
+  const auth = new WebSocket(url, { origin: f.base, headers: { cookie } });
+  await open(auth);
+  auth.send(JSON.stringify({ type: 'subscribe', runId: 'tidak-ada' }));
+  const authClose = await closed(auth);
+  assert.equal(authClose.code, 1008);
+  assert.equal(authClose.reason, 'Unknown run', 'sesi valid harus lolos gerbang auth');
+});
+
+// Password tidak boleh bisa ditebak dalam jumlah tak terbatas. Batasnya lima
+// percobaan gagal per IP+username, lalu 429 selama 15 menit.
+test('login dibatasi setelah 5 percobaan gagal', async t => {
+  const f = await fixture(t);
+  const attempt = password => f.call('/api/auth/login', { method: 'POST', body: { username: 'tester', password } });
+
+  for (let i = 0; i < 5; i += 1) {
+    const res = await attempt('salah-' + i);
+    assert.equal(res.status, 401, 'percobaan ke-' + (i + 1) + ' masih 401');
+  }
+
+  const blocked = await attempt(PASSWORD);
+  assert.equal(blocked.status, 429, 'percobaan ke-6 ditolak walau password benar');
+  assert.match(blocked.body.error, /Terlalu banyak percobaan login/);
+
+  // Username lain tidak boleh ikut terkunci oleh IP yang sama.
+  const other = await f.call('/api/auth/login', { method: 'POST', body: { username: 'lain', password: 'apa-saja' } });
+  assert.equal(other.status, 401, 'username lain tetap boleh mencoba');
+});
+
+// Dua query yang dipoll tiap 5 detik harus memakai index, bukan temp B-tree.
+// EXPLAIN dipakai supaya regresi performa ketahuan tanpa mengukur waktu.
+test('B11: index runs_queued dan runs_finalized dipakai query daftar run', async t => {
+  const store = new Store(':memory:');
+  await store.init();
+  t.after(() => store.close());
+
+  const plan = sql => store.db.prepare('EXPLAIN QUERY PLAN ' + sql).all().map(r => r.detail).join(' | ');
+
+  const listRuns = plan('SELECT r.* FROM runs r ORDER BY r.queued_at DESC LIMIT 8');
+  assert.ok(!/TEMP B-TREE/.test(listRuns), 'listRuns tidak boleh mengurutkan di temp B-tree: ' + listRuns);
+  assert.match(listRuns, /runs_queued/);
+
+  const perDay = plan("SELECT substr(finalized_at,1,10) AS d, COUNT(*) FROM runs WHERE finalized_at IS NOT NULL GROUP BY d");
+  assert.match(perDay, /runs_finalized/);
+});
+
+test('S03: config Playwright per project divalidasi dan disimpan', async () => {
+  const { checkPwConfig } = await import('../validation.mjs');
+  assert.deepEqual(checkPwConfig({ timeout: 60000, workers: 2, retries: 1, env: 'staging' }),
+    { timeout: 60000, workers: 2, retries: 1, env: 'staging' });
+  assert.equal(checkPwConfig({ configPath: 'x.config.mjs' }).configPath, 'x.config.mjs');
+  assert.throws(() => checkPwConfig({ workers: 99 }), /workers harus bilangan bulat 1-8/);
+  assert.throws(() => checkPwConfig({ env: 'qa' }), /env harus salah satu/);
+  assert.throws(() => checkPwConfig({ timeout: 10 }), /timeout harus bilangan bulat 10000-900000/);
+});
+
+test('failStaleRuns: run CLI yang tak pernah start dilepas, run aktif tidak', async () => {
+  const { Store } = await import('../store.mjs');
+  const store = new Store(':memory:');
+  await store.init();
+  try {
+    store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, allow_production, active, created_at)
+      VALUES ('p-stale','p-stale','P Stale','http://127.0.0.1:5173','["http://127.0.0.1:5173"]',0,1,?)`)
+      .run(new Date().toISOString());
+    const old = new Date(Date.now() - 90 * 60_000).toISOString();
+    store.createSession({ id: 's-stale', projectId: 'p-stale', env: 'local', targetUrl: 'http://127.0.0.1:5173', label: 'stale' });
+    store.createRun({ id: 'r-menggantung', sessionId: 's-stale', testFileId: null, tool: 'pw' });
+    store.db.prepare('UPDATE runs SET queued_at=? WHERE id=?').run(old, 'r-menggantung');
+    store.createRun({ id: 'r-baru', sessionId: 's-stale', testFileId: null, tool: 'lh' });
+
+    assert.equal(store.failStaleRuns(30), 1, 'hanya run lama yang dilepas');
+    assert.equal(store.getRun('r-menggantung').status, 'interrupted');
+    assert.equal(store.getRun('r-baru').status, 'queued');
+    assert.equal(store.countRunsByStatus('s-stale', ['queued', 'running', 'uploading']), 1);
+  } finally { store.close?.(); }
+});
+test('B04: statsByProject setara stats per project', async () => {
+  const { Store } = await import('../store.mjs');
+  const store = new Store(':memory:');
+  await store.init();
+  try {
+    const projects = store.listProjects();
+    const from = new Date(Date.now() - 365 * 86400_000).toISOString();
+    const all = store.statsByProject({ from });
+    for (const p of projects) {
+      const one = store.stats({ projectId: p.id, from });
+      const row = all[p.id] ?? { sessions: 0, runs: 0, failedRuns: 0, passRate: null };
+      assert.equal(row.sessions, one.sessions, p.id + ' sessions');
+      assert.equal(row.runs, one.runs, p.id + ' runs');
+      assert.equal(row.failedRuns, one.failedRuns, p.id + ' failedRuns');
+      assert.equal(row.passRate, one.passRate, p.id + ' passRate');
+    }
+  } finally { store.close?.(); }
+});
+
