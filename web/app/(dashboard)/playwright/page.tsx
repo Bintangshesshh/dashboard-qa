@@ -278,6 +278,12 @@ export default function PlaywrightPage() {
           <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
             Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
           </p>
+          {env === "local" && (
+          <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
+            Env local dijalankan dari mesin server dashboard. Kalau dashboard dihosting,
+            isi local_url dengan URL tunnel (cloudflared/ngrok) ke web lokal, bukan 127.0.0.1.
+          </p>
+          )}
           {session && (
             <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
               {session.closed_at ? "Sesi terakhir sudah ditutup" : "Sesi terbuka"}
