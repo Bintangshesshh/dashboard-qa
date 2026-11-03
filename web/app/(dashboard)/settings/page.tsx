@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   api, fmtDate,
-  type CliToken, type Project, type Settings, type TestFile,
+  type CliToken, type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
 import LhConfigEditor, {
   LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig,
@@ -31,13 +31,15 @@ const fmtMinutes = (value: string) => {
     : `${minutes.toLocaleString("id-ID")} menit`;
 };
 
-type TabId = "pw" | "lh" | "report" | "access";
+type TabId = "project" | "pw" | "lh" | "report" | "bantuan";
 
+// Urutan tab mengikuti alur kerja: siapkan project dulu, baru seting per tool.
 const TABS: { id: TabId; label: string }[] = [
+  { id: "project", label: "Project" },
   { id: "pw", label: "Playwright" },
-  { id: "lh", label: "Lighthouse" },
+  { id: "lh", label: "Lighthouse CI" },
   { id: "report", label: "Report" },
-  { id: "access", label: "Akses" },
+  { id: "bantuan", label: "Bantuan" },
 ];
 
 type SettingField = {
@@ -147,6 +149,10 @@ export default function SettingsPage() {
   const [savedAt, setSavedAt] = useState<Record<string, string>>({});
   const [tokens, setTokens] = useState<CliToken[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [groups, setGroups] = useState<ProjectGroup[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [groupName, setGroupName] = useState("");
   const [files, setFiles] = useState<TestFile[]>([]);
   const [newToken, setNewToken] = useState("");
   const [label, setLabel] = useState("");
@@ -158,7 +164,8 @@ export default function SettingsPage() {
     api.settings().then(s => { setSettings(s); setDraft({}); setSavedAt({}); })
       .catch(e => setError(e.message));
     api.cliTokens().then(setTokens).catch(() => {});
-    api.projects().then(setProjects).catch(() => {});
+    api.projects({ all: true }).then(setProjects).catch(() => {});
+    api.projectGroups().then(setGroups).catch(() => {});
     api.testFiles({ all: true }).then(setFiles).catch(() => {});
   };
 
@@ -203,12 +210,40 @@ export default function SettingsPage() {
     });
   };
 
+  // Error diteruskan ke form: isian tidak boleh hilang saat gagal.
   const createProject = async (body: Parameters<typeof api.createProject>[0]) => {
     setError(""); setNotice("");
+    const created = await api.createProject(body);
+    setProjects(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+    reloadGroups();
+    setNotice(`${created.name} ditambahkan.`);
+  };
+
+  const reloadGroups = () => api.projectGroups().then(setGroups).catch(e => setError(e.message));
+
+  const addGroup = async (name: string) => {
+    setError(""); setNotice("");
     try {
-      const created = await api.createProject(body);
-      setProjects(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-      setNotice(`${created.name} ditambahkan.`);
+      const g = await api.createProjectGroup(name);
+      setGroups(prev => [...prev, g].sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (e) { setError((e as Error).message); throw e; }
+  };
+
+  const renameGroup = async (id: string, name: string) => {
+    setError(""); setNotice("");
+    try {
+      const g = await api.patchProjectGroup(id, name);
+      setGroups(prev => prev.map(x => (x.id === id ? g : x)));
+      setEditingGroup(null);
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  const removeGroup = async (g: ProjectGroup) => {
+    if (!confirm(`Hapus grup "${g.name}"?`)) return;
+    setError(""); setNotice("");
+    try {
+      await api.deleteProjectGroup(g.id);
+      setGroups(prev => prev.filter(x => x.id !== g.id));
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -217,7 +252,8 @@ export default function SettingsPage() {
     try {
       const updated = await api.patchProject(p.id, patch);
       setProjects(prev => prev.map(x => (x.id === p.id ? updated : x)));
-      setNotice(`${p.name} disimpan.`);
+      reloadGroups();
+      setNotice(`${updated.name} disimpan.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -298,6 +334,11 @@ export default function SettingsPage() {
   };
 
   const tabSections = (id: TabId) => SECTIONS.filter(s => s.tab === id).map(renderSection);
+  const visibleProjects = showArchived ? projects : projects.filter(p => p.active);
+  const byGroup = (id: string | null) =>
+    visibleProjects.filter(p => (p.group_id ?? null) === id)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  const orphans = byGroup(null);
   const pwFiles = files.filter(f => f.tool === "pw");
   const lhFiles = files.filter(f => f.tool === "lh");
 
@@ -405,65 +446,146 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "access" && (
+        {tab === "project" && (
           <>
             <section className="pb-card">
               <div className="pb-card-head">
                 <div>
-                  <h2>Project</h2>
+                  <h2>Grup & project</h2>
                   <div className="pb-card-sub">
-                    Alamat target per environment dan origin yang boleh diakses runner.
+                    Grup mengelompokkan project di Overview dan filter. Project arsip tetap
+                    menyimpan riwayat tapi tidak bisa dijalankan.
                   </div>
                 </div>
+                <label className="pb-row" style={{ gap: 6, fontSize: 12 }}>
+                  <input type="checkbox" checked={showArchived}
+                    onChange={e => setShowArchived(e.target.checked)} />
+                  Tampilkan arsip
+                </label>
               </div>
-              <NewProjectForm onCreate={createProject} />
-              {projects.length === 0
-                ? <p className="pb-empty">Belum ada project.</p>
-                : projects.map(p => <ProjectRow key={p.id} project={p} onSave={saveProject} />)}
+
+              <NewGroupForm onCreate={addGroup} />
+
+              {groups.length === 0 && orphans.length === 0 && (
+                <p className="pb-empty">
+                  Belum ada project. Tambahkan grup dulu, lalu project di dalamnya.
+                </p>
+              )}
+
+              {groups.map(g => {
+                const own = byGroup(g.id);
+                const editing = editingGroup === g.id;
+                return (
+                  <div className="pb-group" key={g.id}>
+                    <div className="pb-group-head">
+                      {editing ? (
+                        <>
+                          <input className="pb-input" value={groupName} autoFocus
+                            aria-label="Nama grup"
+                            onChange={e => setGroupName(e.target.value)} />
+                          <button className="pb-btn sm primary"
+                            onClick={() => renameGroup(g.id, groupName)}
+                            disabled={!groupName.trim()}>Simpan</button>
+                          <button className="pb-btn sm"
+                            onClick={() => setEditingGroup(null)}>Batal</button>
+                        </>
+                      ) : (
+                        <>
+                          <strong>{g.name}</strong>
+                          <span className="pb-muted pb-mono">{own.length} project</span>
+                          <span className="pb-spacer" />
+                          <button className="pb-btn sm"
+                            onClick={() => { setEditingGroup(g.id); setGroupName(g.name); }}>
+                            Ganti nama
+                          </button>
+                          <button className="pb-btn sm danger" disabled={own.length > 0}
+                            title={own.length > 0 ? "Pindahkan project dulu" : undefined}
+                            onClick={() => removeGroup(g)}>Hapus grup</button>
+                        </>
+                      )}
+                    </div>
+                    {own.length === 0
+                      ? <p className="pb-empty sm">Belum ada project di grup ini.</p>
+                      : own.map(p => (
+                        <ProjectRow key={p.id} project={p} groups={groups}
+                          onSave={saveProject} />
+                      ))}
+                  </div>
+                );
+              })}
+
+              {orphans.length > 0 && (
+                <div className="pb-group">
+                  <div className="pb-group-head">
+                    <strong>Tanpa grup</strong>
+                    <span className="pb-muted pb-mono">{orphans.length} project</span>
+                  </div>
+                  {orphans.map(p => (
+                    <ProjectRow key={p.id} project={p} groups={groups}
+                      onSave={saveProject} />
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className="pb-card">
               <div className="pb-card-head">
                 <div>
-                  <h2>Token CLI</h2>
+                  <h2>Project baru</h2>
                   <div className="pb-card-sub">
-                    Dipakai playbook CLI di laptop untuk memicu run tanpa login.
+                    base_url wajib. Slug dipakai sebagai kunci di CLI dan URL report.
                   </div>
                 </div>
               </div>
-              <div className="pb-row pb-mb-3">
-                <input className="pb-input pb-input-narrow" placeholder="label (mis. laptop-budi)"
-                  value={label} onChange={e => setLabel(e.target.value)} />
-                <button className="pb-btn primary" onClick={makeToken} disabled={!label.trim()}>Buat token</button>
-              </div>
-              {newToken && (
-                <div className="pb-note warn flash">
-                  <p className="pb-note-title">Salin sekarang — token hanya tampil sekali.</p>
-                  <code className="pb-mono" style={{ wordBreak: "break-all" }}>{newToken}</code>
-                </div>
-              )}
-              {tokens.length === 0
-                ? <p className="pb-empty">Belum ada token.</p>
-                : <table className="pb-table">
-                  <thead><tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th /></tr></thead>
-                  <tbody>
-                    {tokens.map(t => (
-                      <tr key={t.id}>
-                        <td>{t.label ?? "-"}</td>
-                        <td className="mono">{fmtDate(t.created_at)}</td>
-                        <td className="mono">{t.last_used_at ? fmtDate(t.last_used_at) : "belum"}</td>
-                        <td className="pb-right">
-                          {t.revoked_at
-                            ? <span className="pb-muted">dicabut</span>
-                            : <button className="pb-btn sm danger" onClick={() => revoke(t.id)}>Cabut</button>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>}
+              <NewProjectForm groups={groups} onCreate={createProject} />
             </section>
           </>
         )}
+
+        {tab === "bantuan" && (
+          <section className="pb-card">
+            <div className="pb-card-head">
+              <div>
+                <h2>Token CLI</h2>
+                <div className="pb-card-sub">
+                  Dipakai playbook CLI di laptop untuk memicu run tanpa login. Token ini
+                  bukan kredensial login dashboard.
+                </div>
+              </div>
+            </div>
+            <div className="pb-row pb-mb-3">
+              <input className="pb-input pb-input-narrow" placeholder="label (mis. laptop-budi)"
+                value={label} onChange={e => setLabel(e.target.value)} />
+              <button className="pb-btn primary" onClick={makeToken} disabled={!label.trim()}>Buat token</button>
+            </div>
+            {newToken && (
+              <div className="pb-note warn flash">
+                <p className="pb-note-title">Salin sekarang — token hanya tampil sekali.</p>
+                <code className="pb-mono" style={{ wordBreak: "break-all" }}>{newToken}</code>
+              </div>
+            )}
+            {tokens.length === 0
+              ? <p className="pb-empty">Belum ada token.</p>
+              : <table className="pb-table">
+                <thead><tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th /></tr></thead>
+                <tbody>
+                  {tokens.map(t => (
+                    <tr key={t.id}>
+                      <td>{t.label ?? "-"}</td>
+                      <td className="mono">{fmtDate(t.created_at)}</td>
+                      <td className="mono">{t.last_used_at ? fmtDate(t.last_used_at) : "belum"}</td>
+                      <td className="pb-right">
+                        {t.revoked_at
+                          ? <span className="pb-muted">dicabut</span>
+                          : <button className="pb-btn sm danger" onClick={() => revoke(t.id)}>Cabut</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>}
+          </section>
+        )}
+
       </div>
     </>
   );
@@ -523,43 +645,88 @@ function LhciCard({ project, file, onSave }: {
 }
 
 
-// Tambah departemen baru. base_url boleh dikosongkan kalau targetnya masih lokal;
-// server memakai local_url sebagai gantinya supaya kolom NOT NULL tetap terisi.
-function NewProjectForm({ onCreate }: {
+// Tambah grup baru. Enter di kolom = simpan.
+function NewGroupForm({ onCreate }: { onCreate: (name: string) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    try { await onCreate(name.trim()); setName(""); }
+    catch { /* pesan sudah tampil di halaman; isian dibiarkan */ }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="pb-row pb-mb-3" style={{ gap: 8 }}>
+      <input className="pb-input pb-input-narrow" placeholder="nama grup baru"
+        value={name} aria-label="Nama grup baru"
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter") submit(); }} />
+      <button className="pb-btn sm primary" onClick={submit} disabled={busy || !name.trim()}>
+        + Grup
+      </button>
+    </div>
+  );
+}
+
+// Tambah project. base_url wajib (server menolak yang kosong); error dari
+// onCreate diteruskan balik supaya isian tidak hilang saat gagal.
+function NewProjectForm({ groups, onCreate }: {
+  groups: ProjectGroup[];
   onCreate: (body: Parameters<typeof api.createProject>[0]) => Promise<void>;
 }) {
   const [name, setName] = useState("");
   const [base, setBase] = useState("");
   const [local, setLocal] = useState("");
+  const [groupId, setGroupId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const submit = async () => {
-    setBusy(true);
+    setBusy(true); setError("");
     try {
       await onCreate({
         name: name.trim(),
         base_url: base.trim(),
-        local_url: local.trim() || undefined,
+        local_url: local.trim() || null,
+        groupId: groupId || null,
       });
-      setName(""); setBase(""); setLocal("");
-    } finally { setBusy(false); }
+      setName(""); setBase(""); setLocal(""); setGroupId("");
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
   };
 
   return (
     <div className="pb-proj-card">
-      <div className="pb-row pb-proj-head">
-        <strong>Tambah departemen</strong>
-      </div>
       <div className="pb-grid two">
-        <label className="pb-field">nama<input className="pb-input" value={name} onChange={e => setName(e.target.value)} /></label>
-        <label className="pb-field">base_url<input className="pb-input" placeholder="https://…" value={base} onChange={e => setBase(e.target.value)} /></label>
-        <label className="pb-field">local_url<input className="pb-input" placeholder="http://localhost:5173" value={local} onChange={e => setLocal(e.target.value)} /></label>
+        <label className="pb-field">nama
+          <input className="pb-input" value={name} onChange={e => setName(e.target.value)} />
+        </label>
+        <label className="pb-field">grup
+          <select className="pb-select" value={groupId} onChange={e => setGroupId(e.target.value)}>
+            <option value="">tanpa grup</option>
+            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </label>
+        <label className="pb-field">base_url (wajib)
+          <input className="pb-input" placeholder="https://…" value={base}
+            onChange={e => setBase(e.target.value)} />
+        </label>
+        <label className="pb-field">local_url
+          <input className="pb-input" placeholder="http://localhost:5173" value={local}
+            onChange={e => setLocal(e.target.value)} />
+        </label>
       </div>
+      {error && <div className="pb-err">{error}</div>}
       <div className="pb-row pb-proj-foot">
-        <span className="pb-set-status">{name.trim() ? "" : "nama wajib diisi"}</span>
+        <span className="pb-set-status">
+          {name.trim() && base.trim() ? "" : "nama dan base_url wajib diisi"}
+        </span>
         <span className="pb-spacer" />
         <button className="pb-btn sm primary" onClick={submit}
-          disabled={busy || !name.trim() || !(base.trim() || local.trim())}>
+          disabled={busy || !name.trim() || !base.trim()}>
           {busy ? "Menyimpan…" : "Tambah project"}
         </button>
       </div>
@@ -567,35 +734,83 @@ function NewProjectForm({ onCreate }: {
   );
 }
 
-function ProjectRow({ project, onSave }: {
+// Satu project di pohon grup: pindah grup, arsip/pulihkan, dan detail URL.
+function ProjectRow({ project, groups, onSave }: {
+  project: Project;
+  groups: ProjectGroup[];
+  onSave: (p: Project, patch: Parameters<typeof api.patchProject>[1]) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const archived = !project.active;
+
+  return (
+    <div className={`pb-proj-row ${archived ? "archived" : ""}`}>
+      <div className="pb-proj-row-head">
+        <button className="pb-proj-toggle" onClick={() => setOpen(o => !o)}
+          aria-expanded={open}>
+          <span className="pb-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
+          <strong>{project.name}</strong>
+          <span className="pb-muted pb-mono">{project.slug}</span>
+        </button>
+        {archived && <span className="pb-badge closed">Arsip</span>}
+        <span className="pb-spacer" />
+        <select className="pb-select sm" value={project.group_id ?? ""}
+          aria-label={"Grup untuk " + project.name}
+          onChange={e => onSave(project, { groupId: e.target.value || null })}>
+          <option value="">tanpa grup</option>
+          {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+        <button className="pb-btn sm" onClick={() => onSave(project, { active: archived ? 1 : 0 })}>
+          {archived ? "Pulihkan" : "Arsipkan"}
+        </button>
+      </div>
+      {open && <ProjectDetail project={project} onSave={onSave} />}
+    </div>
+  );
+}
+
+// Detail URL/origin project. Slug read-only karena dipakai CLI dan URL report.
+function ProjectDetail({ project, onSave }: {
   project: Project;
   onSave: (p: Project, patch: Parameters<typeof api.patchProject>[1]) => Promise<void>;
 }) {
-  const [base, setBase] = useState(project.base_url);
+  const [name, setName] = useState(project.name);
+  const [base, setBase] = useState(project.base_url ?? "");
   const [staging, setStaging] = useState(project.staging_url ?? "");
   const [local, setLocal] = useState(project.local_url ?? "");
   const [origins, setOrigins] = useState(project.origins.join(", "));
   const [allowProd, setAllowProd] = useState(!!project.allow_production);
 
   const save = () => onSave(project, {
-    base_url: base,
-    staging_url: staging || null,
-    local_url: local || null,
+    name: name.trim(),
+    base_url: base.trim(),
+    staging_url: staging.trim() || null,
+    local_url: local.trim() || null,
     origins: origins.split(",").map(s => s.trim()).filter(Boolean),
     allow_production: allowProd ? 1 : 0,
   });
 
   return (
-    <div className="pb-proj-card">
-      <div className="pb-row pb-proj-head">
-        <strong>{project.name}</strong>
-        <span className="pb-muted pb-mono">{project.slug}</span>
-      </div>
+    <div className="pb-proj-body">
       <div className="pb-grid two">
-        <label className="pb-field">base_url<input className="pb-input" value={base} onChange={e => setBase(e.target.value)} /></label>
-        <label className="pb-field">staging_url<input className="pb-input" value={staging} onChange={e => setStaging(e.target.value)} /></label>
-        <label className="pb-field">local_url<input className="pb-input" value={local} onChange={e => setLocal(e.target.value)} /></label>
-        <label className="pb-field">origins (pisah koma)<input className="pb-input" value={origins} onChange={e => setOrigins(e.target.value)} /></label>
+        <label className="pb-field">nama
+          <input className="pb-input" value={name} onChange={e => setName(e.target.value)} />
+        </label>
+        <label className="pb-field">slug (tidak bisa diubah)
+          <input className="pb-input pb-mono" value={project.slug} readOnly />
+        </label>
+        <label className="pb-field">base_url
+          <input className="pb-input" value={base} onChange={e => setBase(e.target.value)} />
+        </label>
+        <label className="pb-field">staging_url
+          <input className="pb-input" value={staging} onChange={e => setStaging(e.target.value)} />
+        </label>
+        <label className="pb-field">local_url
+          <input className="pb-input" value={local} onChange={e => setLocal(e.target.value)} />
+        </label>
+        <label className="pb-field">origins (pisah koma)
+          <input className="pb-input" value={origins} onChange={e => setOrigins(e.target.value)} />
+        </label>
       </div>
       <div className="pb-row pb-proj-foot">
         <label className="pb-row" style={{ gap: 6 }}>
@@ -608,3 +823,4 @@ function ProjectRow({ project, onSave }: {
     </div>
   );
 }
+

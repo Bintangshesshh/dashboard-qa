@@ -827,6 +827,29 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 }
 .pb-muted { color: var(--muted); }
 .pb-empty { color: var(--meta); text-align: center; padding: 36px 12px; }
+/* ---------- Pohon grup project (Seting > Project) ---------- */
+.pb-empty.sm { padding: 14px 12px; font-size: 12px; }
+.pb-group { border: 1px solid var(--line); border-radius: 10px; margin-top: 12px; }
+.pb-group-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+  border-radius: 10px 10px 0 0;
+}
+.pb-group-head .pb-input { max-width: 240px; }
+.pb-proj-row { border-top: 1px solid var(--line); padding: 8px 12px; }
+.pb-proj-row:first-of-type { border-top: 0; }
+.pb-proj-row.archived { opacity: .62; }
+.pb-proj-row-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pb-proj-toggle {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: none; border: 0; padding: 0; cursor: pointer; color: inherit;
+  font: inherit; text-align: left;
+}
+.pb-proj-toggle:hover strong { color: var(--accent); }
+.pb-caret { width: 10px; color: var(--meta); font-size: 10px; }
+.pb-proj-body { padding: 12px 0 4px 18px; }
+.pb-select.sm { padding: 4px 8px; font-size: 12px; }
+
 .pb-err {
   background: var(--bad-bg);
   border: 1px solid color-mix(in oklab, var(--bad) 30%, transparent);
