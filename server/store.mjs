@@ -32,6 +32,17 @@ export class Store {
     if (this.path !== ':memory:') mkdirSync(dirname(this.path), { recursive: true });
     this.db = new DatabaseSync(this.path);
     this.logBytesCache = new Map();
+    // 88 pemanggilan this.db.prepare(...) tersebar di kelas ini dan sebagian
+    // dijalankan tiap 1,5 detik. prepare() native tidak murah, jadi hasilnya
+    // di-memo per string SQL: satu titik, nol perubahan di call site.
+    // String SQL di repo ini berhingga, jadi map ini tidak tumbuh liar.
+    const prepare = this.db.prepare.bind(this.db);
+    const stmts = new Map();
+    this.db.prepare = sql => {
+      let st = stmts.get(sql);
+      if (!st) { st = prepare(sql); stmts.set(sql, st); }
+      return st;
+    };
   }
 
   async init() {
