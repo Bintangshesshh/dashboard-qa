@@ -63,6 +63,8 @@ export type Session = {
   id: string; project_id: string; env: "local" | "staging" | "production";
   target_url: string; label: string; created_by: string | null;
   created_at: string; closed_at: string | null;
+  // Run terakhir di sesi ini; patokan jendela reuse yang sebenarnya.
+  last_run_at?: string | null;
   status: "open" | "running" | "failed" | "passed" | "closed";
   runs?: Run[]; reports?: Report[];
   // Ringkasan dari GET /api/sessions (PRD §10.5).

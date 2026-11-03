@@ -106,8 +106,11 @@ export default function PlaywrightPage() {
   const productionOk = env !== "production" || confirmName.trim() === (project?.name ?? "");
   const dirty = !!selected && draft !== savedCode;
   const running = !!run && !FINAL.includes(run.status);
-  const sessionAge = session
-    ? Math.max(0, Math.round((Date.now() - Date.parse(session.created_at)) / 60000))
+  // Umur sesi dihitung dari run terakhir, sama dengan aturan di server: satu sesi
+  // = satu sesi kerja, bukan satu hari. Tanpa run, pakai waktu dibuat.
+  const sessionAnchor = session?.last_run_at ?? session?.created_at;
+  const sessionAge = sessionAnchor
+    ? Math.max(0, Math.round((Date.now() - Date.parse(sessionAnchor)) / 60000))
     : 0;
   // Saran hanya muncul kalau batas reuse sudah diketahui dari DB.
   const stale = !!session && !session.closed_at && reuseMinutes !== null && sessionAge > reuseMinutes;
@@ -279,7 +282,7 @@ export default function PlaywrightPage() {
             <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
               {session.closed_at ? "Sesi terakhir sudah ditutup" : "Sesi terbuka"}
               {" sejak "}<span className="pb-mono">{fmtTime(session.created_at)}</span>
-              {session.closed_at ? "" : ` · umur ${sessionAge} menit`}
+              {session.closed_at ? "" : ` · idle ${sessionAge} menit`}
               {stale ? ` · lewat batas reuse ${reuseMinutes} menit, pakai Sesi baru` : ""}
             </p>
           )}

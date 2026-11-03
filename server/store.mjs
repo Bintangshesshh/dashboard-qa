@@ -207,21 +207,29 @@ export class Store {
 
   // ─── Sessions ────────────────────────────────────────────────────────────
   getSession(id, withRuns = false) {
-    const row = this.db.prepare(`SELECT s.*, ${SESSION_STATUS_SQL} AS status FROM sessions s WHERE s.id=?`).get(id);
+    const row = this.db.prepare(`SELECT s.*, ${SESSION_STATUS_SQL} AS status,
+      (SELECT MAX(COALESCE(finished_at, started_at, queued_at)) FROM runs WHERE session_id=s.id) AS last_run_at
+      FROM sessions s WHERE s.id=?`).get(id);
     if (!row) return undefined;
     if (withRuns) row.runs = this.listRunsBySession(id);
     return row;
   }
-  // Sesi dipakai ulang hanya bila: belum ditutup, masih dalam jendela reuse,
-  // belum punya report, dan tidak ada run aktif (PRD FR-06).
+  // Sesi dipakai ulang hanya bila: belum ditutup, belum punya report, tidak ada
+  // run aktif, dan run terakhirnya selesai kurang dari session_reuse_minutes.
+  // Patokannya run terakhir, bukan waktu sesi dibuat: satu sesi = satu sesi kerja,
+  // bukan satu hari. Lewat jendela, sesi ditutup dan run berikutnya mulai baru.
   findOpenSession(projectId, env, createdBy) {
     const row = this.db.prepare('SELECT id, created_at FROM sessions WHERE project_id=? AND env=? AND created_by=? AND closed_at IS NULL').get(projectId, env, createdBy);
     if (!row) return undefined;
-    const minutes = Number(this.getSetting('session_reuse_minutes') ?? 60);
+    const minutes = Number(this.getSetting('session_reuse_minutes') ?? 20);
     if (!Number.isFinite(minutes) || minutes <= 0) return undefined;
-    const ageMin = (Date.now() - Date.parse(row.created_at)) / 60000;
+    // Sesi tanpa run sama sekali belum punya aktivitas: pakai waktu dibuat.
+    const last = this.db.prepare(
+      "SELECT COALESCE(MAX(COALESCE(finished_at, started_at, created_at)), ?) AS last FROM runs WHERE session_id=?",
+    ).get(row.created_at, row.id).last;
+    const idleMin = (Date.now() - Date.parse(last)) / 60000;
     // Lolos jendela: tutup supaya index sessions_one_open bebas untuk sesi baru.
-    if (ageMin > minutes) { this.closeSession(row.id); return undefined; }
+    if (idleMin > minutes) { this.closeSession(row.id); return undefined; }
     // Report sudah jadi: sesi itu milik laporan lama, jangan ditambahi run.
     if (this.listReportsBySession(row.id).length) { this.closeSession(row.id); return undefined; }
     // Run masih jalan: pemanggil yang memutuskan 409, bukan reuse diam-diam.

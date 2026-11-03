@@ -69,7 +69,7 @@ Aturan penting:
 
 - **Hapus permanen** hanya untuk project tanpa riwayat run. Project yang sudah punya run harus **diarsipkan** (`PATCH active=0`); run dan laporannya tetap bisa dibaca.
 - Project arsip tidak muncul di dropdown run, tapi tetap tampil di Reports dengan label `Arsip`.
-- Satu sesi dipakai ulang selama `session_reuse_minutes` (default 60 menit, diatur di **Seting > Report**). Tombol **Sesi baru** memaksa sesi terpisah; **Tutup sesi** menutup sesi sekarang dan run berikutnya membuat sesi baru.
+- Satu sesi dipakai ulang selama belum ada run baru dalam `session_reuse_minutes` (default 20 menit, diatur di **Seting > Report**). Patokannya run terakhir, bukan waktu sesi dibuat, jadi run yang berurutan tetap satu sesi dan sesi yang didiamkan tertutup sendiri. Tombol **Sesi baru** memaksa sesi terpisah; **Tutup sesi** menutup sesi sekarang dan run berikutnya membuat sesi baru.
 - Semua waktu di UI ditampilkan dalam WIB.
 
 ## Token CLI

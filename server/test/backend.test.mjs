@@ -725,13 +725,18 @@ test('A6: session_reuse_minutes membatasi sesi yang dipakai ulang', async t => {
   assert.equal(first.status, 201);
   const oldId = first.body.sessionId;
 
-  // masih di dalam jendela (default 240 menit) → dipakai ulang
+  // masih di dalam jendela (default 20 menit) → dipakai ulang
   let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(r.status, 409);
   assert.equal(r.body.sessionId, oldId);
 
-  // dimundurkan 5 jam → lewat jendela, sesi baru dibuat
-  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(new Date(Date.now() - 5 * 3600e3).toISOString(), oldId);
+  // Run terakhir dimundurkan 5 jam → lewat jendela, sesi baru dibuat.
+  const ageRun = (sessionId, runId, ms) => {
+    f.store.createRun({ id: runId, sessionId, testFileId: null, tool: 'pw' });
+    f.store.db.prepare('UPDATE runs SET status=?, finished_at=? WHERE id=?')
+      .run('passed', new Date(Date.now() - ms).toISOString(), runId);
+  };
+  ageRun(oldId, 'r-a6-old', 5 * 3600e3);
   r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(r.status, 201, 'sesi kedaluwarsa tidak dipakai ulang');
   assert.notEqual(r.body.sessionId, oldId);
@@ -739,7 +744,7 @@ test('A6: session_reuse_minutes membatasi sesi yang dipakai ulang', async t => {
 
   // jendela diubah lewat settings → ikut dipakai
   f.store.setSetting('session_reuse_minutes', '1');
-  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(new Date(Date.now() - 5 * 60e3).toISOString(), r.body.sessionId);
+  ageRun(r.body.sessionId, 'r-a6-new', 5 * 60e3);
   const third = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(third.status, 201, '5 menit > 1 menit → sesi baru');
 });
@@ -1216,10 +1221,10 @@ test('T05: runner menolak origin URL tambahan di luar izin sebelum spawn', async
   assert.match(ok, /https:\/\/b\.test\/x/);
 });
 
-test('T06: reuse 60 menit, sesi baru setelah report, new=true memaksa sesi baru', async t => {
+test('T06: reuse dalam jendela idle, sesi baru setelah report, new=true memaksa sesi baru', async t => {
   const f = await fixture(t);
   const cookie = await f.login();
-  assert.equal(f.store.getSetting('session_reuse_minutes'), '60', 'default dari migrasi');
+  assert.equal(f.store.getSetting('session_reuse_minutes'), '20', 'default dari migrasi');
 
   // Run 1 → sesi A
   let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
@@ -1255,13 +1260,18 @@ test('T06: reuse 60 menit, sesi baru setelah report, new=true memaksa sesi baru'
   assert.notEqual(r.body.sessionId, b);
 });
 
-test('T06: sesi lewat 60 menit ditutup otomatis, run berikutnya sesi baru', async t => {
+test('T06: sesi idle lewat jendela ditutup otomatis, run berikutnya sesi baru', async t => {
   const f = await fixture(t);
   const cookie = await f.login();
   const old = randomUUID();
   f.store.createSession({ id: old, projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test/', label: 'L', createdBy: f.user.id });
+  // Patokannya run terakhir, bukan created_at: sesi dibuat 61 menit lalu DAN
+  // run terakhirnya juga 61 menit lalu.
   f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?')
     .run(new Date(Date.now() - 61 * 60_000).toISOString(), old);
+  f.store.createRun({ id: 'r-t06-old', sessionId: old, testFileId: null, tool: 'pw' });
+  f.store.db.prepare('UPDATE runs SET status=?, finished_at=? WHERE id=?')
+    .run('passed', new Date(Date.now() - 61 * 60_000).toISOString(), 'r-t06-old');
 
   assert.equal(f.store.findOpenSession('p1', 'staging', f.user.id), undefined);
   assert.ok(f.store.getSession(old).closed_at, 'sesi basi ditutup');
@@ -1287,20 +1297,20 @@ test('T07: label sesi memakai WIB', async t => {
   assert.match(r.body.session.label, / WIB$/, 'label sesi berakhir WIB');
   assert.equal(/T\d{2}:\d{2}.*Z/.test(r.body.session.label), false);
 });
-test('T01: fresh DB → project_groups ada, user_version=5, reuse=60', async t => {
+test('T01: fresh DB → project_groups ada, user_version=6, reuse=20', async t => {
   const store = new Store(':memory:');
   await store.init();
   t.after(() => store.close());
 
   const version = store.db.prepare('PRAGMA user_version').get().user_version;
-  assert.equal(version, 5);
+  assert.equal(version, 6);
 
   // Tabel project_groups harus ada
   const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='project_groups'").all();
   assert.equal(tables.length, 1);
 
-  // Default reuse turun ke 60
-  assert.equal(store.getSetting('session_reuse_minutes'), '60');
+  // Default reuse turun ke 20 menit idle
+  assert.equal(store.getSetting('session_reuse_minutes'), '20');
 });
 
 test('T01: backfill DB lama → grup dibuat dari project', async t => {
