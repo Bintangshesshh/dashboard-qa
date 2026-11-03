@@ -289,7 +289,14 @@ export class Runner extends EventEmitter {
     if (testFile.code?.trim()) {
       const original = join(root, testFile.path);
       generated = join(dirname(original), `.playbook-${runId.slice(0, 8)}.spec.ts`);
-      await writeFile(generated, testFile.code);
+      // Folder spec bisa belum ada (mis. project baru). Buat dulu; tanpa ini
+      // error-nya ENOENT mentah yang tidak bisa dimengerti user.
+      try {
+        await mkdir(dirname(generated), { recursive: true });
+        await writeFile(generated, testFile.code);
+      } catch (err) {
+        throw new Error(`Folder spec tidak bisa dibuat: ${dirname(generated)} (${err.code ?? err.message})`);
+      }
       generatedCfg = join(root, `.playbook-${runId.slice(0, 8)}.config.mjs`);
       await writeFile(generatedCfg, runConfig(dirname(original), basename(generated), pwCfg));
       cfgPath = generatedCfg;
