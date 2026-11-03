@@ -77,7 +77,10 @@ export default function LighthousePage() {
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
-  const productionOk = env !== "production" || confirmName.trim() === (project?.name ?? "");
+  // Server juga menolak production kalau project belum mengizinkannya; tombol
+// jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
+const productionOk = env !== "production"
+  || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
   const running = !!run && !FINAL.includes(run.status);
 
   // Muat config hanya saat file berganti. Kalau bergantung pada `selected`,

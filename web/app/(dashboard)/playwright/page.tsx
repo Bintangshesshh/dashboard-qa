@@ -103,7 +103,10 @@ export default function PlaywrightPage() {
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
-  const productionOk = env !== "production" || confirmName.trim() === (project?.name ?? "");
+  // Server juga menolak production kalau project belum mengizinkannya; tombol
+// jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
+const productionOk = env !== "production"
+  || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
   const dirty = !!selected && draft !== savedCode;
   const running = !!run && !FINAL.includes(run.status);
   // Umur sesi dihitung dari run terakhir, sama dengan aturan di server: satu sesi
