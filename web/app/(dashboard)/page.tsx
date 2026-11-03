@@ -4,23 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   api, fmtDate, fmtDur, runStatusLabel,
-  type Project, type RunRow, type Session, type Stats, type TestFile,
+  type Project, type RunRow, type Session, type Stats,
 } from "../../lib/playbook";
 
 const RANGES = [7, 14, 30];
-
-// Ringkasan config lhci aktif; dipakai chip di header supaya angka audit kelihatan
-// tanpa membuka Settings.
-type LhCfg = { urls?: string[]; numberOfRuns?: number; budgets?: Record<string, { minScore: number }> };
-
-const lhSummary = (cfg: LhCfg | null) => {
-  if (!cfg) return null;
-  const urls = 1 + (cfg.urls?.length ?? 0);
-  const runs = cfg.numberOfRuns ?? 1;
-  const mins = Object.values(cfg.budgets ?? {}).map(b => b?.minScore ?? 0.6);
-  const min = mins.length ? Math.round(Math.min(...mins) * 100) : 60;
-  return { urls, runs, min };
-};
 
 export default function OverviewPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -33,15 +20,6 @@ export default function OverviewPage() {
   // Feed "Run terakhir": semua status, termasuk yang sedang berjalan.
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
-  // Ringkasan config lhci project terpilih untuk chip header.
-  const [lhCfg, setLhCfg] = useState<LhCfg | null>(null);
-  // Satu config per project; "Semua project" tidak punya satu angka audit.
-  useEffect(() => {
-    if (!projectId) { setLhCfg(null); return; }
-    api.testFiles({ project: projectId, tool: "lh" })
-      .then(list => setLhCfg(list[0]?.config ? JSON.parse(list[0].config) : null))
-      .catch(() => setLhCfg(null));
-  }, [projectId]);
 
   useEffect(() => {
     api.projects().then(setProjects).catch(e => setError(e.message));
@@ -111,12 +89,6 @@ export default function OverviewPage() {
           <select className="pb-select" value={String(range)} onChange={e => setRange(Number(e.target.value))} aria-label="Rentang">
             {RANGES.map(d => <option key={d} value={d}>{d} hari</option>)}
           </select>
-          <Link className="pb-chip-link" href="/settings" title="Seting audit Lighthouse project ini">
-            {(() => {
-              const s = lhSummary(lhCfg);
-              return s ? `${s.urls} URL · ${s.runs}× run · batas ${s.min}%` : "Seting audit";
-            })()}
-          </Link>
           {lastSession && (
             <Link className="pb-btn" href={`/reports/${lastSession.id}`}>Buka sesi terakhir</Link>
           )}

@@ -745,15 +745,6 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 }
 .pb-lh-field { display: grid; gap: 8px; }
 /* Chip ringkas di header Overview: angka audit lhci project terpilih. */
-.pb-chip-link {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 34px; padding: 0 12px;
-  border: 1px solid var(--line); border-radius: var(--radius-sm);
-  font-family: var(--mono); font-size: 11px; color: var(--muted);
-  background: var(--card);
-  transition: color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
-}
-.pb-chip-link:hover { color: var(--text); border-color: var(--border-soft); }
 .pb-set-status { font-family: var(--mono); font-size: 10.5px; color: var(--meta); white-space: nowrap; }
 .pb-set-status.dirty { color: var(--warn); }
 .pb-set-status.ok { color: var(--ok); }
