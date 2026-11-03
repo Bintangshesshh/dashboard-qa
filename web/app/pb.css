@@ -848,6 +848,9 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-proj-toggle:hover strong { color: var(--accent); }
 .pb-caret { width: 10px; color: var(--meta); font-size: 10px; }
 .pb-proj-body { padding: 12px 0 4px 18px; }
+/* Blok test file di dalam detail project. */
+.pb-file-list { margin-top: 14px; }
+.pb-file-list .pb-spec-head { margin-top: 4px; }
 .pb-select.sm { padding: 4px 8px; font-size: 12px; }
 
 .pb-err {

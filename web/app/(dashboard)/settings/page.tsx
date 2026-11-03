@@ -266,6 +266,39 @@ export default function SettingsPage() {
     } catch (e) { setError((e as Error).message); }
   };
 
+  // Test file milik project. Error diteruskan ke form supaya isian tidak hilang.
+  const addTestFile = async (
+    p: Project,
+    body: Omit<Parameters<typeof api.createTestFile>[0], "projectId">,
+  ) => {
+    setError(""); setNotice("");
+    const created = await api.createTestFile({ projectId: p.id, ...body });
+    setFiles(prev => [...prev, created]);
+    setNotice(`${created.label} ditambahkan.`);
+  };
+
+  const removeTestFile = async (file: TestFile) => {
+    if (!confirm(`Hapus ${file.label} (${file.path})?`)) return;
+    setError(""); setNotice("");
+    try {
+      await api.deleteTestFile(file.id);
+      setFiles(prev => prev.filter(x => x.id !== file.id));
+      setNotice(`${file.label} dihapus.`);
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  // Hapus permanen hanya untuk project tanpa riwayat; server menolak dengan 409.
+  const deleteProject = async (p: Project) => {
+    if (!confirm(`Hapus permanen ${p.name}? Tidak bisa dibatalkan.`)) return;
+    setError(""); setNotice("");
+    try {
+      await api.deleteProject(p.id);
+      setProjects(prev => prev.filter(x => x.id !== p.id));
+      reloadGroups();
+      setNotice(`${p.name} dihapus.`);
+    } catch (e) { setError((e as Error).message); }
+  };
+
   const makeToken = async () => {
     setError(""); setNotice("");
     try {
@@ -507,8 +540,9 @@ export default function SettingsPage() {
                     {own.length === 0
                       ? <p className="pb-empty sm">Belum ada project di grup ini.</p>
                       : own.map(p => (
-                        <ProjectRow key={p.id} project={p} groups={groups}
-                          onSave={saveProject} />
+                        <ProjectRow key={p.id} project={p} groups={groups} files={files}
+                          onSave={saveProject} onAddFile={addTestFile}
+                          onRemoveFile={removeTestFile} onDelete={deleteProject} />
                       ))}
                   </div>
                 );
@@ -521,8 +555,9 @@ export default function SettingsPage() {
                     <span className="pb-muted pb-mono">{orphans.length} project</span>
                   </div>
                   {orphans.map(p => (
-                    <ProjectRow key={p.id} project={p} groups={groups}
-                      onSave={saveProject} />
+                    <ProjectRow key={p.id} project={p} groups={groups} files={files}
+                      onSave={saveProject} onAddFile={addTestFile}
+                      onRemoveFile={removeTestFile} onDelete={deleteProject} />
                   ))}
                 </div>
               )}
@@ -734,11 +769,24 @@ function NewProjectForm({ groups, onCreate }: {
   );
 }
 
+// Template spec minimal: server menolak code kosong.
+const SPEC_TEMPLATE = `import { test, expect } from "@playwright/test";
+
+test("halaman utama terbuka", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("body")).toBeVisible();
+});
+`;
+
 // Satu project di pohon grup: pindah grup, arsip/pulihkan, dan detail URL.
-function ProjectRow({ project, groups, onSave }: {
+function ProjectRow({ project, groups, files, onSave, onAddFile, onRemoveFile, onDelete }: {
   project: Project;
   groups: ProjectGroup[];
+  files: TestFile[];
   onSave: (p: Project, patch: Parameters<typeof api.patchProject>[1]) => Promise<void>;
+  onAddFile: (p: Project, body: Omit<Parameters<typeof api.createTestFile>[0], "projectId">) => Promise<void>;
+  onRemoveFile: (f: TestFile) => Promise<void>;
+  onDelete: (p: Project) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const archived = !project.active;
@@ -764,15 +812,23 @@ function ProjectRow({ project, groups, onSave }: {
           {archived ? "Pulihkan" : "Arsipkan"}
         </button>
       </div>
-      {open && <ProjectDetail project={project} onSave={onSave} />}
+      {open && (
+        <ProjectDetail project={project} files={files} onSave={onSave}
+          onAddFile={onAddFile} onRemoveFile={onRemoveFile} onDelete={onDelete} />
+      )}
     </div>
   );
 }
 
-// Detail URL/origin project. Slug read-only karena dipakai CLI dan URL report.
-function ProjectDetail({ project, onSave }: {
+// Detail URL/origin project + test file miliknya. Slug read-only karena dipakai
+// CLI dan URL report.
+function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDelete }: {
   project: Project;
+  files: TestFile[];
   onSave: (p: Project, patch: Parameters<typeof api.patchProject>[1]) => Promise<void>;
+  onAddFile: (p: Project, body: Omit<Parameters<typeof api.createTestFile>[0], "projectId">) => Promise<void>;
+  onRemoveFile: (f: TestFile) => Promise<void>;
+  onDelete: (p: Project) => Promise<void>;
 }) {
   const [name, setName] = useState(project.name);
   const [base, setBase] = useState(project.base_url ?? "");
@@ -780,6 +836,16 @@ function ProjectDetail({ project, onSave }: {
   const [local, setLocal] = useState(project.local_url ?? "");
   const [origins, setOrigins] = useState(project.origins.join(", "));
   const [allowProd, setAllowProd] = useState(!!project.allow_production);
+  const [addOpen, setAddOpen] = useState(false);
+  const [path, setPath] = useState(`tests/${project.slug}.spec.ts`);
+  const [code, setCode] = useState(SPEC_TEMPLATE);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const own = files.filter(f => f.project_id === project.id);
+  const hasLh = own.some(f => f.tool === "lh");
+  // Petunjuk untuk UI saja; server tetap penjaga terakhir lewat 409.
+  const deletable = !own.length && !project.lastRunAt;
 
   const save = () => onSave(project, {
     name: name.trim(),
@@ -789,6 +855,31 @@ function ProjectDetail({ project, onSave }: {
     origins: origins.split(",").map(s => s.trim()).filter(Boolean),
     allow_production: allowProd ? 1 : 0,
   });
+
+  const addSpec = async () => {
+    setBusy(true); setErr("");
+    try {
+      await onAddFile(project, { tool: "pw", path: path.trim(), code });
+      setAddOpen(false);
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  // Config default dari URL project: target utama selalu ikut diaudit runner.
+  const addLhConfig = async () => {
+    setBusy(true); setErr("");
+    try {
+      await onAddFile(project, {
+        tool: "lh",
+        path: `lighthouserc.${project.slug}.js`,
+        config: {
+          urls: [], numberOfRuns: 1,
+          budgets: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, { minScore: 0.6 }])),
+        },
+      });
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  };
 
   return (
     <div className="pb-proj-body">
@@ -820,7 +911,67 @@ function ProjectDetail({ project, onSave }: {
         <span className="pb-spacer" />
         <button className="pb-btn sm primary" onClick={save}>Simpan project</button>
       </div>
+
+      <div className="pb-file-list">
+        <div className="pb-spec-head">
+          <strong>Test file</strong>
+          <span className="pb-muted pb-mono">{own.length}</span>
+        </div>
+        {own.map(f => (
+          <div className="pb-spec-row" key={f.id}>
+            <span className={`pb-badge ${f.enabled ? "passed" : "closed"}`}>
+              {f.tool === "pw" ? "Playwright" : "Lighthouse"}
+            </span>
+            <span className="pb-spec-name">{f.label}</span>
+            <span className="pb-spec-path">{f.path}</span>
+            <button className="pb-btn sm danger" onClick={() => onRemoveFile(f)}>Hapus</button>
+          </div>
+        ))}
+        {!own.length && <p className="pb-hint">Belum ada spec atau config untuk project ini.</p>}
+
+        <div className="pb-row pb-proj-foot" style={{ gap: 8 }}>
+          <button className="pb-btn sm" onClick={() => setAddOpen(o => !o)} disabled={busy}>
+            {addOpen ? "Batal" : "+ Spec Playwright"}
+          </button>
+          {!hasLh && (
+            <button className="pb-btn sm" onClick={addLhConfig} disabled={busy}>
+              Buat config Lighthouse
+            </button>
+          )}
+        </div>
+
+        {addOpen && (
+          <div className="pb-lh-field pb-proj-foot">
+            <label className="pb-field">path spec
+              <input className="pb-input pb-mono" value={path}
+                onChange={e => setPath(e.target.value)} />
+            </label>
+            <label className="pb-field">code
+              <textarea className="pb-input pb-mono" rows={8} value={code}
+                onChange={e => setCode(e.target.value)} />
+            </label>
+            <div className="pb-row">
+              <button className="pb-btn sm primary" onClick={addSpec} disabled={busy}>
+                {busy ? "Menyimpan…" : "Tambah spec"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!deletable && (
+          <p className="pb-hint">
+            Project ini sudah punya riwayat. Pakai Arsipkan supaya report tetap bisa dibuka.
+          </p>
+        )}
+        {deletable && (
+          <div className="pb-row pb-proj-foot">
+            <button className="pb-btn sm danger" onClick={() => onDelete(project)}>
+              Hapus permanen
+            </button>
+          </div>
+        )}
+        {err && <div className="pb-err">{err}</div>}
+      </div>
     </div>
   );
 }
-
