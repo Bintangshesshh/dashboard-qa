@@ -1125,25 +1125,30 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-runrow-sub { color: var(--meta); font-size: 11px; margin-top: 2px; }
 .pb-runrow-act { display: flex; gap: 6px; flex-shrink: 0; }
 
-/* Penanda tool: kotak mono kecil, warna mengikuti jenis run. */
+/* Penanda tool: logo asli, bukan teks. Dua PNG sudah dinormalkan ke persegi
+   transparan yang sama, jadi cukup samakan height agar bobot optik setara. */
 .pb-tool {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
+  gap: 2px;
   height: 26px;
+  min-width: 26px;
+  padding: 0 4px;
   border-radius: 6px;
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: .04em;
   border: 1px solid var(--line);
   background: var(--card-hi);
-  color: var(--fg-2);
 }
-.pb-tool.pw { border-color: color-mix(in oklab, var(--accent) 32%, transparent); color: var(--accent); }
-.pb-tool.lh { border-color: color-mix(in oklab, var(--ok) 32%, transparent); color: var(--ok); }
-.pb-tool.both { border-color: color-mix(in oklab, var(--text) 30%, transparent); color: var(--text); }
+.pb-tool img { height: 16px; width: 16px; display: block; }
+.pb-tool.both img { height: 14px; width: 14px; }
+.pb-tool.pw { border-color: color-mix(in oklab, var(--accent) 32%, transparent); }
+.pb-tool.lh { border-color: color-mix(in oklab, var(--ok) 32%, transparent); }
+.pb-tool.both { border-color: color-mix(in oklab, var(--text) 30%, transparent); }
+/* Di dalam tombol teks: logo ikut baseline tombol, tanpa kotak sendiri. */
+.pb-tool.inline { height: auto; min-width: 0; padding: 0; border: 0; background: none; }
+.pb-tool.inline img { height: 14px; width: 14px; }
+.pb-btn .pb-tool.inline { margin-right: 6px; }
 
 .pb-repcard {
   display: grid;

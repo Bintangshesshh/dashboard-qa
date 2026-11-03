@@ -9,6 +9,7 @@ import {
 import { RunTerminal } from "../../run-terminal";
 import { ArtifactLink, LoginAgain, useProbe } from "../../../_components/report-link";
 import { RunClock } from "../../../_components/run-clock";
+import { ToolMark } from "../../../_components/tool-mark";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -149,8 +150,8 @@ export default function SessionDetail() {
             {/* Scope tunggal hanya relevan kalau dua-duanya punya run final. */}
             {hasBoth && (
               <>
-                <button className="pb-btn sm" onClick={() => publish("pw")} disabled={!!busy}>PW saja</button>
-                <button className="pb-btn sm" onClick={() => publish("lh")} disabled={!!busy}>LH saja</button>
+                <button className="pb-btn sm" onClick={() => publish("pw")} disabled={!!busy}><ToolMark tool="pw" inline /> saja</button>
+                <button className="pb-btn sm" onClick={() => publish("lh")} disabled={!!busy}><ToolMark tool="lh" inline /> saja</button>
               </>
             )}
           </div>
@@ -199,7 +200,7 @@ export default function SessionDetail() {
             <div className="pb-runlist">
               {runs.map(r => (
                 <div className="pb-runrow" key={r.id}>
-                  <span className={`pb-tool ${r.tool}`}>{r.tool === "pw" ? "PW" : "LH"}</span>
+                  <ToolMark tool={r.tool} />
                   <div className="pb-runrow-main">
                     <div className="pb-runrow-title">{r.tool === "pw" ? "Playwright" : "Lighthouse"}</div>
                     <div className="pb-runrow-sub pb-row" style={{ gap: 6 }}>
@@ -246,9 +247,7 @@ export default function SessionDetail() {
                 return (
                   <div className="pb-repcard" key={rep.id}>
                     <div className="pb-repcard-top">
-                      <span className={`pb-tool ${rep.scope === "both" ? "both" : rep.scope}`}>
-                        {rep.scope === "both" ? "PW+LH" : rep.scope === "pw" ? "PW" : "LH"}
-                      </span>
+                      <ToolMark tool={rep.scope} />
                       <div className="pb-repcard-main">
                         <div className="pb-repcard-title">{scopeLabel}</div>
                         <div className="pb-repcard-sub mono">{fmtDate(rep.built_at)}</div>
@@ -300,7 +299,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
   return (
     <section className="pb-card pb-runpanel">
       <div className="pb-runpanel-head">
-        <span className={`pb-tool ${run.tool}`}>{isPw ? "PW" : "LH"}</span>
+        <ToolMark tool={run.tool} />
         <h2>Hasil run · {isPw ? "Playwright" : "Lighthouse"}</h2>
         <span className={`pb-badge ${run.status}`}>{runStatusLabel(run.status)}</span>
         <span className="pb-spacer" />
