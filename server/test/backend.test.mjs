@@ -1540,3 +1540,24 @@ test('T03: hapus project berriwayat 409, project kosong boleh 204', async t => {
   assert.equal(store.getProject(kosong), undefined);
   assert.ok(store.listAudit({ entity: 'projects' }).some(a => a.action === 'delete_project'));
 });
+
+test('T14: GET /api/help memuat versi, node, dan perintah update', async t => {
+  const { call, login } = await fixture(t);
+
+  let r = await call('/api/help');
+  assert.equal(r.status, 401);
+
+  const cookie = await login();
+  r = await call('/api/help', { cookie });
+  assert.equal(r.status, 200);
+  // Versi dibaca dari package.json root, bukan konstanta di kode.
+  const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  assert.equal(r.body.version, pkg.version);
+  assert.match(r.body.node, /^v\d+\./);
+  assert.equal(r.body.playwright, pkg.devDependencies['@playwright/test']);
+  assert.equal(r.body.lighthouse, pkg.devDependencies['@lhci/cli']);
+  assert.equal(r.body.update_commands.length, 2);
+  assert.match(r.body.update_commands[0], /@playwright\/test@latest/);
+  // null = FEEDBACK_URL belum diisi; UI wajib punya fallback.
+  assert.equal(r.body.feedback_url, process.env.FEEDBACK_URL || null);
+});

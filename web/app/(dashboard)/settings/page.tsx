@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   api, fmtDate,
-  type CliToken, type Project, type ProjectGroup, type Settings, type TestFile,
+  type CliToken, type Help, type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
 import LhConfigEditor, {
   LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig,
@@ -154,8 +154,6 @@ export default function SettingsPage() {
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [groupName, setGroupName] = useState("");
   const [files, setFiles] = useState<TestFile[]>([]);
-  const [newToken, setNewToken] = useState("");
-  const [label, setLabel] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -296,16 +294,6 @@ export default function SettingsPage() {
       setProjects(prev => prev.filter(x => x.id !== p.id));
       reloadGroups();
       setNotice(`${p.name} dihapus.`);
-    } catch (e) { setError((e as Error).message); }
-  };
-
-  const makeToken = async () => {
-    setError(""); setNotice("");
-    try {
-      const t = await api.createCliToken(label);
-      setNewToken(t.token);
-      setLabel("");
-      api.cliTokens().then(setTokens).catch(() => {});
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -587,47 +575,40 @@ export default function SettingsPage() {
         )}
 
         {tab === "bantuan" && (
-          <section className="pb-card">
-            <div className="pb-card-head">
-              <div>
-                <h2>Token CLI</h2>
-                <div className="pb-card-sub">
-                  Dipakai playbook CLI di laptop untuk memicu run tanpa login. Token ini
-                  bukan kredensial login dashboard.
+          <>
+            <Bantuan />
+            <section className="pb-card">
+              <div className="pb-card-head">
+                <div>
+                  <h2>Token CLI</h2>
+                  <div className="pb-card-sub">
+                    Dipakai playbook CLI di laptop untuk memicu run tanpa login. Token ini
+                    bukan kredensial login dashboard, dan pembuatannya lewat CLI
+                    (<code className="pb-mono">playbook login</code>).
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="pb-row pb-mb-3">
-              <input className="pb-input pb-input-narrow" placeholder="label (mis. laptop-budi)"
-                value={label} onChange={e => setLabel(e.target.value)} />
-              <button className="pb-btn primary" onClick={makeToken} disabled={!label.trim()}>Buat token</button>
-            </div>
-            {newToken && (
-              <div className="pb-note warn flash">
-                <p className="pb-note-title">Salin sekarang — token hanya tampil sekali.</p>
-                <code className="pb-mono" style={{ wordBreak: "break-all" }}>{newToken}</code>
-              </div>
-            )}
-            {tokens.length === 0
-              ? <p className="pb-empty">Belum ada token.</p>
-              : <table className="pb-table">
-                <thead><tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th /></tr></thead>
-                <tbody>
-                  {tokens.map(t => (
-                    <tr key={t.id}>
-                      <td>{t.label ?? "-"}</td>
-                      <td className="mono">{fmtDate(t.created_at)}</td>
-                      <td className="mono">{t.last_used_at ? fmtDate(t.last_used_at) : "belum"}</td>
-                      <td className="pb-right">
-                        {t.revoked_at
-                          ? <span className="pb-muted">dicabut</span>
-                          : <button className="pb-btn sm danger" onClick={() => revoke(t.id)}>Cabut</button>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>}
-          </section>
+              {tokens.length === 0
+                ? <p className="pb-empty">Belum ada token.</p>
+                : <table className="pb-table">
+                  <thead><tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th /></tr></thead>
+                  <tbody>
+                    {tokens.map(t => (
+                      <tr key={t.id}>
+                        <td>{t.label ?? "-"}</td>
+                        <td className="mono">{fmtDate(t.created_at)}</td>
+                        <td className="mono">{t.last_used_at ? fmtDate(t.last_used_at) : "belum"}</td>
+                        <td className="pb-right">
+                          {t.revoked_at
+                            ? <span className="pb-muted">dicabut</span>
+                            : <button className="pb-btn sm danger" onClick={() => revoke(t.id)}>Cabut</button>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>}
+            </section>
+          </>
         )}
 
       </div>
@@ -1022,4 +1003,120 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
       </div>
     </div>
   );
+}
+
+// FAQ ringkas + versi tool + perintah update manual. Dijawab dari data server,
+// bukan teks statis, supaya versi yang tampil tidak pernah bohong.
+const FAQ: { q: string; a: string }[] = [
+  {
+    q: "Apa beda sesi dan run?",
+    a: "Sesi adalah wadah per project + environment + user. Run adalah satu eksekusi spec. "
+      + "Sesi terbuka dipakai ulang selama umurnya belum lewat batas reuse, supaya report tidak terpecah.",
+  },
+  {
+    q: "Kenapa waktu tampil WIB?",
+    a: "Semua timestamp disimpan UTC dan ditampilkan dalam WIB agar jadwal run tim tidak beda-beda.",
+  },
+  {
+    q: "Bagaimana token CLI dipakai?",
+    a: "Token hanya untuk playbook CLI di laptop, bukan login dashboard. Buat lewat "
+      + "playbook login, lalu cabut dari tab ini kalau perangkatnya hilang.",
+  },
+  {
+    q: "Kenapa config Lighthouse ditolak?",
+    a: "Total URL maksimal 5 (1 target project + 4 URL tambahan), numberOfRuns 1-10, "
+      + "dan setiap URL harus satu origin dengan URL project yang diizinkan.",
+  },
+  {
+    q: "Apa beda grup dan project?",
+    a: "Grup hanya pengelompokan tampilan (Overview + filter). Project menyimpan URL, "
+      + "spec, dan config. Project berriwayat diarsipkan, tidak dihapus.",
+  },
+];
+
+function Bantuan() {
+  const [help, setHelp] = useState<Help | null>(null);
+
+  useEffect(() => { api.help().then(setHelp).catch(() => {}); }, []);
+
+  const rows: { label: string; value: string }[] = help ? [
+    { label: "Versi dashboard", value: help.version },
+    { label: "Node", value: help.node },
+    { label: "Playwright", value: help.playwright },
+    { label: "Lighthouse CI", value: help.lighthouse },
+  ] : [];
+
+  return (
+    <>
+      <section className="pb-card">
+        <div className="pb-card-head">
+          <div>
+            <h2>Versi & update</h2>
+            <div className="pb-card-sub">
+              Update tool dijalankan manual dari terminal. Dashboard tidak pernah menjalankan
+              npm sendiri.
+            </div>
+          </div>
+        </div>
+        {help ? (
+          <div className="pb-kv">
+            {rows.map(r => (
+              <div className="pb-kv-row" key={r.label}>
+                <span>{r.label}</span>
+                <code className="pb-mono">{r.value ?? "tidak diketahui"}</code>
+              </div>
+            ))}
+          </div>
+        ) : <p className="pb-empty sm">Memuat versi…</p>}
+
+        {help && (
+          <div className="pb-lh-field pb-proj-foot">
+            {help.update_commands.map(cmd => (
+              <div className="pb-row" key={cmd}>
+                <code className="pb-mono pb-cmd">{cmd}</code>
+                <button className="pb-btn sm" onClick={() => copy(cmd)}>Salin</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="pb-card">
+        <div className="pb-card-head">
+          <div>
+            <h2>FAQ</h2>
+            <div className="pb-card-sub">Pertanyaan yang paling sering muncul saat pakai dashboard.</div>
+          </div>
+        </div>
+        {FAQ.map(item => (
+          <details className="pb-faq" key={item.q}>
+            <summary>{item.q}</summary>
+            <p>{item.a}</p>
+          </details>
+        ))}
+      </section>
+
+      <section className="pb-card">
+        <div className="pb-card-head">
+          <div>
+            <h2>Masukan</h2>
+            <div className="pb-card-sub">Laporan bug dan permintaan fitur.</div>
+          </div>
+        </div>
+        {help?.feedback_url
+          ? <a className="pb-link" href={help.feedback_url} target="_blank" rel="noreferrer">
+            Buka form masukan
+          </a>
+          : <p className="pb-hint">
+            Belum ada tautan masukan. Hubungi admin dashboard dan minta isi
+            {" "}<code className="pb-mono">FEEDBACK_URL</code> di file .env server.
+          </p>}
+      </section>
+    </>
+  );
+}
+
+// navigator.clipboard tidak ada di konteks non-secure; gagal = diamkan saja.
+function copy(text: string) {
+  navigator.clipboard?.writeText(text).catch(() => {});
 }

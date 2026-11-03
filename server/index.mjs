@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { createServer } from 'node:http';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { realpath, lstat, rm, mkdir, writeFile } from 'node:fs/promises';
+import { realpath, lstat, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { Store } from './store.mjs';
 import { Runner, MAX_LH_URLS } from './runner.mjs';
 import { buildSessionReport } from '../scripts/build-session-report.mjs';
@@ -854,6 +854,28 @@ export function createApp({ store, runner, token, origins }) {
       report_retention_days: all.report_retention_days,
     });
   }));
+  // Info untuk tab Bantuan: versi aplikasi + versi tool yang dipakai runner.
+  // Tidak menyentuh DB; package.json dibaca sekali lalu di-cache.
+  let helpInfo = null;
+  const readHelpInfo = async () => {
+    if (helpInfo) return helpInfo;
+    const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+    helpInfo = {
+      version: pkg.version ?? null,
+      node: process.version,
+      playwright: pkg.devDependencies?.['@playwright/test'] ?? null,
+      lighthouse: pkg.devDependencies?.['@lhci/cli'] ?? null,
+      // Update manual: dashboard tidak pernah menjalankan npm sendiri.
+      update_commands: [
+        'npm install -D @playwright/test@latest @lhci/cli@latest',
+        'npx playwright install',
+      ],
+      // null = FEEDBACK_URL belum diisi; UI menampilkan fallback teks.
+      feedback_url: process.env.FEEDBACK_URL || null,
+    };
+    return helpInfo;
+  };
+  app.get('/api/help', requireAuth, route(async (req, res) => { res.json(await readHelpInfo()); }));
   app.get('/api/settings', requireAuth, requireAdmin, route(async (req, res) => {
     res.json(store.getSettings());
   }));
