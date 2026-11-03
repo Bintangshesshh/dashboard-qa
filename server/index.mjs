@@ -209,20 +209,41 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   // ─── Projects ────────────────────────────────────────────────────────────
-  app.get('/api/projects', requireAuth, route(async (req, res) => res.json(store.listProjects())));
-  // Tambah departemen/project baru dari halaman Seting. Slug jadi bagian ID dan
-  // dipakai sebagai kunci duplikat; tidak bisa diubah setelah project dibuat.
+  // Project arsip (active=0) tidak boleh jadi sesi/run baru, tapi report tetap terbaca.
+  const requireActiveProject = project => {
+    if (!project.active) fail('Project ini diarsipkan. Pulihkan dulu untuk menjalankan run.', 409);
+    return project;
+  };
+  // Arsip ditolak kalau masih ada sesi terbuka atau run queued/running/uploading.
+  const assertProjectIdle = projectId => {
+    const open = store.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE project_id=? AND closed_at IS NULL').get(projectId).n;
+    const busy = store.db.prepare(`SELECT COUNT(*) AS n FROM runs r JOIN sessions s ON s.id=r.session_id
+      WHERE s.project_id=? AND r.status IN ('queued','running','uploading')`).get(projectId).n;
+    if (open || busy) fail('Masih ada sesi terbuka atau run berjalan. Tutup sesi dulu.', 409);
+  };
+  // `all=1` dipakai report, breadcrumb, dan Seting: project arsip tetap terbaca.
+  app.get('/api/projects', requireAuth, route(async (req, res) =>
+    res.json(store.listProjects({ includeArchived: req.query.all === '1' }))));
+
+  // groupId opsional; null/absen = tanpa grup. Nama unik global (case-insensitive).
+  const groupIdValue = value => {
+    if (value === undefined || value === null || value === '') return null;
+    if (!store.getProjectGroup(id(value))) fail('Grup tidak ditemukan', 400);
+    return id(value);
+  };
+
   app.post('/api/projects', requireAuth, requireAdmin, route(async (req, res) => {
     const name = text(req.body?.name, 'name');
-    // Department yang baru punya alamat lokal belum tentu punya alamat produksi;
-    // base_url boleh kosong asal local_url diisi (kolomnya NOT NULL di skema).
-    const base_url = urlValue(req.body?.base_url || req.body?.local_url, 'base_url');
+    // base_url wajib: project tanpa web production tidak boleh menunjuk localhost.
+    const base_url = urlValue(req.body?.base_url, 'base_url');
+    if (store.projectByName(name)) fail('Nama project sudah dipakai', 409);
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'project';
     if (store.projectBySlug(slug)) fail('Slug ' + slug + ' sudah dipakai project lain', 409);
     const project = store.createProject({
       id: 'p_' + slug,
       slug,
       name,
+      group_id: groupIdValue(req.body?.groupId),
       base_url,
       staging_url: req.body?.staging_url ? urlValue(req.body.staging_url, 'staging_url') : null,
       local_url: req.body?.local_url ? urlValue(req.body.local_url, 'local_url') : null,
@@ -232,20 +253,50 @@ export function createApp({ store, runner, token, origins }) {
     store.audit({ userId: req.user.id, action: 'create_project', entity: 'projects', entityId: project.id });
     res.status(201).json(project);
   }));
+
   app.patch('/api/projects/:id', requireAuth, requireAdmin, route(async (req, res) => {
-    const p = store.getProject(id(req.params.id));
+    const projectId = id(req.params.id);
+    const p = store.getProject(projectId);
     if (!p) fail('Not found', 404);
     const fields = {};
-    if (req.body.name !== undefined) fields.name = text(req.body.name, 'name');
+    if (req.body.name !== undefined) {
+      fields.name = text(req.body.name, 'name');
+      const other = store.projectByName(fields.name);
+      if (other && other.id !== p.id) fail('Nama project sudah dipakai', 409);
+    }
+    if (req.body.groupId !== undefined) fields.group_id = groupIdValue(req.body.groupId);
     if (req.body.base_url !== undefined) fields.base_url = urlValue(req.body.base_url, 'base_url');
     if (req.body.staging_url !== undefined) fields.staging_url = req.body.staging_url ? urlValue(req.body.staging_url, 'staging_url') : null;
     if (req.body.local_url !== undefined) fields.local_url = req.body.local_url ? urlValue(req.body.local_url, 'local_url') : null;
     if (req.body.origins !== undefined) fields.origins = originList(req.body.origins);
     if (req.body.allow_production !== undefined) fields.allow_production = bool(req.body.allow_production, 'allow_production');
-    if (req.body.active !== undefined) fields.active = bool(req.body.active, 'active');
-    store.patchProject(id(req.params.id), fields);
-    store.audit({ userId: req.user.id, action: 'update_project', entity: 'projects', entityId: req.params.id });
-    res.json(store.getProject(req.params.id));
+    if (req.body.active !== undefined) {
+      fields.active = bool(req.body.active, 'active');
+      // Arsip ditolak selama sesi/run masih hidup.
+      if (!fields.active) assertProjectIdle(p.id);
+    }
+    store.patchProject(projectId, fields);
+    store.audit({
+      userId: req.user.id,
+      action: fields.active === 0 ? 'archive_project' : fields.active === 1 ? 'restore_project' : 'update_project',
+      entity: 'projects',
+      entityId: projectId,
+    });
+    res.json(store.getProject(projectId));
+  }));
+
+  // Hapus permanen hanya untuk project tanpa riwayat; selain itu arahkan ke arsip.
+  app.delete('/api/projects/:id', requireAuth, requireAdmin, route(async (req, res) => {
+    const projectId = id(req.params.id);
+    const p = store.getProject(projectId);
+    if (!p) fail('Not found', 404);
+    const history = store.projectHistory(projectId);
+    if (history.testFiles || history.sessions || history.runs) {
+      fail('Project punya riwayat. Arsipkan saja lewat PATCH active=0.', 409);
+    }
+    store.deleteProject(projectId);
+    store.audit({ userId: req.user.id, action: 'delete_project', entity: 'projects', entityId: projectId });
+    res.sendStatus(204);
   }));
 
   // ─── Test files ──────────────────────────────────────────────────────────
@@ -346,6 +397,7 @@ export function createApp({ store, runner, token, origins }) {
     const projectId = id(req.body?.projectId);
     const project = store.getProject(projectId);
     if (!project) fail('Project tidak ditemukan', 400);
+    requireActiveProject(project);
     const e = envValue(req.body?.env);
     const targetUrl = resolveTarget(project, e);
     if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
@@ -429,6 +481,7 @@ export function createApp({ store, runner, token, origins }) {
   app.post('/api/quick-check', requireAuth, requireAdmin, route(async (req, res) => {
     const project = store.getProject(id(req.body?.projectId));
     if (!project) fail('Project tidak ditemukan', 400);
+    requireActiveProject(project);
     const e = envValue(req.body?.env);
     const targetUrl = resolveTarget(project, e);
     if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
@@ -490,6 +543,7 @@ export function createApp({ store, runner, token, origins }) {
     const tf = store.getTestFile(testFileId);
     if (!tf) fail('Test file tidak ditemukan', 400);
     if (tf.project_id !== session.project_id) fail('Test file milik project lain.', 400);
+    requireActiveProject(store.getProject(session.project_id));
     // 409 bila ada run belum final di sesi ini (PRD §7)
     if (store.countRunsByStatus(session.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
     // max queue
@@ -508,6 +562,7 @@ export function createApp({ store, runner, token, origins }) {
     if (!tf) fail('Test file tidak ditemukan', 400);
     const project = store.getProject(tf.project_id);
     if (!project) fail('Project tidak ditemukan', 400);
+    requireActiveProject(project);
     const e = envValue(req.body?.env);
     const targetUrl = resolveTarget(project, e);
     if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
@@ -547,6 +602,7 @@ export function createApp({ store, runner, token, origins }) {
     const run = store.getRun(id(req.params.id));
     if (!run) fail('Not found', 404);
     if (['passed', 'failed', 'cancelled', 'interrupted'].includes(run.status)) fail('Run sudah final', 409);
+    requireActiveProject(store.getProject(store.getSession(run.session_id).project_id));
     res.json(store.patchRun(run.id, { status: 'running', started_at: run.started_at ?? new Date().toISOString() }));
   }));
 

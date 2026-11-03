@@ -138,22 +138,29 @@ export class Store {
   deleteProjectGroup(id) { return this.db.prepare('DELETE FROM project_groups WHERE id=?').run(id).changes > 0; }
 
   // ─── Projects ────────────────────────────────────────────────────────────
-  listProjects() {
-    return this.db.prepare(`SELECT p.*,
+  // includeArchived dipakai report/breadcrumb/Seting: `active=0` = arsip.
+  listProjects({ includeArchived = false } = {}) {
+    return this.db.prepare(`SELECT p.*, g.name AS group_name,
       (SELECT MAX(r.finished_at) FROM runs r JOIN sessions s2 ON s2.id = r.session_id WHERE s2.project_id = p.id) AS lastRunAt
-      FROM projects p WHERE p.active=1 ORDER BY p.name`).all().map(parseOrigins);
+      FROM projects p LEFT JOIN project_groups g ON g.id = p.group_id
+      ${includeArchived ? '' : 'WHERE p.active=1'} ORDER BY p.name`).all().map(parseOrigins);
   }
-  getProject(id) { const row = this.db.prepare('SELECT * FROM projects WHERE id=?').get(id); return row ? parseOrigins(row) : row; }
-  createProject({ id, slug, name, base_url, staging_url = null, local_url = null, origins = [], allow_production = 0 }) {
-    this.db.prepare('INSERT INTO projects (id, slug, name, base_url, staging_url, local_url, origins, allow_production, active, created_at)'
-      + ' VALUES (?,?,?,?,?,?,?,?,1,?)').run(
-      id, slug, name, base_url, staging_url, local_url, JSON.stringify(origins), allow_production, new Date().toISOString(),
+  getProject(id) {
+    const row = this.db.prepare(`SELECT p.*, g.name AS group_name FROM projects p
+      LEFT JOIN project_groups g ON g.id = p.group_id WHERE p.id=?`).get(id);
+    return row ? parseOrigins(row) : row;
+  }
+  projectByName(name) { return this.db.prepare('SELECT * FROM projects WHERE name=? COLLATE NOCASE').get(name); }
+  createProject({ id, slug, name, base_url, group_id = null, staging_url = null, local_url = null, origins = [], allow_production = 0 }) {
+    this.db.prepare('INSERT INTO projects (id, slug, name, group_id, base_url, staging_url, local_url, origins, allow_production, active, created_at)'
+      + ' VALUES (?,?,?,?,?,?,?,?,?,1,?)').run(
+      id, slug, name, group_id, base_url, staging_url, local_url, JSON.stringify(origins), allow_production, new Date().toISOString(),
     );
     return this.getProject(id);
   }
   projectBySlug(slug) { const row = this.db.prepare('SELECT * FROM projects WHERE slug=?').get(slug); return row ? parseOrigins(row) : row; }
   patchProject(id, fields) {
-    const allowed = ['name', 'base_url', 'staging_url', 'local_url', 'origins', 'allow_production', 'active'];
+    const allowed = ['name', 'group_id', 'base_url', 'staging_url', 'local_url', 'origins', 'allow_production', 'active'];
     const set = []; const vals = [];
     for (const k of allowed) if (k in fields) { set.push(`${k}=?`); vals.push(k === 'origins' ? JSON.stringify(fields[k]) : fields[k]); }
     if (!set.length) return this.getProject(id);
@@ -161,6 +168,15 @@ export class Store {
     this.db.prepare(`UPDATE projects SET ${set.join(', ')} WHERE id=?`).run(...vals);
     return this.getProject(id);
   }
+  // Hapus permanen hanya untuk project tanpa riwayat.
+  projectHistory(projectId) {
+    return this.db.prepare(`SELECT
+      (SELECT COUNT(*) FROM test_files WHERE project_id=?) AS testFiles,
+      (SELECT COUNT(*) FROM sessions WHERE project_id=?) AS sessions,
+      (SELECT COUNT(*) FROM runs r JOIN sessions s ON s.id=r.session_id WHERE s.project_id=?) AS runs`)
+      .get(projectId, projectId, projectId);
+  }
+  deleteProject(id) { return this.db.prepare('DELETE FROM projects WHERE id=?').run(id).changes > 0; }
 
   // ─── Test files ──────────────────────────────────────────────────────────
   // includeDisabled dipakai halaman seting: spec nonaktif tetap harus kelihatan

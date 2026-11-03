@@ -781,28 +781,36 @@ test('A3: target divalidasi terhadap projects.origins, bukan cuma TARGET_ALLOWLI
   assert.deepEqual(f.store.getProject('p2').origins, ['https://staging.p2.test'], 'origins lama tidak berubah');
 });
 
-test('project baru bisa dibuat dari Seting, slug jadi kunci dan local_url dipakai apa adanya', async t => {
+test('project baru dari Seting: base_url wajib, slug jadi kunci, local_url terpisah', async t => {
   const f = await fixture(t);
   const cookie = await f.login();
 
+  // base_url tidak boleh diisi dari local_url (PRD §9 Project).
   let r = await f.call('/api/projects', {
     method: 'POST', cookie,
     body: { name: 'Ticketing POS', local_url: 'https://localhost:5173' },
   });
+  assert.equal(r.status, 400);
+
+  r = await f.call('/api/projects', {
+    method: 'POST', cookie,
+    body: { name: 'Ticketing POS', base_url: 'https://pos.test', local_url: 'https://localhost:5173' },
+  });
   assert.equal(r.status, 201);
   assert.equal(r.body.id, 'p_ticketing_pos');
   assert.equal(r.body.slug, 'ticketing_pos');
-  assert.equal(r.body.base_url, 'https://localhost:5173/', 'base_url jatuh ke local_url');
+  assert.equal(r.body.base_url, 'https://pos.test/', 'base_url dipakai apa adanya');
+  assert.equal(r.body.local_url, 'https://localhost:5173/');
   assert.deepEqual(r.body.origins, []);
 
   // slug duplikat ditolak, bukan menimpa project lama
-  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: 'ticketing pos', local_url: 'https://localhost:5173' } });
+  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: 'ticketing pos', base_url: 'https://pos.test' } });
   assert.equal(r.status, 409);
 
   // skema selain http(s) dan nama kosong ditolak
-  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: 'X', local_url: 'javascript:alert(1)' } });
+  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: 'X', base_url: 'javascript:alert(1)' } });
   assert.equal(r.status, 400);
-  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: '  ', local_url: 'https://localhost:5173' } });
+  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: '  ', base_url: 'https://pos.test' } });
   assert.equal(r.status, 400);
 
   // env local tidak lewat allowlist global: target lokal tetap bisa dijalankan
@@ -1185,4 +1193,115 @@ test('T02: viewer tidak boleh menulis grup', async t => {
   assert.equal((await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'X' } })).status, 403);
   assert.equal(store.listProjectGroups().length, before);
   assert.equal(user.role, 'admin');
+});
+
+test('T03: create/rename project — groupId, nama unik 409, base_url wajib', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+  const group = (await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'Grup A' } })).body;
+
+  let r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'Baru', groupId: group.id, base_url: 'https://baru.test' } });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.group_id, group.id);
+  assert.equal(r.body.group_name, 'Grup A');
+  assert.equal(r.body.active, 1);
+
+  // Nama unik case-insensitive saat create
+  r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'baru', base_url: 'https://lain.test' } });
+  assert.equal(r.status, 409);
+
+  // base_url wajib; local_url tidak boleh menggantikannya
+  r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'Tanpa Base', local_url: 'http://localhost:3000' } });
+  assert.equal(r.status, 400);
+
+  // groupId harus ada bila diisi
+  r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'Grup Hantu', groupId: 'g_tidak_ada', base_url: 'https://x.test' } });
+  assert.equal(r.status, 400);
+
+  // Rename ke nama project lain ditolak, rename diri sendiri boleh
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { name: 'baru' } });
+  assert.equal(r.status, 409);
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { name: 'EBH Utama' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.name, 'EBH Utama');
+  assert.equal(r.body.slug, 'ebh', 'slug tidak berubah saat rename');
+
+  // Pindah grup + lepas grup
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { groupId: group.id } });
+  assert.equal(r.body.group_id, group.id);
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { groupId: null } });
+  assert.equal(r.body.group_id, null);
+  assert.equal(r.body.group_name, null);
+  assert.ok(store.getProject('p1'));
+});
+
+test('T03: arsip project menolak run, restore membuka lagi, report tetap terbaca', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  // Arsip ditolak selama sesi masih terbuka
+  const sess = store.createSession({ id: randomUUID(), projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test', label: 'S', createdBy: null });
+  void sess;
+  let r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { active: 0 } });
+  assert.equal(r.status, 409);
+  const open = store.db.prepare("SELECT id FROM sessions WHERE project_id='p1' AND closed_at IS NULL").get();
+  store.closeSession(open.id);
+
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { active: 0 } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.active, 0);
+
+  // Default GET /api/projects tidak memuat arsip
+  assert.equal((await call('/api/projects', { cookie })).body.length, 0);
+  r = await call('/api/projects?all=1', { cookie });
+  assert.equal(r.body.length, 1);
+  assert.equal(r.body[0].active, 0);
+
+  // Semua jalur run menolak project arsip
+  r = await call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 409);
+  r = await call('/api/quick-check', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 409);
+  const tf = { id: randomUUID() };
+  store.createTestFile({ id: tf.id, projectId: 'p1', tool: 'pw', path: 'arsip.spec.ts', label: 'L', code: 'x', config: null });
+  r = await call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: tf.id, env: 'staging' } });
+  assert.equal(r.status, 409);
+  r = await call(`/api/sessions/${open.id}/runs`, { method: 'POST', cookie, body: { testFileId: tf.id } });
+  assert.equal(r.status, 409);
+
+  // Run yang sudah ada tetap bisa dibaca setelah arsip
+  const runId = randomUUID();
+  store.createRun({ id: runId, sessionId: open.id, testFileId: tf.id, tool: 'pw' });
+  r = await call(`/api/runs/${runId}`, { cookie });
+  assert.equal(r.status, 200);
+  r = await call(`/api/runs/${runId}/start`, { method: 'POST', cookie });
+  assert.equal(r.status, 409);
+
+  // Restore membuka lagi
+  r = await call('/api/projects/p1', { method: 'PATCH', cookie, body: { active: 1 } });
+  assert.equal(r.body.active, 1);
+  r = await call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201);
+
+  const actions = store.listAudit({ entity: 'projects' }).map(a => a.action);
+  assert.ok(actions.includes('archive_project'));
+  assert.ok(actions.includes('restore_project'));
+});
+
+test('T03: hapus project berriwayat 409, project kosong boleh 204', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  const tf = { id: randomUUID() };
+  store.createTestFile({ id: tf.id, projectId: 'p1', tool: 'pw', path: 'riwayat.spec.ts', label: 'R', code: 'x', config: null });
+  let r = await call('/api/projects/p1', { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+
+  r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'Kosong', base_url: 'https://kosong.test' } });
+  assert.equal(r.status, 201);
+  const kosong = r.body.id;
+  r = await call(`/api/projects/${kosong}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(store.getProject(kosong), undefined);
+  assert.ok(store.listAudit({ entity: 'projects' }).some(a => a.action === 'delete_project'));
 });
