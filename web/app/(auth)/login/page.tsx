@@ -30,7 +30,6 @@ function LoginForm() {
     <div className="pb-login">
       <div className="pb-login-stage">
         <aside className="pb-login-aside">
-          <span className="pb-login-mark" aria-hidden="true">P</span>
           <h1>Playbook</h1>
           <p className="pb-login-tagline">QA dashboard Eureka Group.</p>
           <ul className="pb-login-points">

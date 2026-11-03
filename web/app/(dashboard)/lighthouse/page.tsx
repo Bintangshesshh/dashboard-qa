@@ -189,7 +189,6 @@ export default function LighthousePage() {
       <div className="pb-head">
         <div>
           <h1>Audit performa.</h1>
-          <p className="pb-lead">Pilih project, atur skor minimum, lalu jalankan. Log muncul langsung di bawah.</p>
         </div>
         <div className="pb-filters">
           <span className="pb-save-state" aria-live="polite">{saveState}</span>
@@ -234,7 +233,6 @@ export default function LighthousePage() {
                     onClick={() => { setRuns(n); touch(); }}>{n}×</button>
                 ))}
               </div>
-              <span className="pb-hint">Lebih banyak run = skor lebih stabil, durasi lebih lama.</span>
             </div>
 
             <div className="pb-field">
@@ -259,7 +257,6 @@ export default function LighthousePage() {
                     onClick={() => { setExtraUrls(list => [...list, ""]); touch(); }}>+ Tambah URL</button>
                 )}
               </span>
-              <span className="pb-hint">Target utama dari project selalu ikut diaudit.</span>
             </div>
 
             <div className="pb-field">
@@ -281,7 +278,6 @@ export default function LighthousePage() {
                   </label>
                 ))}
               </div>
-              <span className="pb-hint">Run dianggap gagal bila skor di bawah batas ini.</span>
             </div>
           </div>
         ) : <p className="pb-empty">Project ini belum punya konfigurasi Lighthouse.</p>}

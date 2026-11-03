@@ -722,6 +722,38 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   pointer-events: none; white-space: nowrap;
 }
 .pb-set-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+/* Tab seting: bar tab menempel di atas, isi tab menumpuk dengan jarak sama. */
+.pb-set-tabbar { margin-bottom: 16px; }
+.pb-set-tab-body { display: grid; gap: 16px; }
+/* Daftar spec Playwright per project. */
+.pb-spec-list + .pb-spec-list { margin-top: 16px; }
+.pb-spec-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.pb-spec-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.pb-spec-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-spec-path {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; color: var(--meta);
+}
+.pb-lh-field { display: grid; gap: 8px; }
+/* Chip ringkas di header Overview: angka audit lhci project terpilih. */
+.pb-chip-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  background: var(--card);
+  transition: color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
+}
+.pb-chip-link:hover { color: var(--text); border-color: var(--border-soft); }
 .pb-set-status { font-family: var(--mono); font-size: 10.5px; color: var(--meta); white-space: nowrap; }
 .pb-set-status.dirty { color: var(--warn); }
 .pb-set-status.ok { color: var(--ok); }
@@ -1272,14 +1304,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   align-items: center;
 }
 .pb-login-aside { display: flex; flex-direction: column; gap: 16px; }
-.pb-login-mark {
-  width: 40px; height: 40px;
-  display: grid; place-items: center;
-  border-radius: 12px;
-  background: var(--accent); color: var(--accent-on);
-  font-family: var(--font-display); font-size: 19px; font-weight: 600;
-  box-shadow: var(--shadow);
-}
+
 .pb-login-aside h1 {
   font-size: 34px; line-height: 1.1; letter-spacing: -.03em;
   max-width: 22ch;

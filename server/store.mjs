@@ -132,8 +132,10 @@ export class Store {
   }
 
   // ─── Test files ──────────────────────────────────────────────────────────
-  listTestFiles({ projectId, tool } = {}) {
-    let sql = 'SELECT * FROM test_files WHERE enabled=1'; const vals = [];
+  // includeDisabled dipakai halaman seting: spec nonaktif tetap harus kelihatan
+  // supaya bisa dinyalakan lagi. Semua pemanggil run memakai default (aktif saja).
+  listTestFiles({ projectId, tool, includeDisabled = false } = {}) {
+    let sql = 'SELECT * FROM test_files WHERE ' + (includeDisabled ? '1=1' : 'enabled=1'); const vals = [];
     if (projectId) { sql += ' AND project_id=?'; vals.push(projectId); }
     if (tool) { sql += ' AND tool=?'; vals.push(tool); }
     sql += ' ORDER BY tool, path';

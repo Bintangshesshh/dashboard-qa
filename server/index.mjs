@@ -196,8 +196,14 @@ export function createApp({ store, runner, token, origins }) {
 
   // ─── Test files ──────────────────────────────────────────────────────────
   app.get('/api/test-files', requireAuth, route(async (req, res) => {
-    const { project, tool } = req.query;
-    res.json(store.listTestFiles({ projectId: project ?? undefined, tool: tool === 'pw' || tool === 'lh' ? tool : undefined }));
+    const { project, tool, all } = req.query;
+    // all=1 hanya untuk halaman seting (admin); pemanggil run tetap dapat yang aktif.
+    if (all === '1' && req.user.role !== 'admin') fail('Forbidden', 403);
+    res.json(store.listTestFiles({
+      projectId: project ?? undefined,
+      tool: tool === 'pw' || tool === 'lh' ? tool : undefined,
+      includeDisabled: all === '1',
+    }));
   }));
   // Session target already claims one URL slot, so extra URLs are capped below it.
   function checkLhUrls(tool, config) {

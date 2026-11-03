@@ -177,10 +177,12 @@ export const api = {
 
   audit: (limit = 50) => request<AuditRow[]>(`/api/audit?limit=${limit}`),
 
-  testFiles: (q: { project?: string; tool?: string } = {}) => {
+  // all: ikutkan spec nonaktif; hanya dipakai halaman seting (admin).
+  testFiles: (q: { project?: string; tool?: string; all?: boolean } = {}) => {
     const p = new URLSearchParams();
     if (q.project) p.set("project", q.project);
     if (q.tool) p.set("tool", q.tool);
+    if (q.all) p.set("all", "1");
     const s = p.toString();
     return request<TestFile[]>("/api/test-files" + (s ? "?" + s : ""));
   },

@@ -196,7 +196,6 @@ export default function PlaywrightPage() {
       <div className="pb-head">
         <div>
           <h1>Jalankan test suite.</h1>
-          <p className="pb-lead">Pilih project, cek spec-nya, lalu jalankan. Log muncul langsung di bawah.</p>
         </div>
         <div className="pb-filters">
           <span className={`pb-save-state${conflict ? " bad" : dirty ? " dirty" : ""}`} aria-live="polite">
