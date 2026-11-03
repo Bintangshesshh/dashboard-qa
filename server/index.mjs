@@ -639,7 +639,11 @@ export function createApp({ store, runner, token, origins }) {
     const runId = randomUUID();
     store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
     traceProduction(runId, session.env, req.user);
-    runner.start(runId, tf, session.id, session.target_url);
+    Promise.resolve(runner.start(runId, tf, session.id, session.target_url))
+      .catch(err => {
+        console.error('[run]', err.message);
+        try { store.systemLog(runId, `runner gagal start: ${err.message}`); } catch {}
+      });
     res.status(202).json({ runId });
   }));
 
