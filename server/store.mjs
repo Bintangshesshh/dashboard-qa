@@ -222,9 +222,9 @@ export class Store {
   }
   listRunsBySession(sessionId) { return this.db.prepare('SELECT * FROM runs WHERE session_id=? ORDER BY queued_at').all(sessionId); }
   listRuns({ projectId, tool, limit = 10 } = {}) {
-    let sql = `SELECT r.*, s.label AS session_label, s.env AS env,
+    let sql = `SELECT r.*, s.label AS session_label, s.env AS env, p.name AS project_name,
       EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.kind=(CASE r.tool WHEN 'lh' THEN 'lh-html' ELSE 'pw-html' END)) AS has_html
-      FROM runs r JOIN sessions s ON s.id=r.session_id WHERE 1=1`;
+      FROM runs r JOIN sessions s ON s.id=r.session_id JOIN projects p ON p.id=s.project_id WHERE 1=1`;
     const vals = [];
     if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
     if (tool) { sql += ' AND r.tool=?'; vals.push(tool); }
@@ -427,12 +427,17 @@ export class Store {
       JOIN runs r ON r.id = l.run_id
       JOIN sessions s ON s.id = r.session_id
       WHERE r.tool='lh' AND r.finalized_at IS NOT NULL AND ${w}`).get(...vals);
+    // Run yang belum final tidak masuk statistik final, tapi harus terlihat.
+    const active = this.db.prepare(`
+      SELECT count(*) AS total FROM runs r JOIN sessions s ON s.id = r.session_id
+      WHERE r.status IN ('queued','running','uploading') AND ${w}`).get(...vals);
     return {
       tcPassed: tc.passed ?? 0,
       tcFailed: tc.failed ?? 0,
       passRate: (tc.passed ?? 0) + (tc.failed ?? 0) > 0 ? (tc.passed ?? 0) / ((tc.passed ?? 0) + (tc.failed ?? 0)) : null,
       sessions: sessions.total,
       runs: runs.total,
+      activeRuns: active.total,
       failedRuns: runs.failed ?? 0,
       avgDurationMs: runs.avg_ms == null ? null : Math.round(runs.avg_ms),
       lighthouse: lh.urls ? {

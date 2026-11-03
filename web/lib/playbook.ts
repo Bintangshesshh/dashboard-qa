@@ -22,7 +22,19 @@ export type Run = {
   console?: { seq: number; at: string; type: string; text: string; location: string | null }[];
   network?: { seq: number; at: string; url: string; status: number | null; method: string | null; failure: string | null; ms: number | null }[];
 };
-export type RunRow = Run & { session_label: string; env: string; has_html: number };
+export type RunRow = Run & { session_label: string; env: string; project_name: string; has_html: number };
+// Label bahasa Indonesia; istilah teknis (Playwright, Lighthouse, console) tetap Inggris.
+const RUN_STATUS_LABEL: Record<Run["status"], string> = {
+  queued: "Antre",
+  running: "Berjalan",
+  uploading: "Mengunggah",
+  passed: "Lulus",
+  failed: "Gagal",
+  cancelled: "Dibatalkan",
+  interrupted: "Terputus",
+};
+export const runStatusLabel = (status: string) =>
+  RUN_STATUS_LABEL[status as Run["status"]] ?? status;
 export type Artifact = { id: string; run_id: string; kind: string; path: string; bytes: number | null };
 export type PlaywrightResult = {
   id: string; run_id: string; tc_id: string | null; file: string; title: string;
@@ -51,7 +63,7 @@ export type Session = {
 };
 export type Stats = {
   tcPassed: number; tcFailed: number; passRate: number | null;
-  sessions: number; runs: number; failedRuns: number; avgDurationMs: number | null;
+  sessions: number; runs: number; activeRuns: number; failedRuns: number; avgDurationMs: number | null;
   lighthouse: {
     urls: number; performance: number | null; accessibility: number | null;
     bestPractices: number | null; seo: number | null;

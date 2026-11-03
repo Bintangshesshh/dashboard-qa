@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { api, fmtDate, reportUrl, type Project, type Session } from "../../../../../lib/playbook";
+import { api, fmtDate, reportUrl, runStatusLabel, type Project, type Session } from "../../../../../lib/playbook";
 import { ArtifactLink } from "../../../../_components/report-link";
 
 export default function ProjectReports() {
@@ -79,7 +79,7 @@ export default function ProjectReports() {
               {sessions.map(s => (
                 <tr key={s.id}>
                   <td><Link href={`/reports/${s.id}`}>{s.label}</Link></td>
-                  <td><span className={`pb-badge ${s.status}`}>{s.status}</span></td>
+                  <td><span className={`pb-badge ${s.status}`}>{runStatusLabel(s.status)}</span></td>
                   <td className="mono" style={{ fontSize: 12 }}>
                     {s.run_count ? (
                       <span title={`${s.pw_count ?? 0} Playwright, ${s.lh_count ?? 0} Lighthouse`}>

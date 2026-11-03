@@ -36,6 +36,8 @@ export function RunPanel({ logs, run, live, downloadHref }: {
   const [cQuery, setCQuery] = useState("");
   const [nQuery, setNQuery] = useState("");
   const box = useRef<HTMLPreElement>(null);
+  const consBox = useRef<HTMLDivElement>(null);
+  const netBox = useRef<HTMLDivElement>(null);
 
   const { term, cons, net } = useMemo(() => {
     const term: LogEntry[] = [];
@@ -61,12 +63,13 @@ export function RunPanel({ logs, run, live, downloadHref }: {
     return { term, cons, net };
   }, [logs]);
 
-  // Auto-scroll hanya saat live dan tab Terminal aktif.
+  // Auto-scroll saat live, untuk tab yang sedang dibuka: console/network ikut
+  // bergulir selama run, sama seperti terminal.
   useEffect(() => {
-    if (!live || tab !== "log") return;
-    const el = box.current;
+    if (!live) return;
+    const el = tab === "log" ? box.current : tab === "console" ? consBox.current : netBox.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [term.length, live, tab]);
+  }, [term.length, cons.length, net.length, live, tab]);
 
   const errors = cons.filter(c => badType(c.type)).length;
   const warns = cons.filter(c => warnType(c.type)).length;
@@ -100,14 +103,14 @@ export function RunPanel({ logs, run, live, downloadHref }: {
           {run && <RunClock run={run} />}
           <span className="pb-live-state">
             <span className={"pb-live-dot" + (live ? " on" : "")} aria-hidden="true" />
-            {live ? "live" : run ? "selesai" : "menunggu"} · {term.length} baris
+            {live ? "berjalan" : run ? "selesai" : "menunggu"} · {term.length} baris
           </span>
           {downloadHref && <a className="pb-btn sm" href={downloadHref}>Unduh log</a>}
         </span>
       </div>
 
       {tab === "log" && (
-        <pre className="pb-term" ref={box} style={{ maxHeight: 300, minHeight: 120 }}>
+        <pre className="pb-term" ref={box} style={{ maxHeight: 420, minHeight: 200 }}>
           {term.length === 0
             ? (run ? "Menunggu output…" : "Log run akan muncul di sini.")
             : term.map(l => <div key={l.seq} data-stream={l.stream}>{stripAnsi(l.text)}</div>)}
@@ -118,7 +121,7 @@ export function RunPanel({ logs, run, live, downloadHref }: {
         <>
           <div className="pb-subbar">
             <div className="pb-chips">
-              {([["all", "Semua"], ["error", `Error ${errors}`], ["warn", `Warn ${warns}`]] as const).map(([k, label]) => (
+              {([["all", "Semua"], ["error", `Error ${errors}`], ["warn", `Peringatan ${warns}`]] as const).map(([k, label]) => (
                 <button key={k} className={"pb-chip-btn" + (chip === k ? " active" : "")} onClick={() => setChip(k)}>{label}</button>
               ))}
             </div>
@@ -127,7 +130,7 @@ export function RunPanel({ logs, run, live, downloadHref }: {
           </div>
           {consView.length === 0
             ? <p className="pb-empty">Belum ada console yang terekam.</p>
-            : <div className="pb-console">
+            : <div className="pb-console" ref={consBox}>
               {consView.map(c => (
                 <div key={c.seq} className={"pb-console-row" + (badType(c.type) ? " err" : warnType(c.type) ? " warn" : "")}>
                   <span className="pb-log-time">{clockOf(c.at)}</span>
@@ -146,15 +149,15 @@ export function RunPanel({ logs, run, live, downloadHref }: {
             <span className="pb-muted" style={{ fontSize: 11.5 }}>
               {netView.length} dari {net.length} request · {badNet} gagal
             </span>
-            <input className="pb-search" placeholder="Filter URL" value={nQuery}
-              onChange={e => setNQuery(e.target.value)} aria-label="Filter URL" />
+            <input className="pb-search" placeholder="Saring URL" value={nQuery}
+              onChange={e => setNQuery(e.target.value)} aria-label="Saring URL" />
           </div>
           {netView.length === 0
             ? <p className="pb-empty">Belum ada request terekam.</p>
-            : <div className="pb-net">
+            : <div className="pb-net" ref={netBox}>
               <table>
                 <thead>
-                  <tr><th>Status</th><th>Method</th><th>URL</th><th>Durasi</th><th>Waterfall</th></tr>
+                  <tr><th>Status</th><th>Metode</th><th>URL</th><th>Durasi</th><th>Waterfall</th></tr>
                 </thead>
                 <tbody>
                   {netView.map(n => {

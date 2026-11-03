@@ -3,8 +3,8 @@
 // Semua endpoint settings butuh admin; viewer kena 403 dan hanya melihat pesan galat.
 import { useEffect, useState } from "react";
 import {
-  api, fmtAuditAction, fmtAuditUser, fmtDate,
-  type AuditRow, type CliToken, type Project, type Settings,
+  api, fmtDate,
+  type CliToken, type Project, type Settings,
 } from "../../../lib/playbook";
 
 const num = (value: string) => Number(value) || 0;
@@ -97,7 +97,7 @@ const SECTIONS: SettingSection[] = [
       },
       {
         key: "range_default_days", label: "Range default", suffix: "hari",
-        help: "Rentang hari yang dipilih otomatis saat Overview pertama dibuka.",
+        help: "Rentang hari yang dipilih otomatis saat Ringkasan pertama dibuka.",
         format: fmtDays,
       },
     ],
@@ -110,7 +110,6 @@ export default function SettingsPage() {
   const [savedAt, setSavedAt] = useState<Record<string, string>>({});
   const [tokens, setTokens] = useState<CliToken[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [audit, setAudit] = useState<AuditRow[]>([]);
   const [newToken, setNewToken] = useState("");
   const [label, setLabel] = useState("");
   const [error, setError] = useState("");
@@ -122,7 +121,6 @@ export default function SettingsPage() {
       .catch(e => setError(e.message));
     api.cliTokens().then(setTokens).catch(() => {});
     api.projects().then(setProjects).catch(() => {});
-    api.audit(50).then(setAudit).catch(() => {});
   };
 
   useEffect(load, []);
@@ -311,33 +309,6 @@ export default function SettingsPage() {
             : projects.map(p => <ProjectRow key={p.id} project={p} onSave={saveProject} />)}
         </section>
 
-        <section className="pb-card">
-          <div className="pb-card-head">
-            <div>
-              <h2>Audit</h2>
-              <div className="pb-card-sub">
-                Perubahan terakhir oleh admin. Detail mentah tidak ditampilkan di sini.
-              </div>
-            </div>
-          </div>
-          {audit.length === 0
-            ? <p className="pb-empty">Belum ada aktivitas.</p>
-            : <table className="pb-table">
-              <thead><tr><th>Waktu</th><th>Aksi</th><th>User</th></tr></thead>
-              <tbody>
-                {audit.map(a => (
-                  <tr key={a.id}>
-                    <td className="mono">{fmtDate(a.created_at)}</td>
-                    <td>
-                      {fmtAuditAction(a.action)}
-                      <span className="pb-audit-ent">{a.entity}</span>
-                    </td>
-                    <td>{fmtAuditUser(a)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>}
-        </section>
       </div>
     </>
   );

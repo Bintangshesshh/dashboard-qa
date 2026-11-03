@@ -3,7 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
-  api, artifactUrl, fmtDate, fmtDur, pct, reportUrl,
+  api, artifactUrl, fmtDate, fmtDur, pct, reportUrl, runStatusLabel,
   type LighthouseResult, type PlaywrightResult, type Report, type Run, type Session,
 } from "../../../../lib/playbook";
 import { RunTerminal } from "../../run-terminal";
@@ -170,12 +170,12 @@ export default function SessionDetail() {
         <div className="pb-kpi">
           <div className="pb-kpi-label">Lulus</div>
           <div className="pb-kpi-value ok">{passed}</div>
-          <div className="pb-kpi-foot">run status passed</div>
+          <div className="pb-kpi-foot">dari {runs.length} run</div>
         </div>
         <div className="pb-kpi">
           <div className="pb-kpi-label">Gagal</div>
           <div className="pb-kpi-value bad">{failed}</div>
-          <div className="pb-kpi-foot">run status failed</div>
+          <div className="pb-kpi-foot">dari {runs.length} run</div>
         </div>
         <div className="pb-kpi">
           <div className="pb-kpi-label">Rata-rata durasi</div>
@@ -302,7 +302,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
       <div className="pb-runpanel-head">
         <span className={`pb-tool ${run.tool}`}>{isPw ? "PW" : "LH"}</span>
         <h2>Hasil run · {isPw ? "Playwright" : "Lighthouse"}</h2>
-        <span className={`pb-badge ${run.status}`}>{run.status}</span>
+        <span className={`pb-badge ${run.status}`}>{runStatusLabel(run.status)}</span>
         <span className="pb-spacer" />
         <RunClock run={run} />
         <button className="pb-btn sm" onClick={onClose}>Tutup</button>

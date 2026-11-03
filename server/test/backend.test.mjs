@@ -424,6 +424,23 @@ test('GET run memisahkan console & network dari logs', async t => {
   assert.equal(r.body.results.length, 0);
 });
 
+test('GET /api/runs menyertakan project_name dan run yang masih antre', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createTestFile({ id: 'tf1', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
+  const runId = (await f.call(`/api/sessions/${session}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf1' } })).body.runId;
+
+  const r = await f.call('/api/runs?limit=5', { cookie });
+  assert.equal(r.status, 200);
+  const row = r.body.find(x => x.id === runId);
+  assert.ok(row, 'run yang belum final tetap muncul di daftar');
+  assert.equal(row.status, 'queued');
+  assert.equal(row.project_name, 'EBH');
+  assert.ok(row.session_label, 'label sesi ikut terkirim');
+  assert.equal(row.env, 'local');
+});
+
 test('artifact: traversal ditolak, file sah disajikan dengan header aman', async t => {
   const f = await fixture(t);
   const cookie = await f.login();

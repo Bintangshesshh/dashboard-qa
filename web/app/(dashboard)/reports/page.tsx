@@ -62,7 +62,7 @@ export default function ReportsPage() {
                 </div>
                 <div className="pb-pcard-bar"><span style={{ width: `${rate ?? 0}%` }} /></div>
                 <div className="pb-pcard-foot">
-                  <span>pass rate <strong>{rate == null ? "-" : `${rate}%`}</strong></span>
+                  <span>tingkat lulus <strong>{rate == null ? "-" : `${rate}%`}</strong></span>
                   <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
                 </div>
                 <Link className="pb-btn sm primary" href={`/reports/project/${p.id}`}>Buka laporan</Link>

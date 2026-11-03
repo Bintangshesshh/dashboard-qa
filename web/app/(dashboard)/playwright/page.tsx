@@ -24,34 +24,48 @@ export default function PlaywrightPage() {
 
   // Editor
   const [draft, setDraft] = useState("");
+  // Baseline autosave: Run memakai kode tersimpan, bukan yang sedang diketik.
+  const [savedCode, setSavedCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Konflik = file di disk berubah sejak sinkron terakhir; butuh keputusan user.
   const [conflict, setConflict] = useState(false);
 
   // Run + terminal
-  // runId di-sessionStorage: pindah ke Overview unmount page, state reset.
-  // Restore di sini biar polling + log lanjut saat balik, run backend tak hilang.
+  // runId di-sessionStorage per project: ganti dropdown tidak menumpuk log
+  // project lain, dan run tetap terpantau saat pindah halaman.
+  // Terminal dipisah per project: satu kunci sessionStorage per project, jadi
+  // ganti dropdown tidak menumpuk log project lain.
   const [starting, setStarting] = useState(false);
-  const [runId, setRunId] = useState<string | null>(
-    () => (typeof window !== "undefined" ? sessionStorage.getItem("pw-runId") : null),
-  );
+  const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
-  useEffect(() => {
-    if (runId) sessionStorage.setItem("pw-runId", runId);
-    else sessionStorage.removeItem("pw-runId");
-  }, [runId]);
+  // Run yang sedang dipantau, per project. Ditulis di start(): kalau lewat efek,
+  // runId project lama sempat tertulis ke project baru saat dropdown diganti.
+  const [runsByProject, setRunsByProject] = useState<Record<string, string>>({});
 
-  // ID dari sessionStorage bisa basi (run dihapus/cancel dari halaman lain).
-  // Validasi sekali: kalau 404, buang ID, biar terminal tidak polling hantu.
-  const restored = useRef(false);
+  // Ganti project → pasang lagi run project itu (kalau ada), terminal direset.
   useEffect(() => {
-    if (!runId || restored.current) return;
-    restored.current = true;
-    api.run(runId).then(() => {}).catch(() => { setRunId(null); setLogs([]); });
-  }, [runId]);
+    if (!projectId) return;
+    setRun(null); setLogs([]);
+    setRunId(runsByProject[projectId] ?? sessionStorage.getItem(`pw-run:${projectId}`));
+    // runsByProject sengaja tidak jadi dependency: membacanya di sini tidak boleh
+    // memicu reset terminal setiap kali runId baru disimpan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  // ID tersimpan bisa basi (run dihapus/cancel dari halaman lain).
+  // Validasi sekali per id: kalau 404, buang ID, biar terminal tidak polling hantu.
+  const restored = useRef<string | null>(null);
+  useEffect(() => {
+    if (!runId || restored.current === runId) return;
+    restored.current = runId;
+    api.run(runId).then(() => {}).catch(() => {
+      sessionStorage.removeItem(`pw-run:${projectId}`);
+      setRunId(null); setLogs([]);
+    });
+  }, [runId, projectId]);
 
   useEffect(() => {
     api.projects().then(p => {
@@ -65,14 +79,14 @@ export default function PlaywrightPage() {
   useEffect(() => {
     if (!projectId) return;
     api.testFiles({ project: projectId, tool: "pw" })
-      .then(f => { setFiles(f); setDraft(f[0]?.code ?? ""); })
+      .then(f => { setFiles(f); setDraft(f[0]?.code ?? ""); setSavedCode(f[0]?.code ?? ""); })
       .catch(e => setError(e.message));
   }, [projectId]);
 
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
   const target = project?.base_url ?? "";
-  const dirty = !!selected && draft !== selected.code;
+  const dirty = !!selected && draft !== savedCode;
   const running = !!run && !FINAL.includes(run.status);
 
   // Poll run + log selama belum final. 1.5s cukup; run Playwright hitungan menit.
@@ -108,9 +122,10 @@ export default function PlaywrightPage() {
     try {
       const updated = await api.patchTestFile(selected.id, { code: draft, ...(force ? { force: true } : {}) });
       setFiles([updated]);
-      // Backend men-trim teks. Tanpa sinkron balik, `dirty` tetap true dan Run
-      // terkunci walau sudah disimpan.
+      // Backend men-trim teks. Tanpa sinkron balik, `dirty` tetap true dan
+      // autosave memicu simpan berulang.
       setDraft(updated.code);
+      setSavedCode(updated.code);
       setConflict(false);
     } catch (e) {
       const err = e as { status?: number; message: string };
@@ -118,6 +133,18 @@ export default function PlaywrightPage() {
       else setError(err.message);
     } finally { setSaving(false); }
   };
+
+  // Autosave: berhenti mengetik 1 dtk = tersimpan. Kelola konflik tetap manual.
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!selected || !dirty || conflict) return;
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = setTimeout(() => { save(); }, 1000);
+    return () => { if (pending.current) clearTimeout(pending.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, selected, savedCode, conflict]);
+
+  const saveState = saving ? "Menyimpan…" : !selected ? "" : dirty ? "Belum disimpan" : "Tersimpan";
 
   // Arah sebaliknya: ambil versi disk (mis. habis pull dari git).
   const reload = async () => {
@@ -127,6 +154,7 @@ export default function PlaywrightPage() {
       const updated = await api.reloadTestFile(selected.id);
       setFiles([updated]);
       setDraft(updated.code);
+      setSavedCode(updated.code);
       setConflict(false);
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
@@ -137,10 +165,13 @@ export default function PlaywrightPage() {
     try {
       if (!target) throw new Error("Project ini belum punya URL.");
       if (!selected) throw new Error("Project ini belum punya spec Playwright.");
-      if (dirty) throw new Error("Ada perubahan belum disimpan. Klik Simpan dulu.");
+      // Flush autosave yang masih menunggu supaya run memakai kode terbaru.
+      if (pending.current) { clearTimeout(pending.current); pending.current = null; await save(); }
       // Konfirmasi production diisi otomatis: UI tidak menampilkan env/konfirmasi.
       const created = await api.createSession(projectId, env, project?.name);
       const { runId } = await api.createRun(created.session.id, selected.id);
+      sessionStorage.setItem(`pw-run:${projectId}`, runId);
+      setRunsByProject(prev => ({ ...prev, [projectId]: runId }));
       setRunId(runId);
     } catch (e) {
       setError((e as Error).message);
@@ -167,6 +198,16 @@ export default function PlaywrightPage() {
           <h1>Jalankan test suite.</h1>
           <p className="pb-lead">Pilih project, cek spec-nya, lalu jalankan. Log muncul langsung di bawah.</p>
         </div>
+        <div className="pb-filters">
+          <span className={`pb-save-state${conflict ? " bad" : dirty ? " dirty" : ""}`} aria-live="polite">
+            {conflict ? "Konflik disk" : saveState}
+          </span>
+          <button className="pb-btn primary" onClick={start}
+            disabled={starting || running || !selected || !target}>
+            {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
+          </button>
+          {running && <button className="pb-btn" onClick={stop}>Stop</button>}
+        </div>
       </div>
       {error && <div className="pb-err">{error}</div>}
 
@@ -190,22 +231,6 @@ export default function PlaywrightPage() {
             <h2 style={{ margin: 0, fontSize: 15 }}>Spec</h2>
             <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada spec"}</div>
           </div>
-          <span className="pb-row" style={{ gap: 8 }}>
-            {dirty && <span className="pb-muted" style={{ fontSize: 12 }}>belum disimpan</span>}
-            <button className="pb-btn sm primary" onClick={() => save()} disabled={saving || !dirty || running}>
-              {saving ? "Menyimpan…" : "Simpan"}
-            </button>
-            <button className="pb-btn sm" onClick={() => setDraft(selected?.code ?? "")}
-              disabled={saving || !dirty || running}>Reset</button>
-            <button className="pb-btn sm pb-icon-btn" onClick={reload} disabled={saving || running}
-              title="Muat ulang dari disk" aria-label="Muat ulang dari disk">
-              <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
-                strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M13.5 8a5.5 5.5 0 1 1-1.65-3.94" />
-                <path d="M13.5 1.8V4.6h-2.8" />
-              </svg>
-            </button>
-          </span>
         </div>
         {conflict && (
           <div className="pb-err" style={{ marginBottom: 8, display: "grid", gap: 8 }}>
@@ -229,14 +254,6 @@ export default function PlaywrightPage() {
         live={running}
         downloadHref={runId ? `/api/runs/${runId}/logs/download` : null}
       />
-      <div className="pb-row" style={{ marginTop: 12 }}>
-        <button className="pb-btn primary" onClick={start}
-          disabled={starting || running || !selected || !target || dirty}>
-          {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
-        </button>
-        {running && <button className="pb-btn" onClick={stop}>Stop</button>}
-      </div>
-
       {done && run && (
         <section className="pb-card">
           <div className="pb-card-head">

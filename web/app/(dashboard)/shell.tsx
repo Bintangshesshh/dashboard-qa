@@ -6,10 +6,10 @@ import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Project, type User } from "../../lib/playbook";
 
 const NAV = [
-  { href: "/", label: "Overview" },
+  { href: "/", label: "Ringkasan" },
   { href: "/playwright", label: "Playwright" },
   { href: "/lighthouse", label: "Lighthouse" },
-  { href: "/reports", label: "Reports" },
+  { href: "/reports", label: "Laporan" },
 ];
 // Menu admin: hanya muncul untuk role admin (lihat `all` di bawah).
 const ADMIN_NAV: { href: string; label: string }[] = [{ href: "/settings", label: "Pengaturan" }];
@@ -57,7 +57,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const isActive = (href: string) => href === "/" ? path === "/" : path === href || path.startsWith(href + "/");
   const screen = all
     .filter(i => isActive(i.href))
-    .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "Overview";
+    .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "Ringkasan";
 
   // Crumb berlayer: tiap level bisa diklik, level terakhir tebal.
   const crumbs: { label: string; href: string }[] = [{ label: "Playbook", href: "/" }];

@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  api, fmtAuditAction, fmtAuditUser, fmtDate, fmtDur,
-  type AuditRow, type Project, type Session, type Stats,
+  api, fmtDate, fmtDur, runStatusLabel,
+  type Project, type RunRow, type Session, type Stats,
 } from "../../lib/playbook";
 
 const RANGES = [7, 14, 30];
@@ -17,24 +17,41 @@ export default function OverviewPage() {
   const [perProject, setPerProject] = useState<Record<string, Stats>>({});
   const [projectId, setProjectId] = useState("");
   const [range, setRange] = useState(14);
-  const [audit, setAudit] = useState<AuditRow[] | null>(null);
+  // Feed "Run terakhir": semua status, termasuk yang sedang berjalan.
+  const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     api.projects().then(setProjects).catch(e => setError(e.message));
-    // Ringkasan audit hanya untuk admin; viewer 403 → panel disembunyikan.
-    api.audit(8).then(setAudit).catch(() => setAudit(null));
     // B11: range awal ikut settings `range_default_days`; viewer 403 → tetap 14.
     api.settings()
       .then(s => { const d = Number(s.range_default_days); if (d > 0) setRange(d); })
       .catch(() => {});
   }, []);
 
+  // Polling 5 dtk supaya run yang baru mulai/selesai langsung terlihat.
+  // Tab tersembunyi dilonggarkan ke 15 dtk: hemat request, tetap segar saat dibuka.
   useEffect(() => {
-    const q = { range, project: projectId || undefined };
-    Promise.all([api.sessions(q), api.stats({ ...q, failures: 5 })])
-      .then(([s, st]) => { setSessions(s); setStats(st); })
-      .catch(e => setError(e.message));
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const refresh = async () => {
+      const q = { range, project: projectId || undefined };
+      try {
+        const [s, st, rs] = await Promise.all([
+          api.sessions(q), api.stats({ ...q, failures: 5 }),
+          api.runs({ project: projectId || undefined, limit: 8 }),
+        ]);
+        if (!alive) return;
+        setSessions(s); setStats(st); setRuns(rs);
+      } catch (e) {
+        if (alive) setError((e as Error).message);
+      }
+      if (alive) timer = setTimeout(refresh, document.hidden ? 15000 : 5000);
+    };
+
+    refresh();
+    return () => { alive = false; clearTimeout(timer); };
   }, [range, projectId]);
 
   // Stats per project: dipakai kartu project. Jumlah project kecil, aman di-fetch semua.
@@ -117,7 +134,10 @@ export default function OverviewPage() {
           <div className="pb-kpi-label">Kegagalan</div>
           <div>
             <div className="pb-kpi-val">{stats?.failedRuns ?? "-"}</div>
-            <div className="pb-kpi-foot"><span className="dot bad" />{stats?.failures?.length ?? 0} sesi terdampak</div>
+            <div className="pb-kpi-foot">
+              <span className="dot bad" />{stats?.failures?.length ?? 0} sesi terdampak
+              {!!stats?.activeRuns && <> · <strong>{stats.activeRuns} berjalan</strong></>}
+            </div>
           </div>
         </article>
       </div>
@@ -213,7 +233,7 @@ export default function OverviewPage() {
                 </div>
                 <div className="pb-pcard-bar"><span style={{ width: `${prate ?? 0}%` }} /></div>
                 <div className="pb-pcard-foot">
-                  <span>pass rate <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
+                  <span>tingkat lulus <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
                   <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
                 </div>
               </Link>
@@ -222,33 +242,37 @@ export default function OverviewPage() {
         </div>
       )}
 
-      {audit !== null && (
-        <section className="pb-card pb-audit" style={{ marginTop: 16 }}>
-          <div className="pb-card-head">
-            <div>
-              <h2>Audit terakhir</h2>
-              <div className="pb-card-sub">Aktivitas admin terbaru. Detail lengkap ada di Settings.</div>
+      <section className="pb-card" style={{ marginTop: 16 }}>
+        <div className="pb-card-head">
+          <div>
+            <h2>Run terakhir</h2>
+            <div className="pb-card-sub">
+              Playwright dan Lighthouse, termasuk yang sedang berjalan.
+              {!!stats?.activeRuns && ` ${stats.activeRuns} berjalan sekarang.`}
             </div>
-            <Link className="pb-link-muted" href="/settings">Lihat semua</Link>
           </div>
-          {audit.length === 0 ? (
-            <p className="pb-empty">Belum ada aktivitas.</p>
-          ) : (
-            <div className="pb-audit-list">
-              {audit.map(a => (
-                <div className="pb-audit-row" key={a.id}>
-                  <span className="pb-audit-what">
-                    <span className="pb-audit-action">{fmtAuditAction(a.action)}</span>
-                    <span className="pb-audit-ent">{a.entity}</span>
+          <Link className="pb-link-muted" href="/reports">Semua</Link>
+        </div>
+        {runs.length === 0 ? (
+          <p className="pb-empty">Belum ada run.</p>
+        ) : (
+          <div className="pb-run-feed">
+            {runs.map(r => (
+              <Link className="pb-run-row" key={r.id} href={`/reports/${r.session_id}`}>
+                <span className={`pb-badge ${r.status}`}>{runStatusLabel(r.status)}</span>
+                <span className="pb-run-what">
+                  <span className="pb-run-title">
+                    {r.project_name} · {r.tool === "pw" ? "Playwright" : "Lighthouse"}
                   </span>
-                  <span className="pb-audit-user">{fmtAuditUser(a)}</span>
-                  <span className="pb-audit-time">{fmtDate(a.created_at)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+                  <span className="pb-run-meta">{r.session_label} · {r.env} · {fmtDate(r.queued_at)}</span>
+                  {r.error && <span className="pb-run-err">{r.error}</span>}
+                </span>
+                <span className="pb-run-dur">{r.duration_ms ? fmtDur(r.duration_ms) : "—"}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="pb-card pb-lh" style={{ marginTop: 16 }}>
         <div className="pb-card-head">

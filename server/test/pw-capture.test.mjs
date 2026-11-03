@@ -33,7 +33,11 @@ test('pw-capture: console, pageerror, network, deduped across emitters', async (
   await rm(dir, { recursive: true, force: true });
 
   assert.equal(rows.length, 4, 'response deduped, everything else kept');
-  assert.deepEqual(rows[0], { stream: 'network', payload: { url: 'https://a.test/', method: 'GET', status: 404, failure: null, ms: 0 } });
+  // `ms` dihitung dari Date.now(): 0 atau 1 ms tergantung jam mesin, jadi
+  // jangan dikunci persis.
+  assert.equal(rows[0].stream, 'network');
+  assert.ok(rows[0].payload.ms === 0 || rows[0].payload.ms === 1, `ms tak terduga: ${rows[0].payload.ms}`);
+  assert.deepEqual({ ...rows[0].payload, ms: 0 }, { url: 'https://a.test/', method: 'GET', status: 404, failure: null, ms: 0 });
   assert.deepEqual(rows[1], { stream: 'console', payload: { type: 'error', text: 'boom', location: 'https://a.test/x.js' } });
   assert.deepEqual(rows[2], { stream: 'console', payload: { type: 'pageerror', text: 'kaboom', location: null } });
   assert.deepEqual(rows[3].payload, { url: 'https://a.test/x', method: 'POST', status: null, failure: 'net::ERR_FAILED', ms: null });

@@ -79,6 +79,17 @@ function parseJsonArray(raw) {
   try { const v = JSON.parse(raw); return Array.isArray(v) ? v : [v]; } catch { return []; }
 }
 
+// Ambil baris JSONL yang sudah lengkap sejak `offset`. Baris terakhir tanpa
+// newline sengaja ditinggal: appendFileSync antar worker bisa memotong satu
+// baris jadi dua write.
+export function cutCaptureLines(raw, offset = 0) {
+  if (raw.length < offset) return { lines: [], offset: 0 }; // file ditulis ulang
+  const chunk = raw.slice(offset);
+  const end = chunk.lastIndexOf('\n');
+  if (end < 0) return { lines: [], offset };
+  return { lines: chunk.slice(0, end).split('\n').filter(l => l.trim()), offset: offset + end + 1 };
+}
+
 export async function filesBelow(dir, base = dir) {
   const files = [];
   for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
@@ -240,6 +251,8 @@ export class Runner extends EventEmitter {
     const args = [pwBin, 'test', specPath, `--output=${join(dir, 'artifacts', 'test-results')}`];
     if (cfgPath) args.push('--config=' + cfgPath);
     else args.push('--reporter=json,html');
+    // Tail dimulai sebelum spawn: console/network harus mengalir bersama log.
+    const stopTail = await this.tailCapture(state, captureFile);
     const child = spawn(process.execPath, args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
     state.child = child;
     child.stdout.on('data', d => this.log(state, 'stdout', d));
@@ -259,6 +272,7 @@ export class Runner extends EventEmitter {
     const error = state.timedOut ? 'timeout'
       : !results.length && !state.cancelled ? 'JSON Playwright tidak ditemukan' : null;
     if (results.length) await this.store.addPlaywrightResults(runId, results);
+    await stopTail();
     await this.ingestCapture(state, captureFile);
     await this.collectArtifacts(runId, dir, 'pw');
     await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw' });
@@ -292,6 +306,8 @@ export class Runner extends EventEmitter {
       await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${audited.length} URL)\n`);
     }
     // cwd = dir: lhci menulis .lighthouseci/ relatif cwd, jadi tiap run terisolasi.
+    // Console/network Lighthouse hanya ada di LHR, jadi muncul setelah selesai.
+    await this.log(state, 'system', '[runner] Console & network Lighthouse diambil dari LHR dan muncul setelah audit selesai.\n');
     const child = spawn(process.execPath, [lhciBin, 'autorun', '--config=' + configPath, '--upload.target=filesystem', '--upload.outputDir=' + outDir], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
     state.child = child;
     child.stdout.on('data', d => this.log(state, 'stdout', d));
@@ -321,6 +337,38 @@ export class Runner extends EventEmitter {
   }
 
   // PRD Â§8.8: console/network dari reporter masuk ke run_logs sebagai stream terpisah.
+  // Tail capture.jsonl selama proses jalan. Reporter menulis live; tanpa ini
+  // panel Console/Network baru terisi setelah run selesai.
+  async tailCapture(state, file, interval = 700) {
+    let offset = 0;
+    // Dua drain bisa tumpang tindih kalau baca file lambat; tanpa penjaga,
+    // keduanya memakai offset lama dan baris sama masuk dua kali.
+    let busy = false;
+    const drain = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const raw = await readFile(file, 'utf8').catch(() => '');
+        const cut = cutCaptureLines(raw, offset);
+        offset = cut.offset;
+        for (const line of cut.lines) {
+          let item;
+          try { item = JSON.parse(line); } catch { continue; }
+          if (!item?.stream || !item?.payload) continue;
+          await this.log(state, item.stream, JSON.stringify(item.payload) + '\n');
+        }
+      } finally { busy = false; }
+    };
+    const timer = setInterval(() => { drain().catch(() => {}); }, interval);
+    return async () => {
+      clearInterval(timer);
+      // Tutup saat satu drain masih jalan: tunggu, lalu sedot sisa baris.
+      while (busy) await new Promise(r => setTimeout(r, 20));
+      await drain();
+      await rm(file, { force: true }).catch(() => {});
+    };
+  }
+
   async ingestCapture(state, file) {
     const raw = await readFile(file, 'utf8').catch(() => '');
     if (!raw.trim()) return;
