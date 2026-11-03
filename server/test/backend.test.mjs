@@ -1591,3 +1591,23 @@ test('websocket log menolak klien tanpa sesi', async t => {
   assert.equal(authClose.code, 1008);
   assert.equal(authClose.reason, 'Unknown run', 'sesi valid harus lolos gerbang auth');
 });
+
+// Password tidak boleh bisa ditebak dalam jumlah tak terbatas. Batasnya lima
+// percobaan gagal per IP+username, lalu 429 selama 15 menit.
+test('login dibatasi setelah 5 percobaan gagal', async t => {
+  const f = await fixture(t);
+  const attempt = password => f.call('/api/auth/login', { method: 'POST', body: { username: 'tester', password } });
+
+  for (let i = 0; i < 5; i += 1) {
+    const res = await attempt('salah-' + i);
+    assert.equal(res.status, 401, 'percobaan ke-' + (i + 1) + ' masih 401');
+  }
+
+  const blocked = await attempt(PASSWORD);
+  assert.equal(blocked.status, 429, 'percobaan ke-6 ditolak walau password benar');
+  assert.match(blocked.body.error, /Terlalu banyak percobaan login/);
+
+  // Username lain tidak boleh ikut terkunci oleh IP yang sama.
+  const other = await f.call('/api/auth/login', { method: 'POST', body: { username: 'lain', password: 'apa-saja' } });
+  assert.equal(other.status, 401, 'username lain tetap boleh mencoba');
+});

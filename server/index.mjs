@@ -141,15 +141,39 @@ export function createApp({ store, runner, token, origins }) {
   app.get('/api/health', route(async (req, res) => { await store.ping(); res.json({ ok: true, database: 'sqlite' }); }));
 
   // ─── Auth ────────────────────────────────────────────────────────────────
+  // Batas percobaan login per IP+username. In-memory supaya tidak menambah tabel;
+  // cukup untuk menahan tebak-tebakan password pada satu proses server.
+  const LOGIN_MAX_ATTEMPTS = 5;
+  const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+  const loginAttempts = new Map();
+  const loginKey = req => req.ip + '|' + String(req.body?.username ?? '').toLowerCase();
+  const loginRow = req => {
+    const key = loginKey(req);
+    const row = loginAttempts.get(key);
+    // Entri kedaluwarsa dibuang saat diakses: tidak perlu timer pembersih.
+    if (row && Date.now() - row.first > LOGIN_WINDOW_MS) { loginAttempts.delete(key); return null; }
+    return row ?? null;
+  };
+  const loginBlocked = req => (loginRow(req)?.count ?? 0) >= LOGIN_MAX_ATTEMPTS;
+  const loginFailed = req => {
+    const key = loginKey(req);
+    const row = loginRow(req);
+    if (row) row.count += 1; else loginAttempts.set(key, { count: 1, first: Date.now() });
+  };
+  const loginSucceeded = req => loginAttempts.delete(loginKey(req));
+
   app.post('/api/auth/login', route(async (req, res) => {
     if (!sameOrigin(req)) fail('Permintaan lintas origin ditolak', 403);
+    if (loginBlocked(req)) fail('Terlalu banyak percobaan login. Coba lagi 15 menit lagi.', 429);
     const username = text(req.body?.username, 'username', 64);
     const password = req.body?.password;
-    if (typeof password !== 'string' || !password) fail('Username atau password salah', 401);
+    if (typeof password !== 'string' || !password) { loginFailed(req); fail('Username atau password salah', 401); }
     const user = store.userByUsername(username);
     if (!user || !(await verifyPassword(password, user.password_hash).catch(() => false))) {
+      loginFailed(req);
       fail('Username atau password salah', 401);
     }
+    loginSucceeded(req);
     const rawToken = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8 jam
     store.createAuthSession({ id: sha256(rawToken), userId: user.id, expiresAt, ip: req.ip, userAgent: req.get('user-agent') });
