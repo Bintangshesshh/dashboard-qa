@@ -1248,8 +1248,8 @@ function Bantuan() {
             Buka form masukan
           </a>
           : <p className="pb-hint">
-            Belum ada tautan masukan. Hubungi admin dashboard dan minta isi
-            {" "}<code className="pb-mono">FEEDBACK_URL</code> di file .env server.
+            Belum ada tautan masukan. Hubungi admin dashboard untuk mengaktifkan
+            tombol masukan.
           </p>}
       </section>
     </>
