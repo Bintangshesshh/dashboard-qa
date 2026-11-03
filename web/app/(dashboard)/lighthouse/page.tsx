@@ -196,7 +196,7 @@ export default function LighthousePage() {
           {running && <button className="pb-btn" onClick={stop}>Stop</button>}
         </div>
       </div>
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
         <div className="pb-row" style={{ justifyContent: "space-between", gap: 16 }}>
@@ -267,7 +267,7 @@ export default function LighthousePage() {
           {results.length === 0 ? (
             <p className="pb-empty">Tidak ada hasil Lighthouse pada run ini.</p>
           ) : (
-            <table className="pb-table">
+            <div className="pb-table-wrap"><table className="pb-table">
               <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
               <tbody>
                 {results.map(r => (
@@ -293,7 +293,7 @@ export default function LighthousePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
           <div className="pb-row" style={{ marginTop: 12 }}>
             <Link className="pb-btn sm" href={`/reports/${run.session_id}`}>Detail sesi</Link>

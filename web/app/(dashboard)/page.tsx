@@ -143,7 +143,7 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
 
       <div className="pb-grid kpi" style={{ marginBottom: 16 }}>
         <article className="pb-card pb-kpi">

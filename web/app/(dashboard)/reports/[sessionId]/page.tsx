@@ -171,7 +171,7 @@ export default function SessionDetail() {
         </div>
       </div>
 
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
       {notice && <div className="pb-card pb-notice">{notice}</div>}
 
       <div className="pb-kpi-grid">
@@ -220,7 +220,7 @@ export default function SessionDetail() {
                       <span className="mono">{fmtDate(r.finalized_at ?? r.started_at ?? r.queued_at)} · exit {r.exit_code ?? "-"}</span>
                     </div>
                   </div>
-                  <span className={`pb-badge ${r.status}`}>{r.status}</span>
+                  <span className={`pb-badge ${r.status}`}>{runStatusLabel(r.status)}</span>
                   <div className="pb-runrow-act">
                     {!FINAL.includes(r.status) && (
                       <button className="pb-btn sm" onClick={() => cancelRun(r)} disabled={busy === r.id}>
@@ -326,23 +326,23 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
           {run.error ? ` Error: ${run.error}` : ""}
         </p>
       ) : isPw ? (
-        <table className="pb-table">
+        <div className="pb-table-wrap"><table className="pb-table">
           <thead><tr><th>TC</th><th>Judul</th><th>Status</th><th>Durasi</th><th>Retry</th><th>Error</th></tr></thead>
           <tbody>
             {(results as PlaywrightResult[]).map(r => (
               <tr key={r.id}>
                 <td className="mono">{r.tc_id ?? "-"}</td>
                 <td>{r.title}</td>
-                <td><span className={`pb-badge ${r.status}`}>{r.status}</span></td>
+                <td><span className={`pb-badge ${r.status}`}>{runStatusLabel(r.status)}</span></td>
                 <td className="mono">{fmtDur(r.duration_ms)}</td>
                 <td className="mono">{r.retry}</td>
                 <td className="mono" style={{ maxWidth: 380, overflowWrap: "anywhere" }}>{r.error ?? "-"}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       ) : (
-        <table className="pb-table">
+        <div className="pb-table-wrap"><table className="pb-table">
           <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
           <tbody>
             {(results as LighthouseResult[]).map(r => (
@@ -362,7 +362,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       <RunTerminal runId={run.id} />

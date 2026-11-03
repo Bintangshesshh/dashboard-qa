@@ -129,7 +129,7 @@ export default function LhConfigEditor({
         <span>Target project (dari URL project)</span>
         <input className="pb-input pb-mono" value={target} readOnly aria-label="Target utama"
           placeholder="belum diisi di project" />
-        {!target.trim() && <span className="pb-err">Isi URL project dulu sebelum menyimpan config.</span>}
+        {!target.trim() && <span className="pb-err" role="alert">Isi URL project dulu sebelum menyimpan config.</span>}
       </div>
 
       <div className="pb-field">
@@ -215,7 +215,7 @@ export default function LhConfigEditor({
         )}
       </div>
 
-      {err && <div className="pb-err">{err}</div>}
+      {err && <div className="pb-err" role="alert">{err}</div>}
 
       <details className="pb-lh-preview">
         <summary>Pratinjau config lhci</summary>

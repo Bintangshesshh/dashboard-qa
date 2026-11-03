@@ -24,6 +24,7 @@
   --accent: #2563eb;
   --accent-on: #ffffff;
   --accent-soft: rgba(37, 99, 235, .1);
+  --panel: #f8fafc;
 
   --ok: #15803d;
   --warn: #b45309;
@@ -40,7 +41,7 @@
 
   --shadow: rgba(15, 23, 42, .06) 0 4px 24px;
   --elev-raised: 0 8px 28px rgba(15, 23, 42, .08);
-  --focus-ring: 0 0 0 4px rgba(37, 99, 235, .28);
+  --focus-ring: 0 0 0 3px #2563eb;
 
   --font-display: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
   --font: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
@@ -70,6 +71,7 @@
   --accent: #60a5fa;
   --accent-on: #06111f;
   --accent-soft: rgba(96, 165, 250, .16);
+  --panel: #0e1424;
   --ok: #22c55e;
   --warn: #fbbf24;
   --bad: #fb7185;
@@ -78,7 +80,7 @@
   --bad-bg: rgba(251, 113, 133, .12);
   --shadow: 0 0 0 1px #293653;
   --elev-raised: 0 24px 72px rgba(0, 0, 0, .36);
-  --focus-ring: 0 0 0 4px rgba(96, 165, 250, .28);
+  --focus-ring: 0 0 0 3px #60a5fa;
 }
 
 * { box-sizing: border-box; }
@@ -682,12 +684,13 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-btn.primary:active { background: color-mix(in oklab, var(--accent), black 14%); }
 .pb-btn.danger { color: var(--bad); border-color: color-mix(in oklab, var(--bad) 35%, transparent); }
 .pb-btn.danger:hover { background: var(--bad-bg); color: var(--bad); }
-.pb-btn:disabled { opacity: .45; cursor: not-allowed; }
+.pb-btn:disabled { opacity: .6; cursor: not-allowed; }
 .pb-btn.sm { height: 30px; padding: 0 10px; font-size: 12px; border-radius: var(--radius-sm); }
 .pb-icon-btn { width: 30px; padding: 0; flex: none; }
 .pb-icon-btn svg { display: block; }
 
 /* Table */
+.pb-table-wrap { overflow-x: auto; }
 .pb-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .pb-table th {
   text-align: left;
@@ -1028,7 +1031,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-editor .cm-line { padding: 0 14px; }
 .pb-editor .cm-gutters {
   background: #0d1117;
-  color: #4b5563;
+  color: #8b949e;
   border-right: 1px solid #1f2937;
   padding-left: 6px;
 }
@@ -1410,7 +1413,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 }
 .pb-seg button:hover:not(:disabled) { color: var(--text); }
 .pb-seg button.active { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
-.pb-seg button:disabled { opacity: .5; cursor: not-allowed; }
+.pb-seg button:disabled { opacity: .6; cursor: not-allowed; }
 
 /* ---------- Feed run terakhir (Ringkasan) ---------- */
 .pb-run-feed { display: flex; flex-direction: column; }
@@ -1504,4 +1507,13 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   .pb-kv-row { gap: 2px; }
   .pb-group-label { gap: 6px; }
   .pb-cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
+}
+
+/* Perangkat sentuh: target minimal 44px (WCAG 2.5.5). Desktop tetap padat. */
+@media (pointer: coarse) {
+  .pb-btn { min-height: 44px; }
+  .pb-btn.sm { height: 44px; padding: 0 14px; font-size: 13px; }
+  .pb-icon-btn { width: 44px; height: 44px; }
+  .pb-seg button { height: 44px; }
+  .pb-select { min-height: 44px; }
 }

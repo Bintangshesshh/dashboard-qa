@@ -58,7 +58,7 @@ function LoginForm() {
                 <input className="pb-input" type="password" autoComplete="current-password" value={password}
                   onChange={e => setPassword(e.target.value)} required />
               </label>
-              {error && <div className="pb-err">{error}</div>}
+              {error && <div className="pb-err" role="alert">{error}</div>}
               <button className="pb-btn primary" disabled={busy}>{busy ? "Memeriksa…" : "Masuk"}</button>
             </div>
           </form>

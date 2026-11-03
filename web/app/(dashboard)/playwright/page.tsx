@@ -253,7 +253,7 @@ export default function PlaywrightPage() {
           {running && <button className="pb-btn" onClick={stop}>Stop</button>}
         </div>
       </div>
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
         <div className="pb-row" style={{ justifyContent: "space-between", gap: 16 }}>
@@ -309,7 +309,7 @@ export default function PlaywrightPage() {
           </div>
         </div>
         {conflict && (
-          <div className="pb-err" style={{ marginBottom: 8, display: "grid", gap: 8 }}>
+          <div className="pb-err" role="alert" style={{ marginBottom: 8, display: "grid", gap: 8 }}>
             <span>File spec di disk sudah berubah sejak sinkron terakhir (kemungkinan ada perubahan di git).</span>
             <span className="pb-row" style={{ gap: 8 }}>
               <button className="pb-btn sm danger" onClick={() => save(true)} disabled={saving}>Timpa file di disk</button>

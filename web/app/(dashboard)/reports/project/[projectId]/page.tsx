@@ -54,7 +54,7 @@ export default function ProjectReports() {
 
   return (
     <>
-      {projectError && <div className="pb-err">{projectError}</div>}
+      {projectError && <div className="pb-err" role="alert">{projectError}</div>}
 
       <div className="pb-head">
         <div>
@@ -66,7 +66,7 @@ export default function ProjectReports() {
         </button>
       </div>
 
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
       {notice && <div className="pb-card" style={{ marginBottom: 14 }}>{notice}</div>}
 
       <section className="pb-card">
@@ -74,7 +74,7 @@ export default function ProjectReports() {
         {sessions.length === 0 ? (
           <p className="pb-empty">Belum ada sesi untuk project ini. Jalankan quick check atau mulai dari Playwright/Lighthouse.</p>
         ) : (
-          <table className="pb-table">
+          <div className="pb-table-wrap"><table className="pb-table">
             <thead><tr><th>Sesi</th><th>Status</th><th>Run</th><th>Laporan</th><th>Dibuat</th><th /></tr></thead>
             <tbody>
               {sessions.map(s => (
@@ -115,7 +115,7 @@ export default function ProjectReports() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </section>
     </>

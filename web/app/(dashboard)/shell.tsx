@@ -63,7 +63,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // Crumb berlayer: tiap level bisa diklik, level terakhir tebal.
   const crumbs: { label: string; href: string }[] = [{ label: "Playbook", href: "/" }];
   if (seg[0] === "reports") {
-    crumbs.push({ label: "Reports", href: "/reports" });
+    crumbs.push({ label: "Laporan", href: "/reports" });
     if (seg[1] === "project" && seg[2]) {
       const p = projects.find(x => x.id === seg[2]);
       crumbs.push({ label: p?.name ?? "Project", href: `/reports/project/${seg[2]}` });

@@ -27,7 +27,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
 
       {projects.length === 0 ? (
         <p className="pb-empty">Belum ada project.</p>

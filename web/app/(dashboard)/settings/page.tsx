@@ -372,7 +372,7 @@ export default function SettingsPage() {
           <h1>Seting.</h1>
         </div>
       </div>
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
       {notice && <div className="pb-note flash">{notice}</div>}
 
       <div className="pb-tabs pb-set-tabbar" role="tablist" aria-label="Bagian seting">
@@ -610,7 +610,7 @@ export default function SettingsPage() {
               </div>
               {tokens.length === 0
                 ? <p className="pb-empty">Belum ada token.</p>
-                : <table className="pb-table">
+                : <div className="pb-table-wrap"><table className="pb-table">
                   <thead><tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th /></tr></thead>
                   <tbody>
                     {tokens.map(t => (
@@ -626,7 +626,7 @@ export default function SettingsPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>}
+                </table></div>}
             </section>
           </>
         )}
@@ -706,7 +706,7 @@ function LhciCard({ project, file, onSave, onAddFile }: {
         </p>
       )}
 
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
 
       <div className="pb-row pb-proj-foot">
         <span className="pb-set-status">
@@ -808,7 +808,7 @@ function PwCard({ project, file, onSave }: {
       ) : (
         <p className="pb-hint">Tambahkan spec Playwright dulu di daftar Spec Playwright.</p>
       )}
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
       <div className="pb-row pb-proj-foot">
         <span className="pb-spacer" />
         <button className="pb-btn sm primary" onClick={save} disabled={saving || !file}>
@@ -893,7 +893,7 @@ function NewProjectForm({ groups, onCreate }: {
             onChange={e => setLocal(e.target.value)} />
         </label>
       </div>
-      {error && <div className="pb-err">{error}</div>}
+      {error && <div className="pb-err" role="alert">{error}</div>}
       <div className="pb-row pb-proj-foot">
         <span className="pb-set-status">
           {name.trim() && base.trim() ? "" : "nama dan base_url wajib diisi"}
@@ -1109,7 +1109,7 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
             </button>
           </div>
         )}
-        {err && <div className="pb-err">{err}</div>}
+        {err && <div className="pb-err" role="alert">{err}</div>}
       </div>
     </div>
   );
