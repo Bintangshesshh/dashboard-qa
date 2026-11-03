@@ -381,7 +381,7 @@ button { cursor: pointer; }
 /* 4 KPI di overview, sesuai grid-4 prototype. */
 .pb-grid.kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; }
 .pb-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-.pb-grid.chart-2-1 { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); align-items: start; }
+.pb-grid.chart-2-1 { grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); align-items: stretch; }
 
 .pb-kpi {
   min-height: 132px;
@@ -504,11 +504,14 @@ button { cursor: pointer; }
 .pb-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--text); }
 .pb-swatch.bad { background: color-mix(in oklab, var(--bad) 70%, var(--card)); }
 
+/* Kartu grafik ikut setinggi kartu kanan; batang tumbuh mengisi sisa tinggi. */
+.pb-grid.chart-2-1 > .pb-card { display: flex; flex-direction: column; }
 .pb-bars {
   display: flex;
   align-items: flex-end;
   gap: 6px;
-  height: 150px;
+  flex: 1 1 auto;
+  min-height: 150px;
   margin-top: 4px;
 }
 .pb-bar-col {
@@ -552,7 +555,9 @@ button { cursor: pointer; }
 }
 
 /* Daftar kegagalan */
-.pb-fail-list { display: flex; flex-direction: column; }
+/* Daftar kegagalan terbaru, bukan seluruh riwayat: batasi tinggi supaya
+   kartu kanan tidak memanjang jauh melebihi grafik di kiri. */
+.pb-fail-list { display: flex; flex-direction: column; max-height: 344px; overflow-y: auto; }
 .pb-fail-item {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;

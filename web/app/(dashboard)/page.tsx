@@ -204,12 +204,12 @@ export default function OverviewPage() {
           ) : (
             <div className="pb-bars" role="img" aria-label="Grafik jumlah run per hari">
               {daily.map(d => {
-                const h = Math.max(4, (d.total / maxDay) * 128);
-                const hp = d.total ? (d.passed / d.total) * h : 0;
+                const h = Math.max(3, (d.total / maxDay) * 100);
+                const hp = d.total ? (d.passed / d.total) * 100 : 0;
                 return (
                   <div className="pb-bar-col" key={d.day} title={`${d.day}: ${d.total} run, ${d.passed} lulus`}>
-                    <span className="pb-bar" style={{ height: h }}>
-                      <span className="pb-bar-passed" style={{ height: hp }} />
+                    <span className="pb-bar" style={{ height: `${h}%` }}>
+                      <span className="pb-bar-passed" style={{ height: `${hp}%` }} />
                     </span>
                     <small>{d.day.slice(5)}</small>
                   </div>
