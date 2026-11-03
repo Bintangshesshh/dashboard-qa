@@ -80,13 +80,13 @@ const SECTIONS: SettingSection[] = [
   },
   {
     id: "sesi",
-    tab: "pw",
-    title: "Reuse sesi",
-    desc: "Sesi Playwright yang masih terbuka dipakai ulang supaya laporan tidak terpecah.",
+    tab: "report",
+    title: "Pembagian sesi",
+    desc: "Sesi baru dibuat setelah idle selama ini, jadi run berjauhan tidak menumpuk di satu laporan.",
     fields: [
       {
         key: "session_reuse_minutes", label: "Reuse sesi", suffix: "menit",
-        help: "Sesi yang masih terbuka dipakai ulang bila umurnya belum melewati ini.",
+        help: "Idle dihitung dari run terakhir. Lebih pendek = laporan lebih ringkas per sesi.",
         format: fmtMinutes,
       },
     ],
