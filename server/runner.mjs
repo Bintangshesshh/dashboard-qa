@@ -332,16 +332,17 @@ export class Runner extends EventEmitter {
     await stopTail();
     await this.ingestCapture(state, captureFile);
     await this.collectArtifacts(runId, dir, 'pw');
-    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw' });
+    const finishedAt = new Date().toISOString();
+    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw', finishedAt });
     // Status final di-patch paling akhir: UI berhenti polling begitu status final,
     // jadi artifact harus sudah masuk DB sebelum itu.
     await this.store.patchRun(runId, {
       status,
       error,
-      finished_at: new Date().toISOString(),
+      finished_at: finishedAt,
       exit_code: code,
       duration_ms: Date.now() - state.startTime,
-      finalized_at: new Date().toISOString(),
+      finalized_at: finishedAt,
     });
     this.store.markReportsStale(state.sessionId);
   }
@@ -382,15 +383,16 @@ export class Runner extends EventEmitter {
     // PRD Â§8.8: runWarnings LH juga tampil di terminal, bukan cuma kolom warnings.
     for (const line of warningLines(results)) await this.log(state, 'system', line);
     await this.collectArtifacts(runId, dir, 'lh');
-    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'lh' });
+    const finishedAt = new Date().toISOString();
+    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'lh', finishedAt });
     // Sama seperti Playwright: artifact dulu, status final terakhir.
     await this.store.patchRun(runId, {
       status,
       error,
-      finished_at: new Date().toISOString(),
+      finished_at: finishedAt,
       exit_code: code,
       duration_ms: Date.now() - state.startTime,
-      finalized_at: new Date().toISOString(),
+      finalized_at: finishedAt,
     });
     this.store.markReportsStale(state.sessionId);
   }
@@ -583,7 +585,7 @@ export class Runner extends EventEmitter {
   }
   // Snapshot run untuk pipeline laporan HTML (scripts/build-report-docs.mjs).
   // Hanya fakta run; kode spec sengaja tidak ikut supaya tidak bocor ke report statis.
-  async writeRunJson(state, dir, { status, exitCode, error, mode }) {
+  async writeRunJson(state, dir, { status, exitCode, error, mode, finishedAt }) {
     const run = this.store.getRun(state.runId);
     const data = {
       id: state.runId,
@@ -592,7 +594,7 @@ export class Runner extends EventEmitter {
       mode,
       status,
       startedAt: run?.started_at ?? null,
-      finishedAt: run?.finished_at ?? null,
+      finishedAt: finishedAt ?? run?.finished_at ?? null,
       durationMs: run?.duration_ms ?? null,
       exitCode: exitCode ?? null,
       error: error ?? null,
