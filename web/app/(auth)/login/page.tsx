@@ -50,12 +50,12 @@ function LoginForm() {
             <div className="pb-grid" style={{ gap: 13 }}>
               <label className="pb-field">
                 Username
-                <input className="pb-input" autoFocus autoComplete="username" value={username}
+                <input className="pb-input" name="username" autoFocus autoComplete="username" value={username}
                   onChange={e => setUsername(e.target.value)} required />
               </label>
               <label className="pb-field">
                 Password
-                <input className="pb-input" type="password" autoComplete="current-password" value={password}
+                <input className="pb-input" type="password" name="password" autoComplete="current-password" value={password}
                   onChange={e => setPassword(e.target.value)} required />
               </label>
               {error && <div className="pb-err" role="alert">{error}</div>}
