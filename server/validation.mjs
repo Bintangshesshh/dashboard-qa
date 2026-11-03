@@ -44,9 +44,13 @@ export function allowlist(value = '') {
 }
 export function target(value, origins) {
   let u;
-  try { u = new URL(value); } catch { fail('Invalid targetUrl'); }
-  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || !origins.includes(u.origin))
-    fail('Target origin is not allowlisted');
+  try { u = new URL(value); } catch { fail(`URL target tidak sah: ${value}`); }
+  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password)
+    fail(`URL target harus http(s) tanpa kredensial: ${value}`);
+  // Pesan menyebut origin mana yang ditolak dan siapa yang bisa memperbaikinya;
+  // "Target origin is not allowlisted" tidak memberi tahu user apa pun.
+  if (!origins.includes(u.origin))
+    fail(`Origin ${u.origin} belum diizinkan. Minta admin menambahkannya ke origins project (Pengaturan > Project) atau ke TARGET_ALLOWLIST server.`);
   return u.href;
 }
 // URL biasa (kolom projects.*): wajib http(s), tanpa kredensial. Origin tidak

@@ -764,7 +764,7 @@ test('A2: runner menolak target di luar allowlist-nya sendiri', async t => {
 
   const run = f.store.getRun('r-a2');
   assert.equal(run.status, 'failed');
-  assert.match(run.error, /not allowlisted/);
+  assert.match(run.error, /belum diizinkan/);
   assert.equal(existsSync(join(runsDir, 'r-a2')), false, 'tidak ada folder/spawn untuk target terlarang');
 });
 
@@ -788,7 +788,7 @@ test('A3: target divalidasi terhadap projects.origins, bukan cuma TARGET_ALLOWLI
   f.store.db.prepare("UPDATE projects SET staging_url='https://evil.test/' WHERE id='p2'").run();
   r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p2', env: 'staging' } });
   assert.equal(r.status, 400);
-  assert.match(r.body.error, /not allowlisted/);
+  assert.match(r.body.error, /belum diizinkan/);
 
   // skema aneh & origins bukan array ditolak
   r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { local_url: 'javascript:alert(1)' } });
