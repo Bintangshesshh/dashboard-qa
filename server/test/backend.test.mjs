@@ -1649,3 +1649,22 @@ test('S03: config Playwright per project divalidasi dan disimpan', async () => {
   assert.throws(() => checkPwConfig({ timeout: 10 }), /timeout harus bilangan bulat 10000-900000/);
 });
 
+test('B04: statsByProject setara stats per project', async () => {
+  const { Store } = await import('../store.mjs');
+  const store = new Store(':memory:');
+  await store.init();
+  try {
+    const projects = store.listProjects();
+    const from = new Date(Date.now() - 365 * 86400_000).toISOString();
+    const all = store.statsByProject({ from });
+    for (const p of projects) {
+      const one = store.stats({ projectId: p.id, from });
+      const row = all[p.id] ?? { sessions: 0, runs: 0, failedRuns: 0, passRate: null };
+      assert.equal(row.sessions, one.sessions, p.id + ' sessions');
+      assert.equal(row.runs, one.runs, p.id + ' runs');
+      assert.equal(row.failedRuns, one.failedRuns, p.id + ' failedRuns');
+      assert.equal(row.passRate, one.passRate, p.id + ' passRate');
+    }
+  } finally { store.close?.(); }
+});
+

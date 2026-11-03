@@ -150,7 +150,7 @@ export default function OverviewPage() {
           <div className="pb-kpi-label">Total sesi</div>
           <div>
             <div className="pb-kpi-val">{stats?.sessions ?? "-"}</div>
-            <div className="pb-kpi-foot"><span className="dot" /><strong>{projects.length} project</strong> · {stats?.runs ?? 0} run</div>
+            <div className="pb-kpi-foot"><span className="dot" /><strong>{projectId ? 1 : projects.length} project</strong> · {stats?.runs ?? 0} run</div>
           </div>
         </article>
 
@@ -254,7 +254,7 @@ export default function OverviewPage() {
 
       <div className="pb-section-title">
         <h2>Project</h2>
-        <span className="eyebrow">{projects.length} aktif</span>
+        <span className="eyebrow">{projectId ? 1 : projects.length} aktif</span>
       </div>
       {projects.length === 0 ? (
         <p className="pb-empty">Belum ada project.</p>

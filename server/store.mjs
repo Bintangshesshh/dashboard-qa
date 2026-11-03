@@ -539,6 +539,44 @@ export class Store {
     };
   }
 
+  // Satu putaran query untuk semua project: Overview sebelumnya memanggil
+  // /api/stats sekali per project (10 project = 55 query tiap 5 detik).
+  statsByProject({ from } = {}) {
+    const w = from ? 'WHERE r.queued_at>=?' : '';
+    const vals = from ? [from] : [];
+    const rows = new Map();
+    const row = id => {
+      let r = rows.get(id);
+      if (!r) { r = { projectId: id, sessions: 0, runs: 0, failedRuns: 0, activeRuns: 0, avgDurationMs: null, tcPassed: 0, tcFailed: 0, passRate: null }; rows.set(id, r); }
+      return r;
+    };
+    for (const r of this.db.prepare(`SELECT s.project_id AS id, count(*) AS n FROM sessions s
+      ${from ? 'WHERE s.created_at>=?' : ''} GROUP BY s.project_id`).all(...vals)) row(r.id).sessions = r.n;
+    for (const r of this.db.prepare(`SELECT s.project_id AS id, count(*) AS n, avg(r.duration_ms) AS avg_ms,
+      sum(CASE WHEN r.status IN ('failed','cancelled','interrupted') THEN 1 ELSE 0 END) AS failed
+      FROM runs r JOIN sessions s ON s.id = r.session_id WHERE r.finalized_at IS NOT NULL
+      ${from ? 'AND r.queued_at>=?' : ''} GROUP BY s.project_id`).all(...vals)) {
+      const t = row(r.id);
+      t.runs = r.n; t.failedRuns = r.failed ?? 0;
+      t.avgDurationMs = r.avg_ms == null ? null : Math.round(r.avg_ms);
+    }
+    for (const r of this.db.prepare(`SELECT s.project_id AS id,
+      sum(CASE WHEN pr.status IN ('passed','flaky') THEN 1 ELSE 0 END) AS passed,
+      sum(CASE WHEN pr.status='failed' THEN 1 ELSE 0 END) AS failed
+      FROM playwright_results pr JOIN runs r ON r.id=pr.run_id JOIN sessions s ON s.id=r.session_id
+      WHERE r.tool='pw' AND r.finalized_at IS NOT NULL ${from ? 'AND r.queued_at>=?' : ''}
+      GROUP BY s.project_id`).all(...vals)) {
+      const t = row(r.id);
+      t.tcPassed = r.passed ?? 0; t.tcFailed = r.failed ?? 0;
+      const total = t.tcPassed + t.tcFailed;
+      t.passRate = total ? t.tcPassed / total : null;
+    }
+    for (const r of this.db.prepare(`SELECT s.project_id AS id, count(*) AS n FROM runs r
+      JOIN sessions s ON s.id=r.session_id WHERE r.status IN ('queued','running','uploading')
+      ${from ? 'AND r.queued_at>=?' : ''} GROUP BY s.project_id`).all(...vals)) row(r.id).activeRuns = r.n;
+    return Object.fromEntries(rows);
+  }
+
   // PRD 10.2: "Kegagalan terbaru → klik ke /reports/<sessionId>".
   listRecentFailures({ projectId, from, limit = 5 } = {}) {
     let sql = `SELECT r.id, r.session_id, r.tool, r.status, r.error, r.finished_at,

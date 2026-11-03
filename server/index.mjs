@@ -516,6 +516,11 @@ export function createApp({ store, runner, token, origins }) {
     });
   }));
 
+  // Ringkasan semua project dalam satu request (pengganti N+1 di Overview).
+  app.get('/api/stats/all', requireAuth, route(async (req, res) => {
+    res.json(store.statsByProject({ from: rangeStart(req.query.range) }));
+  }));
+
   app.get('/api/sessions', requireAuth, route(async (req, res) => {
     const { project, status, from, to } = req.query;
     res.json(store.listSessions({

@@ -206,6 +206,10 @@ export const api = {
   revokeCliToken: (id: string) =>
     request<null>(`/api/auth/cli-token/${id}`, { method: "DELETE" }),
 
+  // Ringkasan per project sekaligus: 1 request, bukan 1 per kartu.
+  statsAll: (q: { range?: number } = {}) =>
+    request<Record<string, Stats>>("/api/stats/all" + (q.range ? `?range=${q.range}` : "")),
+
   audit: (limit = 50) => request<AuditRow[]>(`/api/audit?limit=${limit}`),
   help: () => request<Help>("/api/help"),
   // Streaming teks apa adanya: npm install bisa lama, jadi tiap baris langsung tampil.

@@ -12,19 +12,9 @@ export default function ReportsPage() {
 
   useEffect(() => {
     // all=true: report project arsip harus tetap bisa dibuka.
-    api.projects({ all: true })
-      .then(async ps => {
-        setProjects(ps);
-        // Satu project gagal stats tidak boleh mengosongkan kartu lainnya.
-        const rows = await Promise.allSettled(
-          ps.map(p => api.stats({ project: p.id }).then(s => [p.id, s] as const)),
-        );
-        setStats(Object.fromEntries(
-          rows.filter(r => r.status === 'fulfilled').map(r => r.value),
-        ));
-        const gagal = rows.filter(r => r.status === 'rejected').length;
-        if (gagal) setError('stats ' + gagal + ' project gagal dimuat');
-      })
+    // statsAll: satu request untuk semua kartu, bukan satu per project.
+    Promise.all([api.projects({ all: true }), api.statsAll()])
+      .then(([ps, st]) => { setProjects(ps); setStats(st); })
       .catch(e => setError(e.message));
   }, []);
 
