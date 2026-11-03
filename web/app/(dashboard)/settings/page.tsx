@@ -1129,8 +1129,9 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Bagaimana token CLI dipakai?",
-    a: "Token hanya untuk playbook CLI di laptop, bukan login dashboard. Buat lewat "
-      + "playbook login, lalu cabut dari tab ini kalau perangkatnya hilang.",
+    a: "Token hanya untuk playbook CLI di laptop, bukan login dashboard. Setiap user "
+      + "punya tokennya sendiri, dibuat otomatis saat playbook login. Cabut dari tabel "
+      + "Token CLI di bawah kalau perangkat hilang; password tidak perlu diganti.",
   },
   {
     q: "Kenapa config Lighthouse ditolak?",
@@ -1163,8 +1164,8 @@ function Bantuan() {
           <div>
             <h2>Versi & update</h2>
             <div className="pb-card-sub">
-              Update tool dijalankan manual dari terminal. Dashboard tidak pernah menjalankan
-              npm sendiri.
+              Tombol Perbarui tools menjalankan npm di mesin server. Hanya admin, hanya saat
+              diklik, dan output-nya tampil di bawah.
             </div>
           </div>
         </div>
@@ -1178,6 +1179,8 @@ function Bantuan() {
             ))}
           </div>
         ) : <p className="pb-empty sm">Memuat versi…</p>}
+
+        <UpdateTools />
 
         {help && (
           <div className="pb-lh-field pb-proj-foot">
@@ -1223,6 +1226,36 @@ function Bantuan() {
           </p>}
       </section>
     </>
+  );
+}
+
+// Tombol update tool (PRD S05): admin-only di server, sekali klik, output dialirkan.
+// Tidak pernah jalan otomatis - versi tool ikut menentukan hasil run.
+function UpdateTools() {
+  const [out, setOut] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    if (!confirm("Perbarui Playwright dan Lighthouse sekarang? Run yang sedang jalan sebaiknya ditunggu.")) return;
+    setBusy(true); setOut("");
+    try { await api.updateTools(t => setOut(prev => prev + t)); }
+    catch (e) { setOut(prev => prev + "\n" + (e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="pb-lh-field pb-proj-foot">
+      <div className="pb-row" style={{ gap: 8, alignItems: "center" }}>
+        <button className="pb-btn sm primary" onClick={run} disabled={busy}>
+          {busy ? "Memperbarui…" : "Perbarui tools"}
+        </button>
+        <span className="pb-set-help">
+          @playwright/test dan @lhci/cli ke versi terbaru, lalu npx playwright install.
+          Restart server setelah selesai.
+        </span>
+      </div>
+      {out && <pre className="pb-mono pb-tools-out">{out}</pre>}
+    </div>
   );
 }
 

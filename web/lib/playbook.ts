@@ -208,6 +208,18 @@ export const api = {
 
   audit: (limit = 50) => request<AuditRow[]>(`/api/audit?limit=${limit}`),
   help: () => request<Help>("/api/help"),
+  // Streaming teks apa adanya: npm install bisa lama, jadi tiap baris langsung tampil.
+  updateTools: async (onChunk: (text: string) => void) => {
+    const res = await fetch("/api/tools/update", { method: "POST", credentials: "include" });
+    if (!res.ok || !res.body) throw new ApiError(`Update gagal (${res.status})`, res.status);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      onChunk(dec.decode(value, { stream: true }));
+    }
+  },
 
   // all: ikutkan spec nonaktif; hanya dipakai halaman seting (admin).
   testFiles: (q: { project?: string; tool?: string; all?: boolean } = {}) => {

@@ -3,6 +3,7 @@ import { WebSocketServer } from 'ws';
 import { randomUUID, createHash, scrypt as _scrypt, randomBytes, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { realpath, lstat, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
@@ -905,6 +906,37 @@ export function createApp({ store, runner, token, origins }) {
     return helpInfo;
   };
   app.get('/api/help', requireAuth, route(async (req, res) => { res.json(await readHelpInfo()); }));
+  // Update tool hanya lewat klik admin: dua perintah ini mengubah node_modules,
+  // jadi tidak pernah dijalankan otomatis. Output dialirkan apa adanya ke UI.
+  const UPDATE_COMMANDS = [
+    ['npm', ['install', '-D', '@playwright/test@latest', '@lhci/cli@latest']],
+    ['npx', ['playwright', 'install']],
+  ];
+  app.post('/api/tools/update', requireAuth, requireAdmin, route(async (req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.flushHeaders?.();
+    store.audit({ userId: req.user.id, action: 'update_tools', entity: 'tools' });
+    const before = await readHelpInfo();
+    res.write(`Versi terpasang sekarang: Playwright ${before.playwright ?? '?'}, Lighthouse ${before.lighthouse ?? '?'}\n`);
+    for (const [cmd, args] of UPDATE_COMMANDS) {
+      res.write(`\n$ ${cmd} ${args.join(' ')}\n`);
+      const done = await new Promise(resolve => {
+        // shell di Windows: npm/npx adalah .cmd, spawn tanpa shell akan ENOENT.
+        const child = spawn(cmd, args, { cwd: root, shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
+        child.stdout.on('data', b => res.write(b));
+        child.stderr.on('data', b => res.write(b));
+        child.on('close', resolve);
+        child.on('error', e => { res.write(String(e.message) + '\n'); resolve(1); });
+      });
+      if (done !== 0) { res.write(`\nGagal (exit ${done}). Versi terpasang tidak diubah.\n`); return res.end(); }
+    }
+    helpInfo = null;
+    const after = await readHelpInfo();
+    res.write(`\nSelesai. Playwright ${after.playwright ?? '?'}, Lighthouse ${after.lighthouse ?? '?'}\n`);
+    res.write('Restart server dashboard supaya runner memakai versi baru.\n');
+    res.end();
+  }));
   app.get('/api/settings', requireAuth, requireAdmin, route(async (req, res) => {
     res.json(store.getSettings());
   }));
