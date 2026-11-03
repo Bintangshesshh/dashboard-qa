@@ -583,7 +583,7 @@ export function createApp({ store, runner, token, origins }) {
     if (!session) {
       const sessionId = randomUUID();
       const label = `Quick check ${project.name} ${wibStamp()}`;
-      store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
+      store.tx(() => store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id }));
       session = { id: sessionId };
     }
 
@@ -598,10 +598,14 @@ export function createApp({ store, runner, token, origins }) {
 
     const pwRun = randomUUID();
     const lhRun = randomUUID();
-    store.createRun({ id: pwRun, sessionId: session.id, testFileId: pwTest?.id ?? null, tool: 'pw' });
-    store.createRun({ id: lhRun, sessionId: session.id, testFileId: lhTest?.id ?? null, tool: 'lh' });
-    traceProduction(pwRun, e, req.user);
-    traceProduction(lhRun, e, req.user);
+    // Dua run dibuat bersama: kalau yang kedua gagal, yang pertama tidak boleh
+    // tertinggal sebagai run yatim di sesi ini.
+    store.tx(() => {
+      store.createRun({ id: pwRun, sessionId: session.id, testFileId: pwTest?.id ?? null, tool: 'pw' });
+      store.createRun({ id: lhRun, sessionId: session.id, testFileId: lhTest?.id ?? null, tool: 'lh' });
+      traceProduction(pwRun, e, req.user);
+      traceProduction(lhRun, e, req.user);
+    });
 
     const pwFile = pwTest ?? {
       id: null, tool: 'pw', path: 'quick.spec.ts',
@@ -637,8 +641,10 @@ export function createApp({ store, runner, token, origins }) {
     // max queue
     if (store.countActiveRuns() >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
     const runId = randomUUID();
-    store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
-    traceProduction(runId, session.env, req.user);
+    store.tx(() => {
+      store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
+      traceProduction(runId, session.env, req.user);
+    });
     Promise.resolve(runner.start(runId, tf, session.id, session.target_url))
       .catch(err => {
         console.error('[run]', err.message);
@@ -682,14 +688,17 @@ export function createApp({ store, runner, token, origins }) {
       } else {
         sessionId = randomUUID();
         const label = `${project.name} ${wibStamp()}`;
-        store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id });
+        store.tx(() => store.createSession({ id: sessionId, projectId: project.id, env: e, targetUrl, label, createdBy: req.user.id }));
       }
     }
 
     const runId = randomUUID();
-    store.createRun({ id: runId, sessionId, testFileId: tf.id, tool: tf.tool });
-    store.audit({ userId: req.user.id, action: 'run_local', entity: 'runs', entityId: runId, detail: JSON.stringify({ testFile: tf.path, env: e }) });
-    traceProduction(runId, e, req.user);
+    // Sesi baru, run, jejak production, dan audit harus jadi satu kesatuan.
+    store.tx(() => {
+      store.createRun({ id: runId, sessionId, testFileId: tf.id, tool: tf.tool });
+      store.audit({ userId: req.user.id, action: 'run_local', entity: 'runs', entityId: runId, detail: JSON.stringify({ testFile: tf.path, env: e }) });
+      traceProduction(runId, e, req.user);
+    });
     res.status(201).json({ runId, sessionId, code: tf.code, targetUrl, tool: tf.tool, config: tf.config });
   }));
 

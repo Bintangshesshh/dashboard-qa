@@ -303,6 +303,17 @@ export class Store {
     }
     return out;
   }
+  // Beberapa mutasi menyentuh lebih dari satu tabel (sesi + run + audit).
+  // Bila satu langkah gagal, semuanya harus dibatalkan supaya tidak ada run
+  // tanpa sesi atau audit tanpa barisnya.
+  tx(fn) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const out = fn();
+      this.db.exec('COMMIT');
+      return out;
+    } catch (e) { this.db.exec('ROLLBACK'); throw e; }
+  }
   deleteSession(id) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
