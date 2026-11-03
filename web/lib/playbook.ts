@@ -22,7 +22,11 @@ export type Run = {
   console?: { seq: number; at: string; type: string; text: string; location: string | null }[];
   network?: { seq: number; at: string; url: string; status: number | null; method: string | null; failure: string | null; ms: number | null }[];
 };
-export type RunRow = Run & { session_label: string; env: string; project_name: string; has_html: number };
+export type RunRow = Run & {
+  session_label: string; env: string; project_name: string; has_html: number;
+  // Username pemilik sesi; 'sistem' kalau pembuatnya sudah dihapus.
+  run_by: string;
+};
 // Label bahasa Indonesia; istilah teknis (Playwright, Lighthouse, console) tetap Inggris.
 const RUN_STATUS_LABEL: Record<Run["status"], string> = {
   queued: "Antre",

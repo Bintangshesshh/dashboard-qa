@@ -47,6 +47,9 @@ export function RunClock({ run }: { run: RunClockInput }) {
   const value = ms == null ? "--:--" : clock(ms);
   // Pisahkan digit supaya detik bisa diberi aksen seperti jarum stopwatch.
   const parts = value.split(":");
+  // Garis progres mengikuti detik dalam menit berjalan, bukan total durasi:
+  // run panjang tidak pernah tampak "berhenti" di ujung kanan.
+  const secPct = ms == null ? 0 : (((ms / 1000) % 60) / 60) * 100;
 
   return (
     <span
@@ -55,7 +58,6 @@ export function RunClock({ run }: { run: RunClockInput }) {
       aria-label={live ? `Durasi berjalan ${value}` : `Durasi ${value}`}
       title={live ? "sedang berjalan" : "durasi eksekusi"}
     >
-      <span className="pb-clock-led" aria-hidden="true" />
       <span className="pb-clock-digits" aria-hidden="true">
         {parts.map((part, i) => (
           <span key={i} className="pb-clock-part">
@@ -63,6 +65,9 @@ export function RunClock({ run }: { run: RunClockInput }) {
             <span className={i === parts.length - 1 ? "pb-clock-sec" : undefined}>{part}</span>
           </span>
         ))}
+      </span>
+      <span className="pb-clock-rule" aria-hidden="true">
+        <span style={{ width: `${secPct}%` }} />
       </span>
     </span>
   );

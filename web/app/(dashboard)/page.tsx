@@ -288,7 +288,12 @@ export default function OverviewPage() {
                   <span className="pb-run-title">
                     {r.project_name} · {r.tool === "pw" ? "Playwright" : "Lighthouse"}
                   </span>
-                  <span className="pb-run-meta">{r.session_label} · {r.env} · {fmtDate(r.queued_at)}</span>
+                  <span className="pb-run-meta">
+                    <span className="pb-run-by">{r.run_by}</span>
+                    <span>{r.session_label}</span>
+                    <span>{r.env}</span>
+                    <span>{fmtDate(r.queued_at)}</span>
+                  </span>
                   {r.error && <span className="pb-run-err">{r.error}</span>}
                 </span>
                 <span className="pb-run-dur">{r.duration_ms ? fmtDur(r.duration_ms) : "—"}</span>

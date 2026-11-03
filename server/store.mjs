@@ -224,9 +224,13 @@ export class Store {
   }
   listRunsBySession(sessionId) { return this.db.prepare('SELECT * FROM runs WHERE session_id=? ORDER BY queued_at').all(sessionId); }
   listRuns({ projectId, tool, limit = 10 } = {}) {
+    // Username pemilik sesi ikut dipilih: feed "Run terakhir" menampilkan siapa
+    // yang menjalankan, bukan cuma project dan waktu.
     let sql = `SELECT r.*, s.label AS session_label, s.env AS env, p.name AS project_name,
+      COALESCE(u.username, 'sistem') AS run_by,
       EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.kind=(CASE r.tool WHEN 'lh' THEN 'lh-html' ELSE 'pw-html' END)) AS has_html
-      FROM runs r JOIN sessions s ON s.id=r.session_id JOIN projects p ON p.id=s.project_id WHERE 1=1`;
+      FROM runs r JOIN sessions s ON s.id=r.session_id JOIN projects p ON p.id=s.project_id
+      LEFT JOIN users u ON u.id=s.created_by WHERE 1=1`;
     const vals = [];
     if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
     if (tool) { sql += ' AND r.tool=?'; vals.push(tool); }

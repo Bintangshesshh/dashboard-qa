@@ -809,7 +809,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 
 /* Badge */
 .pb-badge {
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   height: 22px; padding: 0 8px; border-radius: 999px;
   font-family: var(--mono);
   font-size: 10.5px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase;
@@ -856,56 +856,49 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .pb-spacer { flex: 1; }
 .pb-mono { font-family: var(--mono); font-size: 12px; }
-/* Stopwatch run: readout instrumen kecil, bukan badge pil. */
+/* Stopwatch run: readout datar. Digit mono tabular + garis progres detik;
+   tanpa kotak gradient, LED, atau bayangan - itu yang bikin terasa template. */
 .pb-clock {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 7px;
+  gap: 8px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1;
-  letter-spacing: .02em;
+  letter-spacing: .06em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--fg-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: linear-gradient(180deg, var(--card), var(--card-hi));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35);
-}
-:root[data-theme="dark"] .pb-clock {
-  border-color: #24304a;
-  background: linear-gradient(180deg, #10182b, #0b1020);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
-}
-/* Penanda live: garis vertikal tipis, bukan LED bulat yang generik. */
-.pb-clock-led {
-  width: 2px;
-  height: 10px;
-  flex: none;
-  border-radius: 1px;
-  background: var(--border-soft);
 }
 .pb-clock-digits { display: inline-flex; align-items: baseline; }
 .pb-clock-part { display: inline-flex; align-items: baseline; }
-.pb-clock-colon { margin: 0 -2px; color: var(--meta); opacity: .55; font-weight: 400; }
-.pb-clock.live {
-  color: var(--text);
-  border-color: color-mix(in oklab, var(--accent) 38%, var(--border));
-  background: linear-gradient(180deg,
-    color-mix(in oklab, var(--accent) 7%, var(--card-hi)), var(--card-hi));
+.pb-clock-colon {
+  margin: 0 1px;
+  color: var(--meta);
+  opacity: .5;
+  font-weight: 400;
 }
-:root[data-theme="dark"] .pb-clock.live {
-  border-color: color-mix(in oklab, var(--accent) 42%, #24304a);
-  background: linear-gradient(180deg,
-    color-mix(in oklab, var(--accent) 10%, #10182b), #0b1020);
+/* Garis 60 detik: satu putaran penuh = satu menit berjalan. */
+.pb-clock-rule {
+  position: relative;
+  width: 34px; height: 2px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--border);
 }
-.pb-clock.live .pb-clock-led { background: var(--accent); }
-/* Detik jadi aksen bergerak, meniru jarum pada referensi dial. */
+.pb-clock-rule > span {
+  display: block; height: 100%;
+  background: var(--border-soft);
+  transition: width 1s linear;
+}
+.pb-clock.live { color: var(--text); }
 .pb-clock.live .pb-clock-sec { color: var(--accent); }
-.pb-clock.live .pb-clock-colon { color: var(--accent); opacity: .5; }
+.pb-clock.live .pb-clock-rule > span { background: var(--accent); }
+/* Tanpa animasi untuk pengguna yang minta gerak dikurangi. */
+@media (prefers-reduced-motion: reduce) {
+  .pb-clock-rule > span { transition: none; }
+}
 /* Status stream di samping stopwatch, tanpa karakter ● mentah. */
 .pb-live-state {
   display: inline-flex;
@@ -1366,7 +1359,7 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-run-feed { display: flex; flex-direction: column; }
 .pb-run-row {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) auto;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px 14px;
   padding: 9px 8px;
@@ -1376,15 +1369,26 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
   transition: background var(--motion-fast) var(--ease-standard);
 }
 .pb-run-row:first-child { border-top: 0; }
+/* Kolom status lebar tetap supaya label panjang (Dibatalkan, Terputus) tetap center. */
+.pb-run-row > .pb-badge { justify-self: center; }
 .pb-run-row:hover { background: var(--card-hi); }
 .pb-run-what { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .pb-run-title { font-size: 13px; font-weight: 500; color: var(--text); }
-.pb-run-meta { font-family: var(--mono); font-size: 10.5px; color: var(--meta); }
+/* Pemisah titik digambar CSS, bukan teks, supaya tidak meleset dari baseline. */
+.pb-run-meta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--meta);
+}
+.pb-run-meta > span + span::before {
+  content: "\00b7"; opacity: .55;
+}
 .pb-run-err {
   font-size: 11.5px; color: var(--bad);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .pb-run-dur { font-family: var(--mono); font-size: 10.5px; color: var(--meta); white-space: nowrap; }
+/* Siapa yang menjalankan: pemilik sesi, bukan project. */
+.pb-run-by { font-weight: 500; color: var(--muted); }
 
 .pb-badge.cancelled, .pb-badge.interrupted { color: var(--bad); background: var(--bad-bg); }
 .pb-badge.uploading { color: var(--warn); background: var(--warn-bg); }
