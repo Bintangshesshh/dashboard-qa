@@ -9,7 +9,7 @@ import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfi
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, groupProjects, pct, runStatusLabel,
+  api, artifactUrl, fmtTime, groupProjects, pct, runStatusLabel,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
 
@@ -35,6 +35,8 @@ export default function LighthousePage() {
   // Draft config berupa string JSON apa adanya; editor bersama yang mengubahnya.
   const [config, setConfig] = useState("");
   const [saving, setSaving] = useState(false);
+  // Jam simpan terakhir supaya status tidak cuma kata "Tersimpan".
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   // Run + terminal, dipisah per project seperti halaman Playwright.
@@ -135,6 +137,7 @@ const productionOk = env !== "production"
     try {
       const updated = await api.patchTestFile(selected.id, { config });
       setFiles([updated]);
+      setSavedAt(new Date().toISOString());
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
 
@@ -148,7 +151,8 @@ const productionOk = env !== "production"
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, dirty, selected?.id]);
 
-  const saveState = saving ? "Menyimpan…" : dirty ? "Belum disimpan" : selected ? "Tersimpan" : "";
+  const saveState = saving ? "Menyimpan…" : dirty ? "Belum disimpan"
+    : selected ? (savedAt ? `Tersimpan ${fmtTime(savedAt)}` : "Tersimpan") : "";
 
   const start = async () => {
     setStarting(true); setError("");

@@ -34,6 +34,8 @@ export default function PlaywrightPage() {
   // Baseline autosave: Run memakai kode tersimpan, bukan yang sedang diketik.
   const [savedCode, setSavedCode] = useState("");
   const [saving, setSaving] = useState(false);
+  // Jam simpan terakhir: badge "Tersimpan" tanpa waktu tidak menjawab apa pun.
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
   // Konflik = file di disk berubah sejak sinkron terakhir; butuh keputusan user.
   const [conflict, setConflict] = useState(false);
@@ -164,6 +166,7 @@ const productionOk = env !== "production"
       // autosave memicu simpan berulang.
       setDraft(updated.code);
       setSavedCode(updated.code);
+      setSavedAt(new Date().toISOString());
       setConflict(false);
     } catch (e) {
       const err = e as { status?: number; message: string };
@@ -182,7 +185,9 @@ const productionOk = env !== "production"
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, selected, savedCode, conflict]);
 
-  const saveState = saving ? "Menyimpan…" : !selected ? "" : dirty ? "Belum disimpan" : "Tersimpan";
+  const saveState = saving ? "Menyimpan…" : !selected ? ""
+    : dirty ? "Belum disimpan"
+    : savedAt ? `Tersimpan ${fmtTime(savedAt)}` : "Tersimpan";
 
   // Arah sebaliknya: ambil versi disk (mis. habis pull dari git).
   const reload = async () => {
@@ -193,6 +198,7 @@ const productionOk = env !== "production"
       setFiles([updated]);
       setDraft(updated.code);
       setSavedCode(updated.code);
+      setSavedAt(new Date().toISOString());
       setConflict(false);
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
