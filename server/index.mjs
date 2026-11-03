@@ -258,8 +258,18 @@ export function createApp({ store, runner, token, origins }) {
     if (open || busy) fail('Masih ada sesi terbuka atau run berjalan. Tutup sesi dulu.', 409);
   };
   // `all=1` dipakai report, breadcrumb, dan Seting: project arsip tetap terbaca.
-  app.get('/api/projects', requireAuth, route(async (req, res) =>
-    res.json(store.listProjects({ includeArchived: req.query.all === '1' }))));
+  // Nama project arsip perlu untuk semua user (kartu report + breadcrumb), tapi
+  // URL staging/local dan daftar origin hanya milik halaman Seting (admin).
+  const publicProject = p => ({
+    id: p.id, slug: p.slug, name: p.name, group_id: p.group_id, group_name: p.group_name,
+    base_url: p.base_url, active: p.active, allow_production: p.allow_production,
+    created_at: p.created_at, lastRunAt: p.lastRunAt,
+  });
+  app.get('/api/projects', requireAuth, route(async (req, res) => {
+    const all = req.query.all === '1';
+    const rows = store.listProjects({ includeArchived: all });
+    res.json(req.user.role === 'admin' ? rows : rows.map(publicProject));
+  }));
 
   // groupId opsional; null/absen = tanpa grup. Nama unik global (case-insensitive).
   const groupIdValue = value => {
