@@ -20,7 +20,7 @@ export default function OverviewPage() {
   // Feed "Run terakhir": semua status, termasuk yang sedang berjalan.
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
-  // Kartu "Seting aktif" hanya untuk admin; viewer tidak boleh lihat nilainya.
+  // Kartu "Pengaturan aktif" hanya untuk admin; viewer tidak boleh lihat nilainya.
   const [settings, setSettings] = useState<Settings | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -278,12 +278,12 @@ export default function OverviewPage() {
         <section className="pb-card pb-set-summary" style={{ marginTop: 16 }}>
           <div className="pb-card-head">
             <div>
-              <h2>Seting aktif</h2>
+              <h2>Pengaturan aktif</h2>
               <div className="pb-card-sub">
                 Nilai yang sedang dipakai runner, dibaca dari tabel settings.
               </div>
             </div>
-            <Link className="pb-link-muted" href="/settings">Buka Seting</Link>
+            <Link className="pb-link-muted" href="/settings">Buka Pengaturan</Link>
           </div>
           {settings ? (
             <div className="pb-kv">
@@ -296,7 +296,7 @@ export default function OverviewPage() {
               <div className="pb-kv-row"><span>Range default</span>
                 <code className="pb-mono">{settings.range_default_days} hari</code></div>
             </div>
-          ) : <p className="pb-empty sm">Memuat seting…</p>}
+          ) : <p className="pb-empty sm">Memuat pengaturan…</p>}
         </section>
       )}
 

@@ -260,9 +260,9 @@ export function createApp({ store, runner, token, origins }) {
       WHERE s.project_id=? AND r.status IN ('queued','running','uploading')`).get(projectId).n;
     if (open || busy) fail('Masih ada sesi terbuka atau run berjalan. Tutup sesi dulu.', 409);
   };
-  // `all=1` dipakai report, breadcrumb, dan Seting: project arsip tetap terbaca.
+  // `all=1` dipakai report, breadcrumb, dan Pengaturan: project arsip tetap terbaca.
   // Nama project arsip perlu untuk semua user (kartu report + breadcrumb), tapi
-  // URL staging/local dan daftar origin hanya milik halaman Seting (admin).
+  // URL staging/local dan daftar origin hanya milik halaman Pengaturan (admin).
   const publicProject = p => ({
     id: p.id, slug: p.slug, name: p.name, group_id: p.group_id, group_name: p.group_name,
     base_url: p.base_url, active: p.active, allow_production: p.allow_production,
@@ -351,7 +351,7 @@ export function createApp({ store, runner, token, origins }) {
   // ─── Test files ──────────────────────────────────────────────────────────
   app.get('/api/test-files', requireAuth, route(async (req, res) => {
     const { project, tool, all } = req.query;
-    // all=1 hanya untuk halaman seting (admin); pemanggil run tetap dapat yang aktif.
+    // all=1 hanya untuk halaman pengaturan (admin); pemanggil run tetap dapat yang aktif.
     if (all === '1' && req.user.role !== 'admin') fail('Akses ditolak', 403);
     res.json(store.listTestFiles({
       projectId: project ?? undefined,

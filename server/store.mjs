@@ -149,7 +149,7 @@ export class Store {
   deleteProjectGroup(id) { return this.db.prepare('DELETE FROM project_groups WHERE id=?').run(id).changes > 0; }
 
   // ─── Projects ────────────────────────────────────────────────────────────
-  // includeArchived dipakai report/breadcrumb/Seting: `active=0` = arsip.
+  // includeArchived dipakai report/breadcrumb/Pengaturan: `active=0` = arsip.
   listProjects({ includeArchived = false } = {}) {
     return this.db.prepare(`SELECT p.*, g.name AS group_name,
       (SELECT MAX(r.finished_at) FROM runs r JOIN sessions s2 ON s2.id = r.session_id WHERE s2.project_id = p.id) AS lastRunAt
@@ -190,7 +190,7 @@ export class Store {
   deleteProject(id) { return this.db.prepare('DELETE FROM projects WHERE id=?').run(id).changes > 0; }
 
   // ─── Test files ──────────────────────────────────────────────────────────
-  // includeDisabled dipakai halaman seting: spec nonaktif tetap harus kelihatan
+  // includeDisabled dipakai halaman pengaturan: spec nonaktif tetap harus kelihatan
   // supaya bisa dinyalakan lagi. Semua pemanggil run memakai default (aktif saja).
   listTestFiles({ projectId, tool, includeDisabled = false } = {}) {
     let sql = 'SELECT * FROM test_files WHERE ' + (includeDisabled ? '1=1' : 'enabled=1'); const vals = [];

@@ -22,7 +22,7 @@ Kontrak produk ada di `docs/PRD.md`, cara install di `docs/SETUP.md` (keduanya i
 - `scripts/build-report-docs.mjs`, `report-html.mjs`, `report-md.mjs` - render folder report + markdown evaluasi
 - `scripts/migrate.mjs`, `seed-projects.mjs`, `seed-user.mjs` - setup (grup + project + akun)
 - `scripts/backup.mjs`, `retention.mjs` - backup DB + retensi
-- `lighthouserc.*.js` - konfigurasi Lighthouse per project, diubah dari tab **Seting > Lighthouse**
+- `lighthouserc.*.js` - konfigurasi Lighthouse per project, diubah dari tab **Pengaturan > Lighthouse**
 - `eureka/` - spec Playwright per target
 
 ## Jalankan
@@ -55,7 +55,7 @@ Detail lengkap, verifikasi tiap langkah, dan troubleshooting: `docs/SETUP.md`.
 
 ## Grup, project, dan arsip
 
-Project dikelompokkan per grup. Semua pengelolaan ada di **Seting**:
+Project dikelompokkan per grup. Semua pengelolaan ada di **Pengaturan**:
 
 | Tab | Isi |
 |---|---|
@@ -69,7 +69,7 @@ Aturan penting:
 
 - **Hapus permanen** hanya untuk project tanpa riwayat run. Project yang sudah punya run harus **diarsipkan** (`PATCH active=0`); run dan laporannya tetap bisa dibaca.
 - Project arsip tidak muncul di dropdown run, tapi tetap tampil di Reports dengan label `Arsip`.
-- Satu sesi dipakai ulang selama belum ada run baru dalam `session_reuse_minutes` (default 20 menit, diatur di **Seting > Report**). Patokannya run terakhir, bukan waktu sesi dibuat, jadi run yang berurutan tetap satu sesi dan sesi yang didiamkan tertutup sendiri. Tombol **Sesi baru** memaksa sesi terpisah; **Tutup sesi** menutup sesi sekarang dan run berikutnya membuat sesi baru.
+- Satu sesi dipakai ulang selama belum ada run baru dalam `session_reuse_minutes` (default 20 menit, diatur di **Pengaturan > Report**). Patokannya run terakhir, bukan waktu sesi dibuat, jadi run yang berurutan tetap satu sesi dan sesi yang didiamkan tertutup sendiri. Tombol **Sesi baru** memaksa sesi terpisah; **Tutup sesi** menutup sesi sekarang dan run berikutnya membuat sesi baru.
 - Semua waktu di UI ditampilkan dalam WIB.
 
 ## Token CLI
@@ -80,7 +80,7 @@ Token CLI berbeda dari login dashboard. Token dibuat lewat CLI:
 npm run playbook -- login --server http://127.0.0.1:3001
 ```
 
-Token disimpan di `~/.playbook/credentials.json`. Daftar dan pencabutan token ada di **Seting > Bantuan** (tidak ada tombol buat token manual). Cabut dari UI, lalu jalankan `npm run playbook -- logout` di mesin yang memakainya.
+Token disimpan di `~/.playbook/credentials.json`. Daftar dan pencabutan token ada di **Pengaturan > Bantuan** (tidak ada tombol buat token manual). Cabut dari UI, lalu jalankan `npm run playbook -- logout` di mesin yang memakainya.
 
 ## Update tool
 
@@ -89,4 +89,4 @@ npm install -D @playwright/test@latest @lhci/cli@latest
 npx playwright install
 ```
 
-Perintah yang sama ditampilkan di **Seting > Bantuan** beserta versi yang terpasang. Isi `FEEDBACK_URL` di `.env` untuk menampilkan tautan feedback di tab itu.
+Perintah yang sama ditampilkan di **Pengaturan > Bantuan** beserta versi yang terpasang. Isi `FEEDBACK_URL` di `.env` untuk menampilkan tautan feedback di tab itu.

@@ -1,6 +1,6 @@
 "use client";
 
-// Editor config Lighthouse CI bersama untuk Seting dan /lighthouse (PRD T09).
+// Editor config Lighthouse CI bersama untuk Pengaturan dan /lighthouse (PRD T09).
 // Bentuk JSON-nya satu: { urls, numberOfRuns, budgets } → test_files.config.
 // Komponen ini controlled: nilai masuk/keluar berupa string JSON, jadi dua
 // halaman menulis bentuk yang sama dan autosave tidak menimpa nilai custom.

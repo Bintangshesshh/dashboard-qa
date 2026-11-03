@@ -732,7 +732,7 @@ button { cursor: pointer; }
   pointer-events: none; white-space: nowrap;
 }
 .pb-set-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
-/* Tab seting: bar tab menempel di atas, isi tab menumpuk dengan jarak sama. */
+/* Tab pengaturan: bar tab menempel di atas, isi tab menumpuk dengan jarak sama. */
 .pb-set-tabbar { margin-bottom: 16px; }
 .pb-set-tab-body { display: grid; gap: 16px; }
 /* Daftar spec Playwright per project. */
@@ -837,7 +837,7 @@ button { cursor: pointer; }
 }
 .pb-muted { color: var(--muted); }
 .pb-empty { color: var(--meta); text-align: center; padding: 36px 12px; }
-/* ---------- Pohon grup project (Seting > Project) ---------- */
+/* ---------- Pohon grup project (Pengaturan > Project) ---------- */
 .pb-empty.sm { padding: 14px 12px; font-size: 12px; }
 .pb-group { border: 1px solid var(--line); border-radius: 10px; margin-top: 12px; }
 .pb-group-head {
@@ -1509,7 +1509,7 @@ button { cursor: pointer; }
   .pb-run-dur { display: none; }
 }
 
-/* ---------- T17: responsif Seting (900px / 640px) ---------- */
+/* ---------- T17: responsif Pengaturan (900px / 640px) ---------- */
 @media (max-width: 900px) {
   /* Tab bar bisa digeser, bukan memaksa lebar halaman melebar. */
   .pb-set-tabbar { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; }

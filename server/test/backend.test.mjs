@@ -799,7 +799,7 @@ test('A3: target divalidasi terhadap projects.origins, bukan cuma TARGET_ALLOWLI
   assert.deepEqual(f.store.getProject('p2').origins, ['https://staging.p2.test'], 'origins lama tidak berubah');
 });
 
-test('project baru dari Seting: base_url wajib, slug jadi kunci, local_url terpisah', async t => {
+test('project baru dari Pengaturan: base_url wajib, slug jadi kunci, local_url terpisah', async t => {
   const f = await fixture(t);
   const cookie = await f.login();
 

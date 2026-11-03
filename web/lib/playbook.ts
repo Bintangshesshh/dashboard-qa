@@ -172,7 +172,7 @@ export const api = {
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   me: () => request<User>("/api/me"),
 
-  // `all` ikutkan project arsip; hanya dipakai Seting dan halaman arsip (PRD FR-03).
+  // `all` ikutkan project arsip; hanya dipakai Pengaturan dan halaman arsip (PRD FR-03).
   projects: (q: { all?: boolean } = {}) =>
     request<Project[]>("/api/projects" + (q.all ? "?all=1" : "")),
   createProject: (body: {
@@ -225,7 +225,7 @@ export const api = {
     }
   },
 
-  // all: ikutkan spec nonaktif; hanya dipakai halaman seting (admin).
+  // all: ikutkan spec nonaktif; hanya dipakai halaman pengaturan (admin).
   testFiles: (q: { project?: string; tool?: string; all?: boolean } = {}) => {
     const p = new URLSearchParams();
     if (q.project) p.set("project", q.project);

@@ -33,7 +33,7 @@ const fmtMinutes = (value: string) => {
 
 type TabId = "project" | "pw" | "lh" | "report" | "bantuan";
 
-// Urutan tab mengikuti alur kerja: siapkan project dulu, baru seting per tool.
+// Urutan tab mengikuti alur kerja: siapkan project dulu, baru pengaturan per tool.
 const TABS: { id: TabId; label: string }[] = [
   { id: "project", label: "Project" },
   { id: "pw", label: "Playwright" },
@@ -396,13 +396,13 @@ export default function SettingsPage() {
     <>
       <div className="pb-head">
         <div>
-          <h1>Seting.</h1>
+          <h1>Pengaturan.</h1>
         </div>
       </div>
       {error && <div className="pb-err" role="alert">{error}</div>}
       {notice && <div className="pb-note flash">{notice}</div>}
 
-      <div className="pb-tabs pb-set-tabbar" role="tablist" aria-label="Bagian seting">
+      <div className="pb-tabs pb-set-tabbar" role="tablist" aria-label="Bagian pengaturan">
         {TABS.map(t => (
           <button key={t.id} role="tab" aria-selected={tab === t.id}
             className={`pb-tab ${tab === t.id ? "active" : ""}`}
