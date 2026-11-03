@@ -852,6 +852,15 @@ label.pb-field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); 
 .pb-file-list { margin-top: 14px; }
 /* Tab Bantuan: daftar versi, perintah update, dan FAQ lipat. */
 .pb-kv { display: grid; gap: 6px; margin-bottom: 4px; }
+/* Overview: satu blok per grup, judul kecil di atas grid kartu project. */
+.pb-group-block + .pb-group-block { margin-top: 18px; }
+.pb-group-label {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 10px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+}
+.pb-group-label strong { font-size: 12px; font-weight: 600; letter-spacing: .06em; }
+.pb-group-label .pb-muted { text-transform: none; letter-spacing: 0; }
+.pb-set-summary .pb-kv { margin: 0; }
 .pb-kv-row {
   display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
