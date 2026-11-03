@@ -155,7 +155,8 @@ test('sesi: production diblokir tanpa flag, reuse mengembalikan 409', async t =>
   r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(r.status, 201);
   const first = r.body.sessionId;
-  assert.equal(r.body.targetUrl, ORIGIN);
+  // target() menormalkan lewat URL.href, jadi selalu ada path '/'.
+  assert.equal(r.body.targetUrl, ORIGIN + '/');
 
   r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } });
   assert.equal(r.status, 409);
@@ -364,7 +365,7 @@ test('CLI lokal: local → start → logs → upload artifact → finalisasi', a
   assert.equal(r.status, 201);
   const { runId, sessionId, code, targetUrl, tool } = r.body;
   assert.equal(code, 'test("x",()=>{})');
-  assert.equal(targetUrl, ORIGIN);
+  assert.equal(targetUrl, ORIGIN + '/');
   assert.equal(tool, 'pw');
   assert.ok(runId && sessionId);
 
@@ -830,7 +831,15 @@ test('project baru dari Seting: base_url wajib, slug jadi kunci, local_url terpi
   r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: '  ', base_url: 'https://pos.test' } });
   assert.equal(r.status, 400);
 
-  // env local tidak lewat allowlist global: target lokal tetap bisa dijalankan
+  // env local tetap lewat cek origin: dashboard bisa dihosting, jadi local_url
+  // yang tidak terdaftar tidak boleh ditembak (anti-SSRF).
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p_ticketing_pos', env: 'local' } });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /belum diizinkan/);
+
+  // Setelah admin mendaftarkan origin lokal, sesi local berjalan normal.
+  r = await f.call('/api/projects/p_ticketing_pos', { method: 'PATCH', cookie, body: { origins: ['https://localhost:5173'] } });
+  assert.equal(r.status, 200);
   r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p_ticketing_pos', env: 'local' } });
   assert.equal(r.status, 201);
   assert.equal(r.body.targetUrl, 'https://localhost:5173/');

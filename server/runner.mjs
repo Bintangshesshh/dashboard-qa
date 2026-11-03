@@ -213,7 +213,7 @@ export class Runner extends EventEmitter {
   }
 
   // Origin yang boleh ditembak runner: allowlist server + project (origin
-  // base/staging/local + projects.origins). `env local` tetap dikecualikan.
+  // base/staging/local + projects.origins). env local ikut dicek, termasuk di sini.
   allowedOriginsFor(state) {
     const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
     const project = session ? this.store.getProject(session.project_id) : null;

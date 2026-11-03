@@ -232,6 +232,7 @@ const productionOk = env !== "production"
           <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
             Env local dijalankan dari mesin server dashboard. Kalau dashboard dihosting,
             isi local_url dengan URL tunnel (cloudflared/ngrok) ke web lokal, bukan 127.0.0.1.
+            Origin-nya wajib terdaftar di origins project atau TARGET_ALLOWLIST.
           </p>
           )}
         </div>

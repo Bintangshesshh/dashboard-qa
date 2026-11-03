@@ -459,14 +459,15 @@ export function createApp({ store, runner, token, origins }) {
   // ─── Sessions ────────────────────────────────────────────────────────────
   // PRD §7/§8.2: URL target selalu dari `projects`, tidak pernah dari input bebas.
   // Origin hasil resolve wajib ada di `projects.origins` atau TARGET_ALLOWLIST (anti-SSRF).
-  // ponytail: env local dikecualikan dari cek origin - local_url menunjuk mesin
-  // developer, bukan jaringan server. Kalau nanti runner jalan di server juga,
-  // hapus pengecualian ini.
+  // env local juga lewat cek origin. Dulu dikecualikan karena local_url dianggap
+  // mesin developer sendiri, tapi dashboard sekarang bisa dihosting: tanpa cek ini
+  // admin bisa mengarahkan local_url ke host internal server (SSRF).
+  // Konsekuensi: URL tunnel ke web lokal harus didaftarkan di origins project
+  // atau TARGET_ALLOWLIST dulu. Tetap tanpa wildcard.
   const resolveTarget = (project, e) => {
     const raw = e === 'local' ? project.local_url : e === 'staging' ? project.staging_url : project.base_url;
     if (!raw) return null;
-    const href = urlValue(raw, `target ${e}`);
-    return e === 'local' ? raw : target(href, [...(project.origins ?? []), ...origins]);
+    return target(urlValue(raw, `target ${e}`), [...(project.origins ?? []), ...origins]);
   };
 
   // PRD §8.2 step 2: setiap run production meninggalkan satu baris `system`.
