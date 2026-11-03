@@ -7,17 +7,14 @@
 // log_max_bytes; kalau perlu lengkap walau terpotong, pakai run.console.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RunClock } from "../_components/run-clock";
-import type { LogEntry, Run } from "../../lib/playbook";
+import { fmtHms, type LogEntry, type Run } from "../../lib/playbook";
 
 const stripAnsi = (s: string) => s.replace(/\u001b?\[[0-9;]*m/g, "");
 
 type ConsoleRow = { seq: number; at: string; type: string; text: string; location: string | null };
 type NetworkRow = { seq: number; at: string; url: string; status: number | null; method: string | null; failure: string | null; ms: number | null };
 
-const clockOf = (at: string) => {
-  const d = new Date(at);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("id-ID", { hour12: false });
-};
+const clockOf = (at: string) => fmtHms(at);
 const badType = (t: string) => t === "error" || t === "pageerror";
 const warnType = (t: string) => t === "warning" || t === "warn";
 

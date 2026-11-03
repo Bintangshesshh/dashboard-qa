@@ -351,6 +351,14 @@ export const fmtTime = (iso: string | null) =>
   iso
     ? new Date(iso).toLocaleTimeString("id-ID", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }) + " WIB"
     : "-";
+// Jam:menit:detik untuk log; TZ sama dengan fmtDate supaya tidak beda zona.
+export const fmtHms = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleTimeString("id-ID", { timeZone: TZ, hour12: false });
+};
+
 export const pct = (v: number | null) => (v == null ? "-" : Math.round(v * 100) + "%");
 
 // Kelompokkan project untuk optgroup dan pohon tampilan. Project tanpa grup

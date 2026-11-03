@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  api, fmtDate,
+  api, fmtDate, fmtTime,
   type CliToken, type Help, type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
 import LhConfigEditor, {
@@ -22,8 +22,8 @@ const fmtBytes = (value: string) => {
   if (bytes >= 1024) return `${(bytes / 1024).toLocaleString("id-ID", { maximumFractionDigits: 0 })} KB`;
   return `${bytes.toLocaleString("id-ID")} byte`;
 };
-const fmtClock = (iso: string) =>
-  new Date(iso).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+// Sama dengan badge waktu lain: WIB + titik, bukan jam lokal browser.
+const fmtClock = (iso: string) => fmtTime(iso);
 const fmtMinutes = (value: string) => {
   const minutes = num(value);
   return minutes >= 60
