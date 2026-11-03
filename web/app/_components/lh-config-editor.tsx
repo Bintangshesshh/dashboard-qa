@@ -134,12 +134,22 @@ export default function LhConfigEditor({
 
       <div className="pb-field">
         <span>Jumlah run per URL (1-{MAX_RUNS})</span>
+        <span className="pb-set-help">
+          Lebih banyak run = skor lebih stabil, durasi lebih lama.
+        </span>
         <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
           {[1, 2, 3, 5, 10].map(n => (
             <button key={n} type="button" className={runs === n ? "active" : ""}
               aria-pressed={runs === n} disabled={disabled}
               onClick={() => { setRuns(n); emit({ runs: n }); }}>{n}×</button>
           ))}
+          <input type="number" className="pb-input pb-input-narrow" min={1} max={MAX_RUNS}
+            inputMode="numeric" aria-label="Jumlah run custom" disabled={disabled}
+            value={runs}
+            onChange={e => {
+              const v = Math.min(MAX_RUNS, Math.max(1, Number(e.target.value) || 1));
+              setRuns(v); emit({ runs: v });
+            }} />
         </div>
       </div>
 
@@ -172,6 +182,9 @@ export default function LhConfigEditor({
 
       <div className="pb-field">
         <span>Skor minimum per kategori</span>
+        <span className="pb-set-help">
+          Run dianggap gagal bila skor di bawah batas ini.
+        </span>
         <div className="pb-lh-budgets">
           {LH_CATEGORIES.map(c => (
             <label className="pb-lh-budget" key={c.key}>
