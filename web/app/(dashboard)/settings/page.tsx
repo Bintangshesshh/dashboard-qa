@@ -372,6 +372,8 @@ export default function SettingsPage() {
     visibleProjects.filter(p => (p.group_id ?? null) === id)
       .sort((a, b) => a.name.localeCompare(b.name));
   const orphans = byGroup(null);
+  const activeProjects = projects.filter(p => p.active)
+    .sort((a, b) => a.name.localeCompare(b.name));
   const pwFiles = files.filter(f => f.tool === "pw");
   const lhFiles = files.filter(f => f.tool === "lh");
 
@@ -451,12 +453,16 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              {projects.map(p => {
-                const file = lhFiles.find(f => f.project_id === p.id);
-                if (!file) return null;
-                return <LhciCard key={p.id} project={p} file={file} onSave={saveTestFile} />;
+              {activeProjects.map(p => {
+                const file = lhFiles.find(f => f.project_id === p.id) ?? null;
+                return (
+                  <LhciCard key={p.id} project={p} file={file}
+                    onSave={saveTestFile} onAddFile={addTestFile} />
+                );
               })}
-              {lhFiles.length === 0 && <p className="pb-empty">Belum ada config Lighthouse.</p>}
+              {activeProjects.length === 0 && (
+                <p className="pb-empty">Belum ada project aktif.</p>
+              )}
             </section>
             {tabSections("lh")}
           </>
@@ -631,18 +637,20 @@ export default function SettingsPage() {
 
 // Editor config lhci per project, memakai komponen bersama LhConfigEditor
 // supaya bentuk JSON-nya sama dengan /lighthouse (PRD T09).
-function LhciCard({ project, file, onSave }: {
+function LhciCard({ project, file, onSave, onAddFile }: {
   project: Project;
-  file: TestFile;
+  file: TestFile | null;
   onSave: (file: TestFile, patch: Parameters<typeof api.patchTestFile>[1]) => Promise<void>;
+  onAddFile: (p: Project, body: Omit<Parameters<typeof api.createTestFile>[0], "projectId">) => Promise<void>;
 }) {
   const target = project.base_url || "";
-  const [config, setConfig] = useState(file.config ?? "");
+  const [config, setConfig] = useState(file?.config ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const dirty = config !== (file.config ?? "");
+  const dirty = !!file && config !== (file.config ?? "");
 
   const save = async () => {
+    if (!file) return;
     const cfg = parseLhConfig(config);
     const msg = lhConfigError({
       target, extra: extraUrlsOf(cfg, project),
@@ -658,30 +666,67 @@ function LhciCard({ project, file, onSave }: {
     finally { setSaving(false); }
   };
 
+  // Config default dari URL project: target utama selalu ikut diaudit runner.
+  const create = async () => {
+    setSaving(true); setError("");
+    try {
+      await onAddFile(project, {
+        tool: "lh",
+        path: `lighthouserc.${project.slug}.js`,
+        config: {
+          urls: [], numberOfRuns: 1,
+          budgets: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, { minScore: 0.6 }])),
+        },
+      });
+    } catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  };
+
   return (
     <div className="pb-proj-card">
       <div className="pb-row pb-proj-head">
         <strong>{project.name}</strong>
-        <span className="pb-muted pb-mono">{file.path}</span>
+        <span className="pb-muted pb-mono">{file?.path ?? "belum ada config"}</span>
       </div>
 
-      <LhConfigEditor project={project} value={config} target={target}
-        onChange={setConfig} idPrefix={`set-${project.id}`} />
+      {!target.trim() && (
+        <div className="pb-note warn">
+          Project ini belum punya <code className="pb-mono">base_url</code>. Isi dulu di tab
+          Project supaya target audit bisa ditentukan.
+        </div>
+      )}
+
+      {file ? (
+        <LhConfigEditor project={project} value={config} target={target}
+          onChange={setConfig} idPrefix={`set-${project.id}`} />
+      ) : (
+        <p className="pb-hint">
+          Config default dibuat dari URL project: target utama, 1 run, budget 60.
+        </p>
+      )}
 
       {error && <div className="pb-err">{error}</div>}
 
       <div className="pb-row pb-proj-foot">
-        <span className="pb-set-status">{dirty ? "Belum disimpan" : "Tersimpan"}</span>
+        <span className="pb-set-status">
+          {!file ? "Belum ada config" : dirty ? "Belum disimpan" : "Tersimpan"}
+        </span>
         <span className="pb-spacer" />
-        <button className="pb-btn sm primary" onClick={save}
-          disabled={saving || !dirty || !target.trim()}>
-          Simpan config
-        </button>
+        {file ? (
+          <button className="pb-btn sm primary" onClick={save}
+            disabled={saving || !dirty || !target.trim()}>
+            Simpan config
+          </button>
+        ) : (
+          <button className="pb-btn sm primary" onClick={create}
+            disabled={saving || !target.trim()}>
+            Buat config default
+          </button>
+        )}
       </div>
     </div>
   );
 }
-
 
 // Tambah grup baru. Enter di kolom = simpan.
 function NewGroupForm({ onCreate }: { onCreate: (name: string) => Promise<void> }) {
