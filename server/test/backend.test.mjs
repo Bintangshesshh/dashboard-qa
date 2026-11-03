@@ -1034,3 +1034,81 @@ test('settings publik: viewer boleh baca retensi, penuh tetap admin-only', async
   r = await f.call('/api/settings', { cookie });
   assert.equal(r.status, 403);
 });
+
+
+// ─── T01: Migrasi grup + constraint + backfill ─────────────────────────────
+
+test('T01: fresh DB → project_groups ada, user_version=5, reuse=60', async t => {
+  const store = new Store(':memory:');
+  await store.init();
+  t.after(() => store.close());
+
+  const version = store.db.prepare('PRAGMA user_version').get().user_version;
+  assert.equal(version, 5);
+
+  // Tabel project_groups harus ada
+  const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='project_groups'").all();
+  assert.equal(tables.length, 1);
+
+  // Default reuse turun ke 60
+  assert.equal(store.getSetting('session_reuse_minutes'), '60');
+});
+
+test('T01: backfill DB lama → grup dibuat dari project', async t => {
+  const store = new Store(':memory:');
+  // Simulasi DB lama: hanya jalankan migrasi 0001-0004
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const migrationsDir = join(root, 'server', 'migrations');
+  store.db.exec('PRAGMA foreign_keys = ON');
+
+  const files = readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
+  // Jalankan 0001-0004 saja
+  for (const name of files.filter(f => Number(f.slice(0, 4)) <= 4)) {
+    store.db.exec(readFileSync(join(migrationsDir, name), 'utf8'));
+    store.db.exec(`PRAGMA user_version = ${Number(name.slice(0, 4))}`);
+  }
+
+  // Sisipkan 2 project sebelum migrasi 0005
+  const now = new Date().toISOString();
+  store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, active, created_at) VALUES (?,?,?,?,?,1,?)`)
+    .run('p_a', 'alpha', 'Alpha', 'https://alpha.test', '[]', now);
+  store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, active, created_at) VALUES (?,?,?,?,?,1,?)`)
+    .run('p_b', 'beta', 'Beta', 'https://beta.test', '[]', now);
+
+  // Jalankan migrasi 0005
+  const mig5 = files.find(f => f.startsWith('0005'));
+  assert.ok(mig5, 'migrasi 0005 harus ada');
+  store.db.exec(readFileSync(join(migrationsDir, mig5), 'utf8'));
+  store.db.exec('PRAGMA user_version = 5');
+
+  t.after(() => store.close());
+
+  // Verifikasi backfill
+  const groups = store.db.prepare('SELECT * FROM project_groups ORDER BY id').all();
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].id, 'g_alpha');
+  assert.equal(groups[0].name, 'Alpha');
+  assert.equal(groups[1].id, 'g_beta');
+  assert.equal(groups[1].name, 'Beta');
+
+  // Semua project punya group_id
+  const nullGroups = store.db.prepare('SELECT COUNT(*) AS n FROM projects WHERE group_id IS NULL').get().n;
+  assert.equal(nullGroups, 0);
+
+  // Verifikasi constraint: path test file unik global
+  store.db.prepare(`INSERT INTO test_files (id, project_id, tool, path, label, code, enabled, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?)`)
+    .run('tf1', 'p_a', 'pw', 'shared.spec.ts', 'S', 'x', now, now);
+  assert.throws(() => {
+    store.db.prepare(`INSERT INTO test_files (id, project_id, tool, path, label, code, enabled, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?)`)
+      .run('tf2', 'p_b', 'pw', 'shared.spec.ts', 'S2', 'x', now, now);
+  }, /UNIQUE constraint failed/);
+
+  // Verifikasi constraint: nama project unik case-insensitive
+  assert.throws(() => {
+    store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, active, created_at) VALUES (?,?,?,?,?,1,?)`)
+      .run('p_c', 'alpha2', 'alpha', 'https://a.test', '[]', now);
+  }, /UNIQUE constraint failed/);
+});
