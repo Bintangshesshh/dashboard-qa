@@ -426,6 +426,26 @@ export default function SettingsPage() {
               {pwFiles.length === 0 && <p className="pb-empty">Belum ada spec Playwright.</p>}
             </section>
             {tabSections("pw")}
+
+            <section className="pb-card">
+              <div className="pb-card-head">
+                <div>
+                  <h2>Setelan Playwright per project</h2>
+                  <div className="pb-card-sub">
+                    Nilai ini ditulis ke <code className="pb-mono">test_files.config</code> spec
+                    pertama project dan dipakai saat config runner digenerate.
+                  </div>
+                </div>
+              </div>
+              {activeProjects.map(p => (
+                <PwCard key={p.id} project={p}
+                  file={pwFiles.find(f => f.project_id === p.id) ?? null}
+                  onSave={saveTestFile} />
+              ))}
+              {activeProjects.length === 0 && (
+                <p className="pb-empty">Belum ada project aktif.</p>
+              )}
+            </section>
           </>
         )}
 
@@ -704,6 +724,96 @@ function LhciCard({ project, file, onSave, onAddFile }: {
             Buat config default
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Setelan Playwright per project (PRD S03). Disimpan di config spec pertama
+// supaya tidak perlu tabel baru; spec lain dibiarkan apa adanya.
+type PwCfg = { env?: string; timeout?: number; workers?: number; retries?: number };
+
+function PwCard({ project, file, onSave }: {
+  project: Project;
+  file: TestFile | null;
+  onSave: (file: TestFile, patch: Parameters<typeof api.patchTestFile>[1]) => Promise<void>;
+}) {
+  const parsed = (() => {
+    try { return (JSON.parse(file?.config ?? "{}") ?? {}) as PwCfg; } catch { return {} as PwCfg; }
+  })();
+  const [pw, setPw] = useState<PwCfg>({
+    env: parsed.env ?? "local",
+    timeout: parsed.timeout ?? 120000,
+    workers: parsed.workers ?? 1,
+    retries: parsed.retries ?? 0,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const save = async () => {
+    if (!file) return;
+    setSaving(true); setError("");
+    try { await onSave(file, { config: JSON.stringify({ ...parsed, ...pw }) }); }
+    catch (e) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="pb-proj-card">
+      <div className="pb-row pb-proj-head">
+        <strong>{project.name}</strong>
+        <span className="pb-muted pb-mono">{file?.path ?? "belum ada spec"}</span>
+      </div>
+      {file ? (
+        <div className="pb-set-grid">
+          <label className="pb-set-field">
+            <span className="pb-set-label">Env default</span>
+            <select className="pb-select" value={pw.env}
+              onChange={e => setPw(v => ({ ...v, env: e.target.value }))}>
+              {["local", "staging", "production"].map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+            <span className="pb-set-help">Env yang terpilih otomatis saat halaman run dibuka.</span>
+          </label>
+          <label className="pb-set-field">
+            <span className="pb-set-label">Timeout per test</span>
+            <span className="pb-input-unit">
+              <input className="pb-input" type="number" min={10000} max={900000} step={1000}
+                inputMode="numeric" value={pw.timeout}
+                onChange={e => setPw(v => ({ ...v, timeout: Number(e.target.value) || 0 }))} />
+              <span aria-hidden="true">ms</span>
+            </span>
+            <span className="pb-set-help">10.000-900.000 ms. Test lebih lama dari ini ditandai gagal.</span>
+          </label>
+          <label className="pb-set-field">
+            <span className="pb-set-label">Workers</span>
+            <span className="pb-input-unit">
+              <input className="pb-input" type="number" min={1} max={8} inputMode="numeric"
+                value={pw.workers}
+                onChange={e => setPw(v => ({ ...v, workers: Number(e.target.value) || 1 }))} />
+              <span aria-hidden="true">worker</span>
+            </span>
+            <span className="pb-set-help">Spec eureka memakai state bersama; 1 worker paling aman.</span>
+          </label>
+          <label className="pb-set-field">
+            <span className="pb-set-label">Retries</span>
+            <span className="pb-input-unit">
+              <input className="pb-input" type="number" min={0} max={3} inputMode="numeric"
+                value={pw.retries}
+                onChange={e => setPw(v => ({ ...v, retries: Number(e.target.value) || 0 }))} />
+              <span aria-hidden="true">kali</span>
+            </span>
+            <span className="pb-set-help">Test gagal diulang sebanyak ini sebelum dinyatakan gagal.</span>
+          </label>
+        </div>
+      ) : (
+        <p className="pb-hint">Tambahkan spec Playwright dulu di daftar Spec Playwright.</p>
+      )}
+      {error && <div className="pb-err">{error}</div>}
+      <div className="pb-row pb-proj-foot">
+        <span className="pb-spacer" />
+        <button className="pb-btn sm primary" onClick={save} disabled={saving || !file}>
+          Simpan setelan
+        </button>
       </div>
     </div>
   );

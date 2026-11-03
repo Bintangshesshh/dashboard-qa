@@ -14,7 +14,7 @@ import { reportMarkdownFor } from '../scripts/report-md.mjs';
 import { runRetention } from './retention.mjs';
 import { specPath, readSpec, writeSpec } from './spec-sync.mjs';
 import { backupDatabase } from './backup.mjs';
-import { fail, id, text, code as codeValue, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp, testFilePath, checkLhConfig } from './validation.mjs';
+import { fail, id, text, code as codeValue, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp, testFilePath, checkLhConfig, checkPwConfig } from './validation.mjs';
 
 const scrypt = promisify(_scrypt);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -366,7 +366,9 @@ export function createApp({ store, runner, token, origins }) {
     const label = text(req.body?.label, 'label', 200);
     const code = codeFor(t, req.body?.code ?? '');
     assertPathFree(path);
-    const cfg = t === 'lh' ? checkLhConfig(req.body?.config, { allowedOrigins: allowedOriginsFor(project) }) : null;
+    const cfg = t === 'lh'
+      ? checkLhConfig(req.body?.config, { allowedOrigins: allowedOriginsFor(project) })
+      : checkPwConfig(req.body?.config);
     const tf = {
       id: randomUUID(), projectId, tool: t, path, label, code,
       config: cfg ? JSON.stringify(cfg) : null, updatedBy: req.user.id,
@@ -388,7 +390,9 @@ export function createApp({ store, runner, token, origins }) {
     if (req.body.code !== undefined) fields.code = codeFor(tf.tool, req.body.code);
     if (req.body.label !== undefined) fields.label = text(req.body.label, 'label');
     if (req.body.config !== undefined) {
-      const cfg = tf.tool === 'lh' ? checkLhConfig(req.body.config, { allowedOrigins: allowedOriginsFor(project) }) : null;
+      const cfg = tf.tool === 'lh'
+        ? checkLhConfig(req.body.config, { allowedOrigins: allowedOriginsFor(project) })
+        : checkPwConfig(req.body.config);
       fields.config = cfg ? JSON.stringify(cfg) : null;
     }
     if (req.body.enabled !== undefined) fields.enabled = bool(req.body.enabled, 'enabled');

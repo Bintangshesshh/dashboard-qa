@@ -1638,3 +1638,14 @@ test('B11: index runs_queued dan runs_finalized dipakai query daftar run', async
   const perDay = plan("SELECT substr(finalized_at,1,10) AS d, COUNT(*) FROM runs WHERE finalized_at IS NOT NULL GROUP BY d");
   assert.match(perDay, /runs_finalized/);
 });
+
+test('S03: config Playwright per project divalidasi dan disimpan', async () => {
+  const { checkPwConfig } = await import('../validation.mjs');
+  assert.deepEqual(checkPwConfig({ timeout: 60000, workers: 2, retries: 1, env: 'staging' }),
+    { timeout: 60000, workers: 2, retries: 1, env: 'staging' });
+  assert.equal(checkPwConfig({ configPath: 'x.config.mjs' }).configPath, 'x.config.mjs');
+  assert.throws(() => checkPwConfig({ workers: 99 }), /workers harus bilangan bulat 1-8/);
+  assert.throws(() => checkPwConfig({ env: 'qa' }), /env harus salah satu/);
+  assert.throws(() => checkPwConfig({ timeout: 10 }), /timeout harus bilangan bulat 10000-900000/);
+});
+

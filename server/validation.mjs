@@ -159,6 +159,40 @@ export function checkLhConfig(config, { allowedOrigins = [] } = {}) {
   return cfg;
 }
 
+// Config Playwright per project (PRD T09/S03). Hanya 4 key ini yang disimpan;
+// key lain ditolak supaya salah ketik tidak diam-diam masuk ke config runner.
+export const PW_TIMEOUT_LIMITS = [10000, 900000];
+export const PW_WORKERS_LIMITS = [1, 8];
+export const PW_RETRIES_LIMITS = [0, 3];
+export const PW_ENVS = ['local', 'staging', 'production'];
+
+const pwInt = (value, [min, max], name) => {
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < min || n > max) fail(`${name} harus bilangan bulat ${min}-${max}`);
+  return n;
+};
+
+export function checkPwConfig(config) {
+  if (config === null || config === undefined || config === '') return null;
+  const cfg = typeof config === 'string'
+    ? (() => { try { return JSON.parse(config); } catch { fail('config Playwright bukan JSON valid'); } })()
+    : config;
+  if (typeof cfg !== 'object' || Array.isArray(cfg)) fail('config Playwright harus object JSON');
+  const out = {};
+  if (cfg.configPath !== undefined && cfg.configPath !== null) {
+    if (typeof cfg.configPath !== 'string' || !cfg.configPath.trim()) fail('configPath harus string');
+    out.configPath = cfg.configPath;
+  }
+  if (cfg.timeout !== undefined) out.timeout = pwInt(cfg.timeout, PW_TIMEOUT_LIMITS, 'timeout');
+  if (cfg.workers !== undefined) out.workers = pwInt(cfg.workers, PW_WORKERS_LIMITS, 'workers');
+  if (cfg.retries !== undefined) out.retries = pwInt(cfg.retries, PW_RETRIES_LIMITS, 'retries');
+  if (cfg.env !== undefined) {
+    if (!PW_ENVS.includes(cfg.env)) fail(`env harus salah satu: ${PW_ENVS.join(', ')}`);
+    out.env = cfg.env;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 // Data lama menyimpan target utama di `urls`. Buang URL yang sama dengan URL
 // project supaya tidak dihitung sebagai URL tambahan (PRD FR-04).
 export function normalizeLhUrls(cfg, project) {

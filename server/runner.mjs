@@ -18,15 +18,15 @@ const pwCapture = require.resolve('./scripts/pw-capture.cjs').replaceAll('\\', '
 
 // Config Playwright untuk spec yang datang dari database. testDir = folder spec
 // asli supaya import relatif (`./creds`) tetap jalan.
-const runConfig = (testDir, specFile) => `import { defineConfig, devices } from '@playwright/test';
+const runConfig = (testDir, specFile, cfg = {}) => `import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: ${JSON.stringify(testDir)},
   testMatch: ${JSON.stringify(specFile)},
   fullyParallel: false,
-  workers: 1,
-  timeout: 120000,
-  retries: 0,
+  workers: ${cfg.workers ?? 1},
+  timeout: ${cfg.timeout ?? 120000},
+  retries: ${cfg.retries ?? 0},
   reporter: [
     ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME }],
     ['html', { outputDir: process.env.PLAYWRIGHT_HTML_OUTPUT_DIR, open: 'never' }],
@@ -278,7 +278,8 @@ export class Runner extends EventEmitter {
       PLAYWRIGHT_HTML_OUTPUT_DIR: join(dir, 'artifacts', 'playwright-report'),
     };
     // `config` opsional: { configPath } untuk config Playwright khusus (quick check).
-    let cfgPath = (() => { try { return JSON.parse(testFile.config ?? '{}')?.configPath ?? null; } catch { return null; } })();
+    const pwCfg = (() => { try { return JSON.parse(testFile.config ?? '{}') ?? {}; } catch { return {}; } })();
+    let cfgPath = pwCfg.configPath ?? null;
     // Kode dari DB (editor dashboard) menang atas file di disk. Ditulis di sebelah
     // spec aslinya karena spec eureka mengimpor `./creds` - memindahkan file ke
     // folder run akan memutus import relatif. Config ditaruh di root repo supaya
@@ -290,7 +291,7 @@ export class Runner extends EventEmitter {
       generated = join(dirname(original), `.playbook-${runId.slice(0, 8)}.spec.ts`);
       await writeFile(generated, testFile.code);
       generatedCfg = join(root, `.playbook-${runId.slice(0, 8)}.config.mjs`);
-      await writeFile(generatedCfg, runConfig(dirname(original), basename(generated)));
+      await writeFile(generatedCfg, runConfig(dirname(original), basename(generated), pwCfg));
       cfgPath = generatedCfg;
       specPath = basename(generated);
       await this.log(state, 'system', `[runner] Spec dari database â†’ ${basename(generated)}\n`);
