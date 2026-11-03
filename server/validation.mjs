@@ -91,3 +91,79 @@ export function bool(value, name) {
   if (value === 1 || value === 0) return value;
   fail(`${name} must be boolean`);
 }
+
+// ─── Test file (PRD §9) ─────────────────────────────────────────────────────
+// Path relatif ke root repo, unik global: spec/config antar project tidak
+// saling menimpa di disk.
+export function testFilePath(value) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 500) fail('path must contain 1-500 characters');
+  const p = value.trim();
+  if (p.includes('..')) fail('path tidak boleh mengandung ..');
+  if (/^([a-zA-Z]:|[\\/])/.test(p)) fail('path harus relatif');
+  if (!/\.(spec|test)\.[cm]?[jt]sx?$|\.(c|m)?js$|\.json$/.test(p)) fail('path harus spec/test atau config .js/.json');
+  return p.replaceAll('\\', '/');
+}
+
+// Config Lighthouse (PRD §4/§9). Invalid = 400; tidak ada fallback ke file .js.
+export const LH_MAX_EXTRA_URLS = 4;      // target sesi memakai 1 dari 5 slot
+export const LH_MAX_RUNS = 10;
+export const LH_BUDGET_KEYS = [
+  'categories:performance', 'categories:accessibility',
+  'categories:best-practices', 'categories:seo',
+];
+
+export function parseLhConfig(config) {
+  if (config === null || config === undefined || config === '') return null;
+  if (typeof config !== 'string') return config;
+  try { return JSON.parse(config); } catch { fail('config Lighthouse bukan JSON valid'); }
+}
+
+export function checkLhConfig(config, { allowedOrigins = [] } = {}) {
+  const cfg = parseLhConfig(config);
+  if (cfg === null) return null;
+  if (typeof cfg !== 'object' || Array.isArray(cfg)) fail('config Lighthouse harus object JSON');
+
+  if (cfg.urls !== undefined) {
+    if (!Array.isArray(cfg.urls)) fail('urls harus array');
+    const seen = new Set();
+    const urls = [];
+    for (const raw of cfg.urls) {
+      let u;
+      try { u = new URL(String(raw)); } catch { fail('urls harus URL http(s) absolute'); }
+      if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) fail('urls harus URL http(s) absolute');
+      if (!allowedOrigins.includes(u.origin)) fail(`Origin ${u.origin} tidak diizinkan untuk project ini`);
+      if (seen.has(u.href)) continue;
+      seen.add(u.href);
+      urls.push(u.href);
+    }
+    if (urls.length > LH_MAX_EXTRA_URLS) fail(`Maksimal ${LH_MAX_EXTRA_URLS} URL tambahan per run Lighthouse`);
+    cfg.urls = urls;
+  }
+
+  if (cfg.numberOfRuns !== undefined) {
+    const n = cfg.numberOfRuns;
+    if (!Number.isInteger(n) || n < 1 || n > LH_MAX_RUNS) fail(`numberOfRuns harus bilangan bulat 1-${LH_MAX_RUNS}`);
+  }
+
+  if (cfg.budgets !== undefined) {
+    if (!cfg.budgets || typeof cfg.budgets !== 'object' || Array.isArray(cfg.budgets)) fail('budgets harus object');
+    for (const [key, val] of Object.entries(cfg.budgets)) {
+      if (!LH_BUDGET_KEYS.includes(key)) fail(`Kategori budget tidak dikenal: ${key}`);
+      const score = val?.minScore;
+      if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 1) {
+        fail(`minScore untuk ${key} harus angka 0-1`);
+      }
+    }
+  }
+
+  return cfg;
+}
+
+// Data lama menyimpan target utama di `urls`. Buang URL yang sama dengan URL
+// project supaya tidak dihitung sebagai URL tambahan (PRD FR-04).
+export function normalizeLhUrls(cfg, project) {
+  if (!cfg || !Array.isArray(cfg.urls)) return cfg;
+  const own = new Set([project?.base_url, project?.staging_url, project?.local_url]
+    .filter(Boolean).map(u => { try { return new URL(u).href; } catch { return u; } }));
+  return { ...cfg, urls: cfg.urls.filter(u => !own.has(u)) };
+}

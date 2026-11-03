@@ -1046,6 +1046,102 @@ test('settings publik: viewer boleh baca retensi, penuh tetap admin-only', async
 
 // ─── T01: Migrasi grup + constraint + backfill ─────────────────────────────
 
+test('T04: test file — path unik global, config LHCI divalidasi, hapus ditolak bila dipakai run', async t => {
+  const { call, login, store } = await fixture(t);
+  const cookie = await login();
+
+  // Project kedua untuk membuktikan path unik lintas project.
+  const p2 = (await call('/api/projects', { method: 'POST', cookie, body: { name: 'Kedua', base_url: 'https://kedua.test' } })).body;
+
+  let r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: { projectId: 'p1', tool: 'lh', path: 'lighthouserc.ebh.js', label: 'LH EBH' },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.code, '');
+  const lhId = r.body.id;
+
+  // Path sama di project lain ditolak (file ditulis relatif root repo).
+  r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: { projectId: p2.id, tool: 'lh', path: 'lighthouserc.ebh.js', label: 'LH 2' },
+  });
+  assert.equal(r.status, 409);
+
+  // Path absolut / traversal / ekstensi aneh ditolak
+  for (const bad of ['../rahasia.js', '/etc/passwd', 'C:\\x.spec.ts', 'catatan.txt']) {
+    r = await call('/api/test-files', { method: 'POST', cookie, body: { projectId: 'p1', tool: 'pw', path: bad, label: 'X', code: 'x' } });
+    assert.equal(r.status, 400, `path ${bad} harus ditolak`);
+  }
+
+  // Config LHCI invalid = 400
+  const invalidConfigs = [
+    '{bukan json',
+    { urls: ['bukan-url'] },
+    { urls: ['https://luar.test/a', 'https://luar.test/b', 'https://luar.test/c', 'https://luar.test/d', 'https://luar.test/e'] },
+    { numberOfRuns: 0 },
+    { numberOfRuns: 11 },
+    { numberOfRuns: 2.5 },
+    { budgets: { 'categories:pwa': { minScore: 0.9 } } },
+    { budgets: { 'categories:performance': { minScore: 1.5 } } },
+    { budgets: { 'categories:performance': { minScore: 'tinggi' } } },
+  ];
+  store.db.prepare("UPDATE projects SET origins='[\"https://ebh.test\",\"https://staging.ebh.test\"]' WHERE id='p1'").run();
+  for (const cfg of invalidConfigs) {
+    r = await call('/api/test-files', {
+      method: 'POST', cookie,
+      body: { projectId: 'p1', tool: 'lh', path: 'cfg-' + Math.random().toString(36).slice(2) + '.js', label: 'C', config: cfg },
+    });
+    assert.equal(r.status, 400, `config ${JSON.stringify(cfg)} harus 400`);
+  }
+
+  // Origin URL tambahan harus diizinkan project/allowlist
+  r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: {
+      projectId: 'p1', tool: 'lh', path: 'lighthouserc.ebh2.js', label: 'C',
+      config: { urls: ['https://ebh.test/halaman', 'https://staging.ebh.test'], numberOfRuns: 3, budgets: { 'categories:performance': { minScore: 0.8 } } },
+    },
+  });
+  assert.equal(r.status, 201);
+  const saved = JSON.parse(r.body.config);
+  assert.deepEqual(saved.urls, ['https://ebh.test/halaman', 'https://staging.ebh.test/']);
+  assert.equal(saved.numberOfRuns, 3);
+
+  // Dedupe URL
+  r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: { projectId: 'p1', tool: 'lh', path: 'lighthouserc.dedupe.js', label: 'D', config: { urls: ['https://ebh.test/a', 'https://ebh.test/a'] } },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(JSON.parse(r.body.config).urls.length, 1);
+
+  // Hapus test file yang sudah dipakai run ditolak
+  store.createSession({ id: randomUUID(), projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test/', label: 'S', createdBy: null });
+  const sess = store.db.prepare("SELECT id FROM sessions WHERE project_id='p1'").get();
+  const runId = randomUUID();
+  store.createRun({ id: runId, sessionId: sess.id, testFileId: lhId, tool: 'lh' });
+  r = await call(`/api/test-files/${lhId}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 409);
+
+  // Yang belum dipakai run boleh dihapus
+  r = await call(`/api/test-files/${store.listTestFiles({ projectId: 'p1', tool: 'lh' }).find(f => f.id !== lhId && f.id !== undefined).id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.ok(store.listAudit({ entity: 'test_files' }).some(a => a.action === 'delete_test_file'));
+});
+
+test('T04: normalisasi config lama — target di urls tidak dihitung sebagai URL tambahan', async () => {
+  const { normalizeLhUrls, checkLhConfig } = await import('../validation.mjs');
+  const project = { base_url: 'https://ebh.test/', staging_url: 'https://staging.ebh.test/', local_url: null };
+  const out = normalizeLhUrls({ urls: ['https://ebh.test/', 'https://ebh.test/id-id', 'https://staging.ebh.test/'] }, project);
+  assert.deepEqual(out.urls, ['https://ebh.test/id-id'], 'path beda tetap URL tambahan');
+
+  // 5 URL tambahan sudah termasuk target → setelah normalisasi jadi 4 → lolos.
+  const cfg = normalizeLhUrls({ urls: ['https://ebh.test/', 'https://ebh.test/a', 'https://ebh.test/b', 'https://ebh.test/c', 'https://ebh.test/d'] }, project);
+  const checked = checkLhConfig(cfg, { allowedOrigins: ['https://ebh.test'] });
+  assert.equal(checked.urls.length, 4);
+});
+
 test('T01: fresh DB → project_groups ada, user_version=5, reuse=60', async t => {
   const store = new Store(':memory:');
   await store.init();

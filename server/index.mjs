@@ -14,7 +14,7 @@ import { reportMarkdownFor } from '../scripts/report-md.mjs';
 import { runRetention } from './retention.mjs';
 import { specPath, readSpec, writeSpec } from './spec-sync.mjs';
 import { backupDatabase } from './backup.mjs';
-import { fail, id, text, code as codeValue, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp } from './validation.mjs';
+import { fail, id, text, code as codeValue, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp, testFilePath, checkLhConfig } from './validation.mjs';
 
 const scrypt = promisify(_scrypt);
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -310,43 +310,59 @@ export function createApp({ store, runner, token, origins }) {
       includeDisabled: all === '1',
     }));
   }));
-  // Session target already claims one URL slot, so extra URLs are capped below it.
-  function checkLhUrls(tool, config) {
-    if (tool !== 'lh' || !config) return;
-    const cfg = typeof config === 'string' ? (() => { try { return JSON.parse(config); } catch { return null; } })() : config;
-    const extra = Array.isArray(cfg?.urls) ? cfg.urls.length : 0;
-    if (extra + 1 > MAX_LH_URLS) fail(`Maksimal ${MAX_LH_URLS} URL per run Lighthouse (target + ${MAX_LH_URLS - 1} tambahan)`, 400);
-  }
+
+  // Path unik global: file ditulis relatif root repo, jadi dua project tidak
+  // boleh memakai path yang sama.
+  const assertPathFree = (path, exceptId = null) => {
+    const clash = store.db.prepare('SELECT id, project_id FROM test_files WHERE path=?').get(path);
+    if (clash && clash.id !== exceptId) fail(`Path ${path} sudah dipakai test file lain`, 409);
+  };
+  // Origin yang boleh dipakai URL tambahan LHCI: properti project + allowlist server.
+  const allowedOriginsFor = project => [...(project?.origins ?? []), ...origins];
+  // code wajib untuk spec Playwright; config Lighthouse boleh kosong/string kosong.
+  const codeFor = (tool, value) => (tool === 'pw' ? codeValue(value) : (typeof value === 'string' && value.length <= 200000 ? value : codeValue(value)));
 
   app.post('/api/test-files', requireAuth, requireAdmin, route(async (req, res) => {
     const t = toolValue(req.body?.tool);
     const projectId = id(req.body?.projectId);
-    if (!store.getProject(projectId)) fail('Project tidak ditemukan', 400);
-    const path = text(req.body?.path, 'path', 500);
-    const code = codeValue(req.body?.code);
+    const project = store.getProject(projectId);
+    if (!project) fail('Project tidak ditemukan', 400);
+    const path = testFilePath(req.body?.path);
     const label = text(req.body?.label, 'label', 200);
-    const config = req.body?.config != null ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config)) : null;
-    checkLhUrls(t, config);
-    const tf = { id: randomUUID(), projectId, tool: t, path, label, code, config, updatedBy: req.user.id };
+    const code = codeFor(t, req.body?.code ?? '');
+    assertPathFree(path);
+    const cfg = t === 'lh' ? checkLhConfig(req.body?.config, { allowedOrigins: allowedOriginsFor(project) }) : null;
+    const tf = {
+      id: randomUUID(), projectId, tool: t, path, label, code,
+      config: cfg ? JSON.stringify(cfg) : null, updatedBy: req.user.id,
+    };
     store.createTestFile(tf);
     store.audit({ userId: req.user.id, action: 'create_test_file', entity: 'test_files', entityId: tf.id });
     res.status(201).json(store.getTestFile(tf.id));
   }));
+
   app.patch('/api/test-files/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const tf = store.getTestFile(id(req.params.id));
     if (!tf) fail('Not found', 404);
+    const project = store.getProject(tf.project_id);
     const fields = {};
-    if (req.body.code !== undefined) fields.code = codeValue(req.body.code);
+    if (req.body.path !== undefined) {
+      fields.path = testFilePath(req.body.path);
+      assertPathFree(fields.path, tf.id);
+    }
+    if (req.body.code !== undefined) fields.code = codeFor(tf.tool, req.body.code);
     if (req.body.label !== undefined) fields.label = text(req.body.label, 'label');
-    if (req.body.config !== undefined) fields.config = req.body.config != null ? (typeof req.body.config === 'string' ? req.body.config : JSON.stringify(req.body.config)) : null;
-    checkLhUrls(tf.tool, fields.config);
+    if (req.body.config !== undefined) {
+      const cfg = tf.tool === 'lh' ? checkLhConfig(req.body.config, { allowedOrigins: allowedOriginsFor(project) }) : null;
+      fields.config = cfg ? JSON.stringify(cfg) : null;
+    }
     if (req.body.enabled !== undefined) fields.enabled = bool(req.body.enabled, 'enabled');
 
     // Sinkron ke disk hanya untuk spec Playwright yang punya path file nyata.
     // Guard: tolak kalau file di disk sudah berubah sejak sinkron terakhir,
     // supaya edit di git tidak tertimpa diam-diam. `force: true` = timpa paksa.
     if (fields.code !== undefined && tf.tool === 'pw') {
-      const abs = specPath(root, tf.path);
+      const abs = specPath(root, fields.path ?? tf.path);
       const disk = await readSpec(abs);
       const expected = tf.disk_hash ?? (disk ? disk.hash : null);
       if (!req.body.force && disk && tf.disk_hash && disk.hash !== tf.disk_hash) {
@@ -358,9 +374,21 @@ export function createApp({ store, runner, token, origins }) {
       fields.disk_hash = await writeSpec(abs, fields.code);
     }
 
-    store.patchTestFile(req.params.id, fields);
-    store.audit({ userId: req.user.id, action: 'update_test_file', entity: 'test_files', entityId: req.params.id });
-    res.json(store.getTestFile(req.params.id));
+    store.patchTestFile(tf.id, fields);
+    store.audit({ userId: req.user.id, action: 'update_test_file', entity: 'test_files', entityId: tf.id });
+    res.json(store.getTestFile(tf.id));
+  }));
+
+  // Hapus hanya kalau belum dipakai run: hapus baris yang masih dirujuk akan
+  // memutus riwayat report.
+  app.delete('/api/test-files/:id', requireAuth, requireAdmin, route(async (req, res) => {
+    const tf = store.getTestFile(id(req.params.id));
+    if (!tf) fail('Not found', 404);
+    const used = store.db.prepare('SELECT COUNT(*) AS n FROM runs WHERE test_file_id=?').get(tf.id).n;
+    if (used) fail('Test file sudah dipakai run. Nonaktifkan saja.', 409);
+    store.db.prepare('DELETE FROM test_files WHERE id=?').run(tf.id);
+    store.audit({ userId: req.user.id, action: 'delete_test_file', entity: 'test_files', entityId: tf.id });
+    res.sendStatus(204);
   }));
 
   // Muat ulang isi spec dari disk ke DB (arah sebaliknya, manual).
