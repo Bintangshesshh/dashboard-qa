@@ -434,9 +434,24 @@ export function createApp({ store, runner, token, origins }) {
       if (!project.allow_production) fail('Run production diblokir untuk project ini', 403);
       if (req.body?.confirm !== project.name) fail('Ketik ulang nama project untuk konfirmasi production', 400);
     }
-    // reuse: sesi terbuka milik user yang sama
-    const existing = store.findOpenSession(projectId, e, req.user.id);
+    // Sesi baru dipaksa lewat { new: true } (PRD FR-06). Sesi lama yang masih
+    // terbuka harus ditutup dulu supaya index sessions_one_open bebas.
+    const forceNew = req.body?.new === true;
+    const existing = forceNew ? undefined : store.findOpenSession(projectId, e, req.user.id);
     if (existing) return res.status(409).json({ sessionId: existing.id, reuse: true });
+    if (forceNew) {
+      const open = store.openSession(projectId, e, req.user.id);
+      if (open) {
+        if (store.countRunsByStatus(open.id, ['queued', 'running', 'uploading']) > 0) {
+          fail('Masih ada run berjalan di sesi ini. Tunggu sampai selesai.', 409);
+        }
+        store.closeSession(open.id);
+      }
+    } else {
+      // Ada sesi terbuka tapi tidak boleh dipakai ulang (run aktif / sudah report).
+      const open = store.openSession(projectId, e, req.user.id);
+      if (open) fail('Sesi masih terbuka dengan run berjalan. Tutup sesi atau mulai sesi baru.', 409);
+    }
     try {
       const id = randomUUID();
       const label = `${project.name} ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;
@@ -612,6 +627,9 @@ export function createApp({ store, runner, token, origins }) {
       if (open) {
         if (store.countRunsByStatus(open.id, ['queued', 'running', 'uploading']) > 0) fail('Masih ada run berjalan di sesi ini', 409);
         sessionId = open.id;
+      } else if (store.openSession(project.id, e, req.user.id)) {
+        // Sesi terbuka tapi tidak boleh dipakai ulang (run aktif / report sudah ada).
+        fail('Sesi masih terbuka. Tutup sesi atau mulai sesi baru.', 409);
       } else {
         sessionId = randomUUID();
         const label = `${project.name} ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} ${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`;

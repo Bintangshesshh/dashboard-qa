@@ -1209,6 +1209,61 @@ test('T05: runner menolak origin URL tambahan di luar izin sebelum spawn', async
   assert.match(ok, /https:\/\/b\.test\/x/);
 });
 
+test('T06: reuse 60 menit, sesi baru setelah report, new=true memaksa sesi baru', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  assert.equal(f.store.getSetting('session_reuse_minutes'), '60', 'default dari migrasi');
+
+  // Run 1 → sesi A
+  let r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201);
+  const a = r.body.sessionId;
+
+  // Masih ada run berjalan → tidak boleh reuse, dan sesi baru ditolak 409.
+  const tf = { id: randomUUID() };
+  f.store.createTestFile({ id: tf.id, projectId: 'p1', tool: 'pw', path: 'r.spec.ts', label: 'R', code: 'x' });
+  const runId = randomUUID();
+  f.store.createRun({ id: runId, sessionId: a, testFileId: tf.id, tool: 'pw' });
+  assert.equal((await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } })).status, 409);
+  assert.equal((await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging', new: true } })).status, 409);
+
+  // Run final → sesi boleh dipakai ulang sampai report dibuat.
+  f.store.patchRun(runId, { status: 'passed', finished_at: new Date().toISOString() });
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 409);
+  assert.equal(r.body.sessionId, a);
+  assert.equal(r.body.reuse, true);
+
+  // new=true memaksa sesi baru: sesi lama ditutup.
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging', new: true } });
+  assert.equal(r.status, 201);
+  const b = r.body.sessionId;
+  assert.notEqual(b, a);
+  assert.ok(f.store.getSession(a).closed_at, 'sesi lama ditutup saat new=true');
+
+  // Setelah report dibuat, sesi berikutnya tidak boleh menempel ke sesi ber-report.
+  f.store.createReport({ id: randomUUID(), sessionId: b, scope: 'both', runIds: [], builtBy: null });
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201, 'report sudah ada → sesi baru');
+  assert.notEqual(r.body.sessionId, b);
+});
+
+test('T06: sesi lewat 60 menit ditutup otomatis, run berikutnya sesi baru', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const old = randomUUID();
+  f.store.createSession({ id: old, projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test/', label: 'L', createdBy: f.user.id });
+  f.store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?')
+    .run(new Date(Date.now() - 61 * 60_000).toISOString(), old);
+
+  assert.equal(f.store.findOpenSession('p1', 'staging', f.user.id), undefined);
+  assert.ok(f.store.getSession(old).closed_at, 'sesi basi ditutup');
+
+  const r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'staging' } });
+  assert.equal(r.status, 201);
+  assert.notEqual(r.body.sessionId, old);
+});
+
 test('T01: fresh DB → project_groups ada, user_version=5, reuse=60', async t => {
   const store = new Store(':memory:');
   await store.init();
