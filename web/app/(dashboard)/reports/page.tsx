@@ -56,7 +56,7 @@ export default function ReportsPage() {
                   <span>tingkat lulus <strong>{rate == null ? "-" : `${rate}%`}</strong></span>
                   <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
                 </div>
-                <Link className="pb-btn sm primary" href={`/reports/project/${p.id}`}>Buka laporan</Link>
+                <Link className="pb-btn sm primary" href={`/reports/project/${p.id}`}>Buka project</Link>
               </div>
             );
           })}
