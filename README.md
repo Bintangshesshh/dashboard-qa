@@ -38,7 +38,7 @@ node --experimental-sqlite scripts/import-test-files.mjs
 node scripts/seed-user.mjs --username admin --role admin
 
 npm run dev:server          # terminal 1 → http://127.0.0.1:3001
-npm run dev:web             # terminal 2 → http://127.0.0.1:3000
+npm run dev:web             # terminal 2 → http://127.0.0.1:3100
 ```
 
 Perintah lain:

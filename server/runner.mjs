@@ -31,7 +31,8 @@ export default defineConfig({
     ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME }],
     ['html', { outputDir: process.env.PLAYWRIGHT_HTML_OUTPUT_DIR, open: 'never' }],
   ],
-  use: { ...devices['Desktop Chrome'], navigationTimeout: 90000 },
+  // ignoreHTTPSErrors: target lokal sering pakai sertifikat self-signed (basicSsl).
+  use: { ...devices['Desktop Chrome'], navigationTimeout: 90000, ignoreHTTPSErrors: true },
 });
 `;
 
@@ -44,6 +45,13 @@ export function lhUrls(cfg, targetUrl) {
   return [...new Set([...(targetUrl ? [targetUrl] : []), ...(cfg?.urls ?? [])])];
 }
 
+// Target lokal HTTPS biasanya self-signed (vite basicSsl). Hanya loopback yang
+// dilewati cek sertifikat; staging/production tetap divalidasi penuh.
+// ignoreHTTPSErrors TIDAK dipakai: LHCI collect mengabaikannya, yang jalan hanya
+// chromeFlags (diverifikasi dengan sertifikat self-signed di localhost).
+const isLoopback = h => h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost');
+const localHttps = urls => urls.some(u => { try { const x = new URL(u); return x.protocol === 'https:' && isLoopback(x.hostname); } catch { return false; } });
+
 export function lhConfig(cfg, targetUrl, outDir) {
   const urls = lhUrls(cfg, targetUrl);
   if (!urls.length) throw new Error('Tidak ada URL untuk diaudit: sesi tanpa targetUrl dan config tanpa urls');
@@ -53,7 +61,11 @@ export function lhConfig(cfg, targetUrl, outDir) {
   );
   return `module.exports = ${JSON.stringify({
     ci: {
-      collect: { numberOfRuns: cfg?.numberOfRuns ?? 1, url: urls },
+      collect: {
+        numberOfRuns: cfg?.numberOfRuns ?? 1,
+        url: urls,
+        ...(localHttps(urls) ? { settings: { chromeFlags: ['--ignore-certificate-errors'] } } : {}),
+      },
       assert: { assertions },
       upload: { target: 'filesystem', outputDir: String(outDir).replaceAll('\\', '/') },
     },

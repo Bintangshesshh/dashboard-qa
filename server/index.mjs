@@ -178,6 +178,28 @@ export function createApp({ store, runner, token, origins }) {
 
   // ─── Projects ────────────────────────────────────────────────────────────
   app.get('/api/projects', requireAuth, route(async (req, res) => res.json(store.listProjects())));
+  // Tambah departemen/project baru dari halaman Seting. Slug jadi bagian ID dan
+  // dipakai sebagai kunci duplikat; tidak bisa diubah setelah project dibuat.
+  app.post('/api/projects', requireAuth, requireAdmin, route(async (req, res) => {
+    const name = text(req.body?.name, 'name');
+    // Department yang baru punya alamat lokal belum tentu punya alamat produksi;
+    // base_url boleh kosong asal local_url diisi (kolomnya NOT NULL di skema).
+    const base_url = urlValue(req.body?.base_url || req.body?.local_url, 'base_url');
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'project';
+    if (store.projectBySlug(slug)) fail('Slug ' + slug + ' sudah dipakai project lain', 409);
+    const project = store.createProject({
+      id: 'p_' + slug,
+      slug,
+      name,
+      base_url,
+      staging_url: req.body?.staging_url ? urlValue(req.body.staging_url, 'staging_url') : null,
+      local_url: req.body?.local_url ? urlValue(req.body.local_url, 'local_url') : null,
+      origins: req.body?.origins !== undefined ? originList(req.body.origins) : [],
+      allow_production: req.body?.allow_production !== undefined ? bool(req.body.allow_production, 'allow_production') : 0,
+    });
+    store.audit({ userId: req.user.id, action: 'create_project', entity: 'projects', entityId: project.id });
+    res.status(201).json(project);
+  }));
   app.patch('/api/projects/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const p = store.getProject(id(req.params.id));
     if (!p) fail('Not found', 404);

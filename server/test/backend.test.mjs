@@ -621,6 +621,11 @@ test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion warn', async
   assert.throws(() => lhConfig({ urls: ['https://a.test/', 'https://b.test/', 'https://c.test/'] }, 'https://d.test/', 'x'), /Maksimal 3 URL/);
   const minimal = lhConfig(null, 'https://a.test/', 'out');
   assert.equal(JSON.parse(minimal.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.numberOfRuns, 1);
+  assert.equal(/settings/.test(minimal), false, 'target publik tidak melewati cek sertifikat');
+
+  // self-signed lokal: chromeFlags, karena LHCI mengabaikan settings.ignoreHTTPSErrors.
+  const local = JSON.parse(lhConfig(null, 'https://localhost:5173/', 'out').replace(/^module\.exports = /, '').replace(/;\n$/, ''));
+  assert.deepEqual(local.ci.collect.settings.chromeFlags, ['--ignore-certificate-errors']);
 });
 
 test('recover: run uploading > 24 jam dibersihkan, yang baru hanya interrupted', async t => {
@@ -774,6 +779,36 @@ test('A3: target divalidasi terhadap projects.origins, bukan cuma TARGET_ALLOWLI
   r = await f.call('/api/projects/p2', { method: 'PATCH', cookie, body: { origins: ['https://ok.test/path'] } });
   assert.equal(r.status, 400, 'origin tidak boleh punya path');
   assert.deepEqual(f.store.getProject('p2').origins, ['https://staging.p2.test'], 'origins lama tidak berubah');
+});
+
+test('project baru bisa dibuat dari Seting, slug jadi kunci dan local_url dipakai apa adanya', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+
+  let r = await f.call('/api/projects', {
+    method: 'POST', cookie,
+    body: { name: 'Ticketing POS', local_url: 'https://localhost:5173' },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.id, 'p_ticketing_pos');
+  assert.equal(r.body.slug, 'ticketing_pos');
+  assert.equal(r.body.base_url, 'https://localhost:5173/', 'base_url jatuh ke local_url');
+  assert.deepEqual(r.body.origins, []);
+
+  // slug duplikat ditolak, bukan menimpa project lama
+  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: 'ticketing pos', local_url: 'https://localhost:5173' } });
+  assert.equal(r.status, 409);
+
+  // skema selain http(s) dan nama kosong ditolak
+  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: 'X', local_url: 'javascript:alert(1)' } });
+  assert.equal(r.status, 400);
+  r = await f.call('/api/projects', { method: 'POST', cookie, body: { name: '  ', local_url: 'https://localhost:5173' } });
+  assert.equal(r.status, 400);
+
+  // env local tidak lewat allowlist global: target lokal tetap bisa dijalankan
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p_ticketing_pos', env: 'local' } });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.targetUrl, 'https://localhost:5173/');
 });
 
 test('A5: run production menulis satu baris log system', async t => {

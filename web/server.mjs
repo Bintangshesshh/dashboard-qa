@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import next from 'next';
 
 const dev = process.argv.includes('--dev');
-const port = Number(process.env.PORT ?? 3000);
+// 3100 default: 3000 sering dipakai backend aplikasi lain di mesin yang sama.
+const port = Number(process.env.PORT ?? 3100);
 const hostname = process.env.HOST ?? '127.0.0.1';
 const backend = new URL(process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3001');
 if (!['http:', 'https:'].includes(backend.protocol)) throw new Error('API_INTERNAL_URL must use HTTP(S)');

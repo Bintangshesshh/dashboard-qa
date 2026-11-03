@@ -162,6 +162,10 @@ export const api = {
   me: () => request<User>("/api/me"),
 
   projects: () => request<Project[]>("/api/projects"),
+  createProject: (body: {
+    name: string; base_url?: string; staging_url?: string | null;
+    local_url?: string | null; origins?: string[]; allow_production?: number;
+  }) => request<Project>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
   patchProject: (id: string, body: Partial<Pick<Project, "base_url" | "staging_url" | "local_url" | "origins" | "allow_production">>) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 

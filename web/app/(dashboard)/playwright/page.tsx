@@ -12,15 +12,22 @@ import {
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
+type Env = "local" | "staging" | "production";
+const ENVS: Env[] = ["local", "staging", "production"];
+
+// Target ikut env. Kosong = project belum mengisi URL untuk env itu.
+const resolvedUrl = (p: Project | undefined, e: Env) =>
+  !p ? "" : e === "local" ? p.local_url ?? "" : e === "staging" ? p.staging_url ?? "" : p.base_url;
+
 
 export default function PlaywrightPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<TestFile[]>([]);
   const [projectId, setProjectId] = useState("");
-  // Env UI disembunyikan untuk demo: target selalu base_url (web online) dengan env
-  // production. Konfirmasi nama project diisi otomatis, guard backend tetap jalan.
-  // ponytail: kalau perlu pilih env lagi, kembalikan select + confirm input.
-  const env = "production";
+  // Default local: kasus utama menguji web yang jalan di laptop sendiri.
+  // Konfirmasi production: ketik nama project. Guard sama ada di server.
+  const [confirmName, setConfirmName] = useState("");
+  const [env, setEnv] = useState<Env>("local");
 
   // Editor
   const [draft, setDraft] = useState("");
@@ -85,7 +92,8 @@ export default function PlaywrightPage() {
 
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
-  const target = project?.base_url ?? "";
+  const target = resolvedUrl(project, env);
+  const productionOk = env !== "production" || confirmName.trim() === (project?.name ?? "");
   const dirty = !!selected && draft !== savedCode;
   const running = !!run && !FINAL.includes(run.status);
 
@@ -163,12 +171,14 @@ export default function PlaywrightPage() {
     setStarting(true); setError("");
     setRunId(null); setRun(null); setLogs([]);
     try {
-      if (!target) throw new Error("Project ini belum punya URL.");
+      if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
+      if (env === "production" && confirmName.trim() !== project?.name)
+        throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya spec Playwright.");
       // Flush autosave yang masih menunggu supaya run memakai kode terbaru.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; await save(); }
-      // Konfirmasi production diisi otomatis: UI tidak menampilkan env/konfirmasi.
-      const created = await api.createSession(projectId, env, project?.name);
+      // Konfirmasi production diketik user; guard yang sama ada di server.
+      const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`pw-run:${projectId}`, runId);
       setRunsByProject(prev => ({ ...prev, [projectId]: runId }));
@@ -202,7 +212,7 @@ export default function PlaywrightPage() {
             {conflict ? "Konflik disk" : saveState}
           </span>
           <button className="pb-btn primary" onClick={start}
-            disabled={starting || running || !selected || !target}>
+            disabled={starting || running || !selected || !target || !productionOk}>
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
           </button>
           {running && <button className="pb-btn" onClick={stop}>Stop</button>}
@@ -214,14 +224,28 @@ export default function PlaywrightPage() {
         <div className="pb-row" style={{ justifyContent: "space-between", gap: 16 }}>
           <label className="pb-field" style={{ minWidth: 240 }}>
             Project
-            <select className="pb-select" value={projectId} onChange={e => setProjectId(e.target.value)}>
+            <select className="pb-select" value={projectId}
+              onChange={e => { setProjectId(e.target.value); setConfirmName(""); }}>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
+          <label className="pb-field">
+            Environment
+            <select className="pb-select" value={env}
+              onChange={e => { setEnv(e.target.value as Env); setConfirmName(""); }}>
+              {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </label>
           <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-            Target: <span className="pb-mono">{target || "belum diisi di project"}</span>
+            Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
           </p>
         </div>
+        {env === "production" && (
+          <label className="pb-field" style={{ marginTop: 12 }}>
+            Ketik <strong>{project?.name ?? "nama project"}</strong> untuk konfirmasi production
+            <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
+          </label>
+        )}
       </section>
 
       <section className="pb-card" style={{ marginBottom: 16 }}>

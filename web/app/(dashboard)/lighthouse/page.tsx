@@ -28,15 +28,21 @@ const CATEGORIES = [
   { key: "categories:seo", label: "SEO" },
 ];
 
-// Env UI disembunyikan untuk demo: audit selalu ke web online (base_url).
-// ponytail: kalau perlu local/staging lagi, kembalikan resolvedUrl(env).
-const liveUrl = (p: Project | undefined) => p?.base_url ?? "";
+type Env = "local" | "staging" | "production";
+const ENVS: Env[] = ["local", "staging", "production"];
+
+// Target ikut env. Kosong = project belum mengisi URL untuk env itu.
+const resolvedUrl = (p: Project | undefined, e: Env) =>
+  !p ? "" : e === "local" ? p.local_url ?? "" : e === "staging" ? p.staging_url ?? "" : p.base_url;
 
 export default function LighthousePage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<TestFile[]>([]);
   const [projectId, setProjectId] = useState("");
-  const env = "production";
+  // Default local: kasus utama menguji web yang jalan di laptop sendiri.
+  const [env, setEnv] = useState<Env>("local");
+  // Konfirmasi production: ketik nama project. Guard sama ada di server.
+  const [confirmName, setConfirmName] = useState("");
 
   // Draft config. Skor disimpan 0-1 di backend, ditampilkan 0-100 di slider.
   const [runs, setRuns] = useState(1);
@@ -85,7 +91,8 @@ export default function LighthousePage() {
 
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
-  const target = liveUrl(project);
+  const target = resolvedUrl(project, env);
+  const productionOk = env !== "production" || confirmName.trim() === (project?.name ?? "");
   const running = !!run && !FINAL.includes(run.status);
 
   // Muat config ke form hanya saat file berganti. Kalau bergantung pada
@@ -158,12 +165,14 @@ export default function LighthousePage() {
     setStarting(true); setError("");
     setRunId(null); setRun(null); setLogs([]);
     try {
-      if (!target) throw new Error("Project ini belum punya URL.");
+      if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
+      if (env === "production" && confirmName.trim() !== project?.name)
+        throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya konfigurasi Lighthouse.");
       // Flush autosave yang masih menunggu supaya run memakai config terbaru.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; await saveConfig(); }
-      // Konfirmasi production diisi otomatis: UI tidak menampilkan env/konfirmasi.
-      const created = await api.createSession(projectId, env, project?.name);
+      // Konfirmasi production diketik user; guard yang sama ada di server.
+      const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`lh-run:${projectId}`, runId);
       setRunsByProject(prev => ({ ...prev, [projectId]: runId }));
@@ -193,7 +202,7 @@ export default function LighthousePage() {
         <div className="pb-filters">
           <span className="pb-save-state" aria-live="polite">{saveState}</span>
           <button className="pb-btn primary" onClick={start}
-            disabled={starting || running || !selected || !target}>
+            disabled={starting || running || !selected || !target || !productionOk}>
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
           </button>
           {running && <button className="pb-btn" onClick={stop}>Stop</button>}
@@ -205,14 +214,28 @@ export default function LighthousePage() {
         <div className="pb-row" style={{ justifyContent: "space-between", gap: 16 }}>
           <label className="pb-field" style={{ minWidth: 240 }}>
             Project
-            <select className="pb-select" value={projectId} onChange={e => setProjectId(e.target.value)}>
+            <select className="pb-select" value={projectId}
+              onChange={e => { setProjectId(e.target.value); setConfirmName(""); }}>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
+          <label className="pb-field">
+            Environment
+            <select className="pb-select" value={env}
+              onChange={e => { setEnv(e.target.value as Env); setConfirmName(""); }}>
+              {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </label>
           <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-            Target: <span className="pb-mono">{target || "belum diisi di project"}</span>
+            Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
           </p>
         </div>
+        {env === "production" && (
+          <label className="pb-field" style={{ marginTop: 12 }}>
+            Ketik <strong>{project?.name ?? "nama project"}</strong> untuk konfirmasi production
+            <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
+          </label>
+        )}
       </section>
 
       <section className="pb-card" style={{ marginBottom: 16 }}>

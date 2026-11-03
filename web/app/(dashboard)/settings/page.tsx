@@ -217,6 +217,15 @@ export default function SettingsPage() {
     });
   };
 
+  const createProject = async (body: Parameters<typeof api.createProject>[0]) => {
+    setError(""); setNotice("");
+    try {
+      const created = await api.createProject(body);
+      setProjects(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setNotice(`${created.name} ditambahkan.`);
+    } catch (e) { setError((e as Error).message); }
+  };
+
   const saveProject = async (p: Project, patch: Parameters<typeof api.patchProject>[1]) => {
     setError(""); setNotice("");
     try {
@@ -421,6 +430,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
+              <NewProjectForm onCreate={createProject} />
               {projects.length === 0
                 ? <p className="pb-empty">Belum ada project.</p>
                 : projects.map(p => <ProjectRow key={p.id} project={p} onSave={saveProject} />)}
@@ -579,6 +589,50 @@ function LhciCard({ project, file, onSave }: {
         <span className="pb-spacer" />
         <button className="pb-btn sm primary" onClick={save} disabled={saving || !dirty}>
           Simpan config
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Tambah departemen baru. base_url boleh dikosongkan kalau targetnya masih lokal;
+// server memakai local_url sebagai gantinya supaya kolom NOT NULL tetap terisi.
+function NewProjectForm({ onCreate }: {
+  onCreate: (body: Parameters<typeof api.createProject>[0]) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [base, setBase] = useState("");
+  const [local, setLocal] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await onCreate({
+        name: name.trim(),
+        base_url: base.trim() || undefined,
+        local_url: local.trim() || undefined,
+      });
+      setName(""); setBase(""); setLocal("");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="pb-proj-card">
+      <div className="pb-row pb-proj-head">
+        <strong>Tambah departemen</strong>
+      </div>
+      <div className="pb-grid two">
+        <label className="pb-field">nama<input className="pb-input" value={name} onChange={e => setName(e.target.value)} /></label>
+        <label className="pb-field">base_url<input className="pb-input" placeholder="https://…" value={base} onChange={e => setBase(e.target.value)} /></label>
+        <label className="pb-field">local_url<input className="pb-input" placeholder="http://localhost:5173" value={local} onChange={e => setLocal(e.target.value)} /></label>
+      </div>
+      <div className="pb-row pb-proj-foot">
+        <span className="pb-set-status">{name.trim() ? "" : "nama wajib diisi"}</span>
+        <span className="pb-spacer" />
+        <button className="pb-btn sm primary" onClick={submit}
+          disabled={busy || !name.trim() || !(base.trim() || local.trim())}>
+          {busy ? "Menyimpan…" : "Tambah project"}
         </button>
       </div>
     </div>

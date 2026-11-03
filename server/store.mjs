@@ -121,6 +121,14 @@ export class Store {
       FROM projects p WHERE p.active=1 ORDER BY p.name`).all().map(parseOrigins);
   }
   getProject(id) { const row = this.db.prepare('SELECT * FROM projects WHERE id=?').get(id); return row ? parseOrigins(row) : row; }
+  createProject({ id, slug, name, base_url, staging_url = null, local_url = null, origins = [], allow_production = 0 }) {
+    this.db.prepare('INSERT INTO projects (id, slug, name, base_url, staging_url, local_url, origins, allow_production, active, created_at)'
+      + ' VALUES (?,?,?,?,?,?,?,?,1,?)').run(
+      id, slug, name, base_url, staging_url, local_url, JSON.stringify(origins), allow_production, new Date().toISOString(),
+    );
+    return this.getProject(id);
+  }
+  projectBySlug(slug) { const row = this.db.prepare('SELECT * FROM projects WHERE slug=?').get(slug); return row ? parseOrigins(row) : row; }
   patchProject(id, fields) {
     const allowed = ['name', 'base_url', 'staging_url', 'local_url', 'origins', 'allow_production', 'active'];
     const set = []; const vals = [];

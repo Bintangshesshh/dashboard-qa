@@ -34,7 +34,7 @@ export default defineConfig({
     ['json', { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME }],
     ['html', { outputDir: process.env.PLAYWRIGHT_HTML_OUTPUT_DIR, open: 'never' }],
   ],
-  use: { ...devices['Desktop Chrome'], navigationTimeout: 90000 },
+  use: { ...devices['Desktop Chrome'], navigationTimeout: 90000, ignoreHTTPSErrors: true },
 });
 `;
 
@@ -49,12 +49,20 @@ export function ensureQuickFiles() {
   return ensured;
 }
 
+// Target lokal HTTPS biasanya self-signed (vite basicSsl); hanya loopback yang
+// dilewati cek sertifikat. LHCI collect mengabaikan settings.ignoreHTTPSErrors,
+// jadi yang dipakai chromeFlags (diverifikasi dengan sertifikat self-signed).
+const isLocalHttps = url => { try { const u = new URL(url); return u.protocol === 'https:' && (['localhost', '127.0.0.1', '[::1]'].includes(u.hostname) || u.hostname.endsWith('.localhost')); } catch { return false; } };
+
 // Config Lighthouse per run: URL & outputDir berbeda tiap run.
 export async function writeLighthouseConfig(dir, targetUrl) {
   const outDir = join(dir, 'artifacts').replaceAll('\\', '/');
   const config = `module.exports = {
   ci: {
-    collect: { numberOfRuns: 1, url: [${JSON.stringify(targetUrl)}] },
+    collect: {
+      numberOfRuns: 1,
+      url: [${JSON.stringify(targetUrl)}],
+${isLocalHttps(targetUrl) ? "      settings: { chromeFlags: ['--ignore-certificate-errors'] },\r\n" : ""}    },
     assert: {
       assertions: {
         'categories:performance': ['warn', { minScore: 0.6 }],
