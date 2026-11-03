@@ -10,11 +10,35 @@ const artifact = path => 'artifacts/' + path.split('/').map(encodeURIComponent).
 const flattenSteps = (steps = []) => steps.flatMap(step => [step, ...flattenSteps(step.steps)]);
 const location = value => (value?.file ? [value.file, value.line, value.column].filter(v => v != null).join(':') : null);
 
+// Angka durasi/ukuran dipakai beberapa panel; satu format supaya tidak beda.
+const fmtMs = value => {
+  if (value == null || value === '') return '-';
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return '-';
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} s` : `${Math.round(n)} ms`;
+};
+const fmtBytes = value => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`;
+};
+const runSpan = run => {
+  const start = Date.parse(run?.startedAt ?? '');
+  const end = Date.parse(run?.finishedAt ?? '');
+  if (Number.isFinite(start) && Number.isFinite(end) && end >= start) return end - start;
+  // run.json lama belum punya finishedAt; durasi dari DB masih fakta yang sama.
+  const duration = Number(run?.durationMs);
+  return Number.isFinite(duration) && duration >= 0 ? duration : null;
+};
+const testMs = test => (test.results || []).reduce((sum, result) => sum + (Number(result.duration) || 0), 0);
+const CAT_SHORT = { performance: 'Perf', accessibility: 'A11y', 'best-practices': 'BP', 'best practices': 'BP', seo: 'SEO' };
+const catShort = title => CAT_SHORT[String(title ?? '').toLowerCase()] || title || 'Lainnya';
+
 // Pembungkus semua halaman report: nav + hero + panel. Satu tempat untuk <head> dan tema.
 export const doc = ({ title, brand, sub = '', actions = '', hero = '', body = '' }) => `<!doctype html><html lang="id"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f6f8fb" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme:light)">
 <meta name="theme-color" content="#0b1020" media="(prefers-color-scheme:dark)">
 <title>${esc(title)}</title><style>${reportCss}</style></head><body>
 <a class="skip" href="#main">Lewati ke konten</a>
@@ -76,21 +100,54 @@ function testResult(test) {
     + ` · diharapkan: ${esc(test.expectedStatus || '-')} · hasil: ${esc(test.status || '-')}</p>${attempts}</article>`;
 }
 
-function playwrightSection(data) {
+const slowRow = (title, ms, max, meta = '') => `<li class="slow-row">
+<div class="slow-head"><span class="slow-name">${esc(title)}</span><span class="slow-ms">${fmtMs(ms)}</span></div>
+<div class="slow-bar" aria-hidden="true"><span style="width:${Math.max(2, Math.round((Number(ms) || 0) / Math.max(1, max) * 100))}%"></span></div>
+${meta ? `<div class="slow-meta">${meta}</div>` : ''}</li>`;
+
+function playwrightSection(run, data) {
   const rows = tests(data.suites);
+  if (!rows.length) return '<p class="empty">data tidak ditemukan - JSON Playwright hilang atau korup. Run tidak dianggap lulus.</p>';
   const failures = rows.filter(needsAttention);
   const others = rows.filter(test => !needsAttention(test));
-  const durations = rows.map(test => (test.results || []).reduce((sum, r) => sum + (Number(r.duration) || 0), 0));
-  const maxDuration = Math.max(1, ...durations);
-  const list = rows.map((test, i) => {
-    const total = durations[i];
-    const label = total >= 1000 ? (total / 1000).toFixed(2) + ' s' : total + ' ms';
-    return `<tr><td class="mono">${i + 1}</td><td>${esc(test.title)}</td>
+  const totals = rows.map(test => ({ test, total: testMs(test) }));
+  const totalTest = totals.reduce((sum, item) => sum + item.total, 0);
+  const wall = runSpan(run);
+  const overhead = wall != null ? wall - totalTest : null;
+  const attempts = rows.reduce((sum, test) => sum + (test.results || []).length, 0);
+  const retries = rows.reduce((sum, test) => sum + (test.results || []).filter(result => Number(result.retry) > 0).length, 0);
+  const slowTests = [...totals].sort((a, b) => b.total - a.total).slice(0, 5);
+  const maxTotal = Math.max(1, ...totals.map(item => item.total));
+  const slowSteps = rows.flatMap(test => flattenSteps((test.results || []).flatMap(result => result.steps ?? []))
+    .filter(step => Number(step.duration) > 0)
+    .map(step => ({ step, test: test.title })))
+    .sort((a, b) => Number(b.step.duration) - Number(a.step.duration)).slice(0, 5);
+  const maxTest = slowTests[0]?.total || 1;
+  const maxStep = Number(slowSteps[0]?.step.duration) || 1;
+
+  // Penyebab durasi: wall-clock vs jumlah test, lalu test/langkah terlama.
+  const diag = `<div class="diagnosis"><h3>Kenapa run selama ini?</h3>
+<div class="diag-grid">
+<div class="diag"><span class="diag-label">Durasi run</span><span class="diag-value">${fmtMs(wall)}</span><span class="diag-sub">dari mulai sampai selesai</span></div>
+<div class="diag"><span class="diag-label">Total test</span><span class="diag-value">${fmtMs(totalTest)}</span><span class="diag-sub">${attempts} percobaan · ${rows.length} test</span></div>
+<div class="diag"><span class="diag-label">Retry</span><span class="diag-value">${retries}</span><span class="diag-sub">${retries ? 'percobaan ulang menambah waktu' : 'tidak ada percobaan ulang'}</span></div>
+<div class="diag"><span class="diag-label">Tes terlama</span><span class="diag-value">${fmtMs(slowTests[0]?.total)}</span><span class="diag-sub">${esc(slowTests[0]?.test.title || '-')}</span></div>
+</div>
+${overhead != null ? `<p class="diag-note">${overhead >= 0
+    ? `${fmtMs(overhead)} dari durasi run tidak tercatat di durasi test (setup, browser launch, atau antrean runner).`
+    : `Total durasi test ${fmtMs(totalTest)} lebih besar dari wall-clock ${fmtMs(wall)} karena test berjalan paralel.`}</p>` : ''}
+${slowTests.length ? `<h3>Tes terlama</h3><ol class="slow-list">${slowTests.map(({ test, total }) => slowRow(test.title,
+    total, maxTest, `${esc(location(test) || test.file || '-')} · ${totalTest ? Math.round(total / totalTest * 100) : 0}% total test`)).join('')}</ol>` : ''}
+${slowSteps.length ? `<h3>Langkah terlama</h3><ol class="slow-list">${slowSteps.map(({ step, test }) => slowRow(`${test} / ${step.title}`,
+    step.duration, maxStep, esc(location(step.location) || 'lokasi tidak tersedia'))).join('')}</ol>` : ''}
+</div>`;
+
+  const list = rows.map((test, i) => `<tr><td class="mono">${i + 1}</td><td>${esc(test.title)}</td>
 <td class="mono">${esc(location(test) || test.file || '-')}</td>
 <td>${needsAttention(test) ? '<span class="b bad">perlu diperiksa</span>' : '<span class="b ok">sesuai harapan</span>'}</td>
-<td class="mono dur"><span class="dur-cell"><span class="dur-bar" style="width:${Math.max(2, Math.round((total / maxDuration) * 100))}%"></span><span>${label}</span></span></td></tr>`;
-  }).join('');
-  return `<p><strong>${failures.length} entri test perlu diperiksa</strong> / ${rows.length} total.`
+<td class="mono dur"><span class="dur-cell"><span class="dur-bar" style="width:${Math.max(2, Math.round((totals[i].total / maxTotal) * 100))}%"></span><span>${fmtMs(totals[i].total)}</span></span></td></tr>`).join('');
+  return diag
+    + `<p><strong>${failures.length} entri test perlu diperiksa</strong> / ${rows.length} total.`
     + ` Kegagalan yang diharapkan dan retry tetap terlihat; test flaky tidak dianggap lulus.</p>`
     + `<div class="tbl"><table><thead><tr><th>#</th><th>Test</th><th>Lokasi</th><th>Hasil</th><th>Durasi</th></tr></thead>`
     + `<tbody>${list}</tbody></table></div>`
@@ -106,47 +163,77 @@ const tone = value => (typeof value !== 'number' ? 'mut2' : value >= 0.9 ? 'ok' 
 function scoreRing(label, value) {
   const pct = typeof value === 'number' ? Math.round(value * 100) : null;
   const cls = tone(value);
+  const status = pct == null ? 'Tidak dinilai' : pct >= 90 ? 'Baik' : pct >= 50 ? 'Cukup' : 'Perlu perhatian';
   const dash = 138.2;
   return `<li class="score"><svg viewBox="0 0 56 56" role="img" aria-label="${esc(label)} ${pct ?? 'tidak dinilai'}">
 <circle class="track" cx="28" cy="28" r="22"></circle>
 <circle class="val ${cls}" cx="28" cy="28" r="22" stroke-dasharray="${dash}" stroke-dashoffset="${dash - (dash * (pct ?? 0)) / 100}"></circle>
-</svg><b class="num-${cls}">${pct ?? '-'}</b><span>${esc(label)}</span></li>`;
+</svg><b class="num-${cls}">${pct ?? '-'}</b><span>${esc(label)}</span><em class="score-status num-${cls}">${status}</em></li>`;
 }
+
+const scoreBadge = value => {
+  if (typeof value !== 'number') return '<span class="score-badge muted">-</span>';
+  const pct = Math.round(value * 100);
+  return `<span class="score-badge ${pct >= 90 ? 'green' : pct >= 50 ? 'orange' : 'red'}">${pct}/100</span>`;
+};
+
+const auditSavings = audit => {
+  const ms = Number(audit.details?.overallSavingsMs) || 0;
+  const bytes = Number(audit.details?.overallSavingsBytes) || 0;
+  return [ms ? `hemat ${fmtMs(ms)}` : '', bytes ? `hemat ${fmtBytes(bytes)}` : ''].filter(Boolean).join(' · ');
+};
 
 function lighthouseSection(data) {
   const weights = {};
-  Object.values(data.categories).forEach(category => (category.auditRefs || []).forEach(ref => {
-    weights[ref.id] = Math.max(weights[ref.id] || 0, ref.weight || 0);
-  }));
+  const auditCat = {};
+  Object.entries(data.categories).forEach(([id, category]) => {
+    const title = category.title || id;
+    (category.auditRefs || []).forEach(ref => {
+      weights[ref.id] = Math.max(weights[ref.id] || 0, ref.weight || 0);
+      auditCat[ref.id] = auditCat[ref.id] || title;
+    });
+  });
   const audits = Object.values(data.audits)
     .filter(a => a.scoreDisplayMode === 'error' || a.errorMessage || (typeof a.score === 'number' && a.score < 1))
     .sort((a, b) => Number(Boolean(b.errorMessage || b.scoreDisplayMode === 'error')) - Number(Boolean(a.errorMessage || a.scoreDisplayMode === 'error'))
       || ((1 - (b.score ?? 0)) * (weights[b.id] || 1)) - ((1 - (a.score ?? 0)) * (weights[a.id] || 1)));
   const categories = Object.entries(data.categories)
     .map(([id, c]) => scoreRing(c.title || id, c.score)).join('');
-  const metrics = [['FCP', data.audits?.['first-contentful-paint']?.displayValue],
-    ['LCP', data.audits?.['largest-contentful-paint']?.displayValue],
-    ['TBT', data.audits?.['total-blocking-time']?.displayValue],
-    ['CLS', data.audits?.['cumulative-layout-shift']?.displayValue]]
-    .filter(([, value]) => value)
-    .map(([name, value]) => `<div class="cwv-card"><div class="cwv-name">${name}</div>
-<div class="cwv-val">${esc(value)}</div><div class="cwv-target">terukur pada run ini</div></div>`).join('');
+  const causes = audits.slice(0, 5).map(a => `<li class="cause">
+<div class="cause-head"><span class="cause-name">${esc(a.title || a.id)}</span>${scoreBadge(a.score)}
+<span class="category-tag">${esc(catShort(auditCat[a.id] || 'Lainnya'))}</span>${a.displayValue ? `<span class="cause-value">${esc(a.displayValue)}</span>` : ''}</div>
+${a.errorMessage ? `<p class="cause-why" role="alert">${esc(a.errorMessage)}</p>` : (a.explanation || a.description)
+    ? `<p class="cause-why">${esc(a.explanation || a.description)}</p>` : ''}</li>`).join('');
+  const metricDefs = [['FCP', 'first-contentful-paint'], ['LCP', 'largest-contentful-paint'],
+    ['TBT', 'total-blocking-time'], ['CLS', 'cumulative-layout-shift']];
+  const metrics = metricDefs.map(([name, id]) => ({ name, audit: data.audits?.[id] }))
+    .filter(({ audit }) => audit?.displayValue)
+    .map(({ name, audit }) => {
+      const status = typeof audit.score !== 'number' ? 'tidak dinilai' : audit.score >= 0.9 ? 'baik' : audit.score >= 0.5 ? 'cukup' : 'perlu perbaikan';
+      return `<div class="cwv-card tone-${tone(audit.score)}"><div class="cwv-name">${name}</div>
+<div class="cwv-val">${esc(audit.displayValue)}</div><div class="cwv-status">${status}</div></div>`;
+    }).join('');
   const warnings = (data.runWarnings || []).map(warning => `<li>${esc(warning)}</li>`).join('');
+  const auditRows = audits.map((a, i) => `<tr>
+<td class="audit-rank">${i + 1}</td>
+<td><span class="category-tag">${esc(catShort(auditCat[a.id] || 'Lainnya'))}</span></td>
+<td><strong>${esc(a.title || a.id)}</strong>${a.errorMessage ? ' <span class="b bad">error</span>' : ''}</td>
+<td>${scoreBadge(a.score)}</td>
+<td class="mono">${[a.displayValue, auditSavings(a)].filter(Boolean).map(esc).join(' · ') || '-'}</td>
+<td class="audit-desc">${esc(a.explanation || a.description || '')}
+${a.details ? `<details class="audit-more"><summary>Elemen terdampak dan nilai terukur</summary>${pre(a.details)}</details>` : ''}</td></tr>`).join('');
   return `<p class="mono">URL: ${esc(data.finalDisplayedUrl || data.finalUrl || data.requestedUrl)} · diambil: ${esc(data.fetchTime)}</p>`
-    + `<ul class="scores">${categories}</ul>`
+    + `<h3>Skor kategori</h3><ul class="scores">${categories}</ul>`
     + `${metrics ? `<div class="cwv-grid">${metrics}</div>` : ''}`
+    + `<div class="diagnosis"><h3>Kenapa skor segini?</h3>
+<p class="diag-note">Penyebab diurutkan dari error runtime, lalu defisit skor × bobot kategori. Audit tanpa bobot dihitung 1.</p>
+${causes ? `<ol class="cause-list">${causes}</ol>` : '<p class="empty">Tidak ada audit yang menurunkan skor.</p>'}</div>`
     + `${data.runtimeError ? `<h3>Error runtime</h3>${errorDetail(data.runtimeError)}` : ''}`
     + `${warnings ? `<h3>Peringatan</h3><ul>${warnings}</ul>` : ''}`
-    + `<h3>Audit prioritas (${audits.length})</h3>`
-    + `<p>Error audit runtime lebih dulu, lalu defisit skor × bobot kategori (audit tanpa bobot dihitung 1).`
-    + ` Hasil observasi bukan bukti pasti ada cacat produk.</p>`
-    + audits.map((a, i) => `<article><h4>${i + 1}. ${esc(a.title || a.id)}</h4>`
-      + `<p><strong class="num-${tone(a.score)}">${esc(score(a.score))}</strong>${a.displayValue ? ' · ' + esc(a.displayValue) : ''}</p>`
-      + `${a.errorMessage ? `<p role="alert">${esc(a.errorMessage)}</p>` : ''}`
-      + `${a.explanation ? `<p>${esc(a.explanation)}</p>` : ''}`
-      + `${a.description ? `<p>${esc(a.description)}</p>` : ''}`
-      + `${a.details ? `<details><summary>Elemen terdampak dan nilai terukur</summary>${pre(a.details)}</details>` : ''}`
-      + `</article>`).join('');
+    + `<h3>Audit belum penuh (${audits.length})</h3>`
+    + `<p>Hasil observasi bukan bukti pasti ada cacat produk. Tabel memuat audit dengan skor di bawah 100 atau error.</p>`
+    + `<div class="tbl audits-table-wrap"><table><thead><tr><th>#</th><th>Kategori</th><th>Audit</th><th>Skor</th><th>Nilai / hemat</th><th>Penyebab</th></tr></thead>`
+    + `<tbody>${auditRows}</tbody></table></div>`;
 }
 
 function stepSection(data) {
@@ -159,7 +246,7 @@ function stepSection(data) {
     + `<details><summary>Semua langkah tercatat</summary>${pre(data.tests)}</details>`;
 }
 
-const sectionBody = r => (r.kind === 'playwright' ? playwrightSection(r.data)
+const sectionBody = (r, run) => (r.kind === 'playwright' ? playwrightSection(run, r.data)
   : r.kind === 'lighthouse' ? lighthouseSection(r.data) : stepSection(r.data));
 
 // Teks polos untuk disalin ke tiket atau dokumen: fakta run + baris gagal saja.
@@ -202,6 +289,63 @@ export function ringkasTeks(report) {
   return out.join('\n');
 }
 
+// Satu baris sinyal untuk tabel index: cukup untuk memutuskan halaman mana yang perlu dibuka.
+export function runSignal(report) {
+  const pw = report.reports?.find(r => r.kind === 'playwright');
+  if (pw) {
+    const rows = tests(pw.data.suites);
+    const total = rows.reduce((sum, test) => sum + testMs(test), 0);
+    const slowest = rows.reduce((max, test) => Math.max(max, testMs(test)), 0);
+    const failed = rows.filter(needsAttention).length;
+    return `${rows.length} test · ${fmtMs(total)}${failed ? ` · ${failed} perlu diperiksa` : ''} · terlama ${fmtMs(slowest)}`;
+  }
+  const lh = report.reports?.find(r => r.kind === 'lighthouse');
+  if (lh) {
+    return Object.entries(lh.data.categories)
+      .sort((a, b) => (a[1].score ?? 1) - (b[1].score ?? 1))
+      .map(([id, c]) => `${catShort(c.title || id)} ${typeof c.score === 'number' ? Math.round(c.score * 100) : '-'}`)
+      .join(' · ');
+  }
+  return report.reports?.length ? `${report.reports.length} sumber JSON` : (report.run?.status ?? '-');
+}
+
+function issuePanel(report) {
+  const items = [];
+  if (report.run?.error) {
+    const error = typeof report.run.error === 'string' ? report.run.error : (report.run.error.message || JSON.stringify(report.run.error));
+    items.push(`<strong>Error run</strong> · ${esc(error)}`);
+  }
+  for (const source of report.reports) {
+    if (source.kind === 'playwright') {
+      for (const test of tests(source.data.suites).filter(needsAttention)) {
+        items.push(`<strong>${esc(test.title)}</strong> · ${esc(location(test) || test.file || '-')} · ${esc(test.status || 'gagal')}`);
+      }
+    } else if (source.kind === 'lighthouse') {
+      for (const [id, category] of Object.entries(source.data.categories)) {
+        if (typeof category.score === 'number' && category.score < 0.9) {
+          items.push(`<strong>Skor ${esc(category.title || id)}</strong> · ${Math.round(category.score * 100)}/100`);
+        }
+      }
+      for (const audit of Object.values(source.data.audits)) {
+        if (audit.errorMessage) items.push(`<strong>Audit error</strong> · ${esc(audit.title || audit.id)}`);
+      }
+    } else if (source.kind === 'steps') {
+      for (const test of source.data.tests.filter(t => flattenSteps(t.steps).some(step => step.error)
+        || ['failed', 'timedOut', 'interrupted'].includes(t.status))) {
+        items.push(`<strong>${esc(test.title)}</strong> · ${esc(test.status)}`);
+      }
+    }
+  }
+  if (!report.reports.length) items.push('Tidak ada JSON report yang terbaca. Run tidak dianggap lulus.');
+  const unique = [...new Set(items)];
+  const head = unique.slice(0, 6).map(item => `<li>${item}</li>`).join('');
+  const rest = unique.slice(6);
+  return `${head ? `<ul class="issue-list">${head}</ul>` : '<p class="issue-empty">Tidak ada kegagalan atau audit error pada run ini.</p>'}
+${rest.length ? `<details><summary>${rest.length} masalah lainnya</summary><ul class="issue-list">${rest.map(item => `<li>${item}</li>`).join('')}</ul></details>` : ''}
+<div class="diag-foot"><details><summary>Metadata run</summary>${pre(report.run)}</details></div>`;
+}
+
+
 // report: { run, logs, files, reports, warnings, bundle }
 export function runReportHtml(report) {
   const run = report.run;
@@ -214,6 +358,7 @@ export function runReportHtml(report) {
   const fileRow = (path, actions) => `<li class="file-row"><span class="file-name">${esc(path)}</span>
 <span class="file-actions">${actions}</span></li>`;
   const fileList = paths => `<ul class="file-list">${paths.map(path => fileRow(path, `${buka(path)}${download(path, 'unduh')}`)).join('')}</ul>`;
+  const subCard = (title, body) => `<section class="sub-card"><h3 class="sub-card-title">${title}</h3>${body}</section>`;
   const empty = text => `<p class="empty">${esc(text)}</p>`;
   const tool = run.mode === 'lh' ? 'Lighthouse' : 'Playwright';
   const target = run.targetUrl || 'tidak diketahui';
@@ -244,32 +389,27 @@ ${run.error ? `<div class="snapshot-banner" role="alert">${errorDetail(run.error
   ]);
 
   const body = `${kpi}
-${panel('Ringkasan kegagalan lebih dulu', `${report.reports.length
-    ? `<p>${report.reports.length} sumber JSON terbaca; kegagalan dirinci di panel di bawah.</p>`
-    : '<p class="mut">Tidak ada JSON report yang terbaca. Run tidak dianggap lulus.</p>'}`
-    + `<details><summary>Metadata run</summary>${pre(run)}</details>`, '', 'ringkasan')}
+${panel('Yang perlu dibenahi', issuePanel(report), '', 'masalah')}
 ${report.warnings.length > 0 ? panel('Peringatan', `<ul>${report.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>`, '', 'peringatan') : ''}
-${report.reports.map(r => panel(`${esc(r.kind === 'steps' ? 'Langkah' : r.kind === 'lighthouse' ? 'Lighthouse' : 'Playwright')} · ${esc(r.path)}`, `${sectionBody(r)}
+${report.reports.map(r => panel(`${esc(r.kind === 'steps' ? 'Langkah' : r.kind === 'lighthouse' ? 'Lighthouse' : 'Playwright')} · ${esc(r.path)}`, `${sectionBody(r, run)}
 <p class="mut">${download(r.path, 'Unduh JSON sumber')}</p>`)).join('')}
 <h2 class="section-title">Lampiran &amp; ekspor</h2>
-${panel('Teks ringkas (salin tempel)', `<p>Salin blok di bawah ke tiket atau dokumen. Isinya pesan error, lokasi, dan angka yang sama dengan tabel di atas. Tersedia juga sebagai <a href="ringkas.txt" download>ringkas.txt</a>.</p>
+${panel('Teks ringkas (salin tempel)', `<p>Blok siap salin ke tiket atau dokumen. Tersedia juga sebagai <a href="ringkas.txt" download>ringkas.txt</a>.</p>
 <pre id="ringkas">${esc(ringkasTeks(report))}</pre>`, '', 'teks-ringkas')}
-${panel('Report HTML asli', `<p>Report asli dari tool dibuka di tab baru, atau diunduh untuk dibuka offline. Halaman ini statis; viewer interaktif mungkin tidak jalan bila disajikan sebagai lampiran.</p>
-${html.length ? fileList(html) : empty('Tidak ada report HTML asli.')}`)}
-${panel('Screenshot', screenshots.length ? fileList(screenshots) : empty('Tidak ada screenshot.'))}
-${panel('Bundel artifact', report.bundle
-    ? `<div class="callout"><p>artifact dan log, tanpa source run.json dan symlink.</p>
-<a class="btn primary" href="downloads/artifacts.tar.gz" download>Unduh artifacts.tar.gz</a></div>`
-    : empty('Bundel tidak tersedia. Unduh artifact satu per satu di bawah.'))}
-${panel('Arsip report', `<p>Arsip dari runner ada di bawah. Isi folder report bisa diunduh dari daftar Semua artifact.</p>
-${archives.length ? fileList(archives) : empty('Tidak ada arsip.')}`)}
-${panel('Trace dan pembukaan offline', `${traces.length ? fileList(traces) : empty('Tidak ada trace.')}
-<p>Unduh trace ZIP, lalu jalankan <code>npx playwright show-trace /path/to/trace.zip</code> di mesin yang punya Playwright. Viewer jalan lokal; jangan unggah trace privat ke layanan pihak ketiga. Trace ZIP bukan halaman HTML.</p>
-<p>Untuk report Playwright offline, unduh seluruh folder report HTML beserta folder data-nya, lalu jalankan <code>npx playwright show-report /path/to/report-folder</code>. Report HTML Lighthouse bisa dibuka lokal. Sajikan folder dokumen ini lewat HTTP di base path-nya; membuka index.html lewat file:// tidak didukung.</p>`)}
-${panel('Log runner', `<details><summary>Tampilkan log runner asli</summary>${pre(report.logs)}</details>`, '', 'log-runner')}
-${panel('Semua artifact', report.files.length
-    ? `<details><summary>Tampilkan ${report.files.length} artifact</summary>${fileList(report.files)}</details>`
-    : empty('Tidak ada artifact.'))}`;
+${panel('Artifact &amp; ekspor', `<div class="artifacts-grid">
+${subCard('Report HTML asli', html.length ? fileList(html) : empty('Tidak ada report HTML asli.'))}
+${subCard('Screenshot', screenshots.length ? fileList(screenshots) : empty('Tidak ada screenshot.'))}
+${subCard('Bundel artifact', report.bundle
+    ? `<a class="btn primary" href="downloads/artifacts.tar.gz" download>Unduh artifacts.tar.gz</a>
+<p class="sub-note">Artifact dan log, tanpa source run.json dan symlink.</p>`
+    : empty('Bundel tidak tersedia.'))}
+${subCard('Arsip report', archives.length ? fileList(archives) : empty('Tidak ada arsip.'))}
+${subCard('Trace', traces.length ? fileList(traces) : empty('Tidak ada trace.'))}
+</div>
+<details><summary>Tampilkan ${report.files.length} artifact</summary>${report.files.length ? fileList(report.files) : empty('Tidak ada artifact.')}</details>
+<p class="sub-note">Trace: unduh ZIP lalu jalankan <code>npx playwright show-trace /path/to/trace.zip</code>. Report Playwright offline: <code>npx playwright show-report /path/to/report-folder</code>. Sajikan folder ini lewat HTTP, bukan <code>file://</code>.</p>`, '', 'lampiran')}
+${panel('Log runner', `<div class="terminal-log"><div class="terminal-head"><span>logs.txt</span><span>${report.logs ? report.logs.split('\n').length : 0} baris terakhir</span></div>
+<details><summary>Tampilkan log runner asli</summary>${pre(report.logs)}</details></div>`, '', 'log-runner')}`;
 
   return doc({
     title: `${run.suiteName || run.id} · ${run.status}`,
@@ -289,6 +429,7 @@ export function indexHtml(runs, intro = '') {
 <td>${statusBadge(r.status)}</td>
 <td class="mono">${esc(r.targetUrl || '-')}</td>
 <td class="mono">${esc((r.finishedAt || '-').replace('T', ' ').slice(0, 19))}</td>
+<td class="signal">${esc(r.signal || '-')}</td>
 <td><a href="${esc(r.slug)}/ringkas.txt" download>teks</a></td></tr>`).join('');
   const failed = runs.filter(r => r.status !== 'passed').length;
   const tools = [...new Set(runs.map(r => (r.mode === 'lh' ? 'Lighthouse' : 'Playwright')))].join(' + ') || '-';
@@ -310,7 +451,7 @@ export function indexHtml(runs, intro = '') {
     hero,
     body: `${kpi}<section class="panel"><div class="panel-head"><div><h2>Ringkasan per run</h2>
 <p>Kolom Teks berisi ringkasan polos siap disalin.</p></div></div><div class="panel-body">
-<div class="tbl"><table><thead><tr><th>Run</th><th>Tool</th><th>Status</th><th>Target</th><th>Selesai</th><th>Teks</th></tr></thead>
+<div class="tbl"><table><thead><tr><th>Run</th><th>Tool</th><th>Status</th><th>Target</th><th>Selesai</th><th>Sinyal</th><th>Teks</th></tr></thead>
 <tbody>${rows}</tbody></table></div></div></section>`,
   });
 }

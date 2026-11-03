@@ -5,9 +5,9 @@
 import { readdir, readFile, writeFile, mkdir, rm, copyFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { spawn } from 'node:child_process';
-import { runReportHtml, indexHtml, ringkasTeks } from './report-html.mjs';
+import { runReportHtml, indexHtml, ringkasTeks, runSignal } from './report-html.mjs';
 
-const RUN_KEYS = ['id', 'suiteName', 'targetUrl', 'mode', 'status', 'startedAt', 'finishedAt', 'exitCode', 'error'];
+const RUN_KEYS = ['id', 'suiteName', 'targetUrl', 'mode', 'status', 'startedAt', 'finishedAt', 'durationMs', 'exitCode', 'error'];
 
 const slug = value => String(value ?? '').replace(/[^a-zA-Z0-9-]/g, '');
 
@@ -103,6 +103,7 @@ export async function buildReportDocs(runDirs, outDir, baseUrl, intro = '') {
       id: entry.run.id, slug: name, suiteName: entry.run.suiteName ?? null,
       mode: entry.run.mode ?? null, status: entry.run.status ?? null,
       targetUrl: entry.run.targetUrl ?? null, finishedAt: entry.run.finishedAt ?? null,
+      signal: runSignal(entry),
     });
   }
   await writeFile(join(outDir, 'index.html'), indexHtml(index, intro));

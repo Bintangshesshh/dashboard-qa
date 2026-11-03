@@ -534,6 +534,7 @@ export class Runner extends EventEmitter {
       status,
       startedAt: run?.started_at ?? null,
       finishedAt: run?.finished_at ?? null,
+      durationMs: run?.duration_ms ?? null,
       exitCode: exitCode ?? null,
       error: error ?? null,
     };

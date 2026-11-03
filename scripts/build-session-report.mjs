@@ -26,6 +26,19 @@ function playwrightSection(run, results, logs) {
   const failed = results.filter(r => r.status === 'failed').length;
   const flaky = results.filter(r => r.status === 'flaky').length;
   const maxDuration = Math.max(1, ...results.map(r => Number(r.duration_ms) || 0));
+  const totalTest = results.reduce((sum, r) => sum + (Number(r.duration_ms) || 0), 0);
+  const retries = results.filter(r => Number(r.retry) > 0).length;
+  const slow = [...results].sort((a, b) => (Number(b.duration_ms) || 0) - (Number(a.duration_ms) || 0)).slice(0, 5);
+  const diag = `<div class="diagnosis"><div class="diag-grid">
+<div class="diag"><span class="diag-label">Durasi run</span><span class="diag-value">${dur(run.duration_ms)}</span><span class="diag-sub">dari mulai sampai selesai</span></div>
+<div class="diag"><span class="diag-label">Total test</span><span class="diag-value">${dur(totalTest)}</span><span class="diag-sub">${results.length} test · ${retries} retry</span></div>
+<div class="diag"><span class="diag-label">Tes terlama</span><span class="diag-value">${dur(slow[0]?.duration_ms)}</span><span class="diag-sub">${esc(slow[0]?.title || '-')}</span></div>
+<div class="diag"><span class="diag-label">Gagal / flaky</span><span class="diag-value">${failed} / ${flaky}</span><span class="diag-sub">${passed} lulus</span></div>
+</div>
+${slow.length ? `<h3>Tes terlama</h3><ol class="slow-list">${slow.map(r => `<li class="slow-row">
+<div class="slow-head"><span class="slow-name">${esc(r.title)}</span><span class="slow-ms">${dur(r.duration_ms)}</span></div>
+<div class="slow-bar" aria-hidden="true"><span style="width:${Math.max(2, Math.round((Number(r.duration_ms) || 0) / Math.max(1, Number(slow[0]?.duration_ms) || 1) * 100))}%"></span></div>
+<div class="slow-meta">${esc(r.file || '-')} · ${totalTest ? Math.round((Number(r.duration_ms) || 0) / totalTest * 100) : 0}% total test</div></li>`).join('')}</ol>` : ''}</div>`;
   const rows = results.map(r => `<tr>
       <td class="mono">${esc(n(r.tc_id))}</td><td>${esc(r.title)}</td><td class="mono">${esc(r.file)}</td>
       <td>${statusBadge(r.status)}</td><td class="mono dur"><span class="dur-cell"><span class="dur-bar" style="width:${Math.max(2, Math.round(((Number(r.duration_ms) || 0) / maxDuration) * 100))}%"></span><span>${dur(r.duration_ms)}</span></span></td><td class="mono">${r.retry || 0}</td></tr>`).join('');
@@ -34,6 +47,7 @@ function playwrightSection(run, results, logs) {
     ['Gagal', String(failed), 'perlu diperiksa', failed ? 'danger' : ''],
     ['Flaky', String(flaky), 'tidak dihitung lulus', flaky ? 'warn' : ''],
     ['Durasi', dur(run.duration_ms), `exit ${n(run.exit_code)}`]])}
+    ${diag}
     <div class="tbl"><table><thead><tr><th>TC</th><th>Judul</th><th>File</th><th>Status</th><th>Durasi</th><th>Retry</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${errors}
     ${logs ? `<details><summary>Log run (500 baris terakhir)</summary><pre>${esc(logs)}</pre></details>` : ''}`;
@@ -62,6 +76,13 @@ async function lighthouseSection(run, rows, logs) {
       <td>${report}</td></tr>`;
   }).join('');
   // Audit yang skornya < 1 → daftar penyebab, dengan displayValue dari JSON.
+  const first = rows[0] || {};
+  const diag = `<div class="diagnosis"><div class="diag-grid">
+<div class="diag"><span class="diag-label">Performance</span><span class="diag-value num-${tone(first.performance)}">${score(first.performance)}</span><span class="diag-sub">skor kategori</span></div>
+<div class="diag"><span class="diag-label">Accessibility</span><span class="diag-value num-${tone(first.accessibility)}">${score(first.accessibility)}</span><span class="diag-sub">skor kategori</span></div>
+<div class="diag"><span class="diag-label">Best Practices</span><span class="diag-value num-${tone(first.best_practices)}">${score(first.best_practices)}</span><span class="diag-sub">skor kategori</span></div>
+<div class="diag"><span class="diag-label">SEO</span><span class="diag-value num-${tone(first.seo)}">${score(first.seo)}</span><span class="diag-sub">skor kategori</span></div>
+</div></div>`;
   const audits = [];
   for (const r of rows) {
     const file = byUrl.get(r.url)?.json;
@@ -78,8 +99,8 @@ async function lighthouseSection(run, rows, logs) {
     if (r.budget_failed) list.push(`${r.url}: budget gagal - ${r.budget_failed}`);
     return list;
   });
-  return `<div class="tbl"><table><thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>CLS</th><th>TBT</th><th /></tr></thead><tbody>${body}</tbody></table></div>
-    ${audits.length ? `<h3>Audit di bawah skor penuh</h3><ul>${audits.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+  return `${diag}<div class="tbl"><table><thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>CLS</th><th>TBT</th><th /></tr></thead><tbody>${body}</tbody></table></div>
+    ${audits.length ? `<div class="diagnosis"><h3>Kenapa skor segini?</h3><ol class="cause-list">${audits.map(a => `<li class="cause"><p class="cause-why">${esc(a)}</p></li>`).join('')}</ol></div>` : ''}
     ${warns.length ? `<h3>Peringatan</h3><ul>${warns.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
     ${logs ? `<details><summary>Log run (500 baris terakhir)</summary><pre>${esc(logs)}</pre></details>` : ''}`;
 }
@@ -163,6 +184,7 @@ export async function buildSessionReport(store, reportId) {
         status: run.status,
         startedAt: run.started_at ?? null,
         finishedAt: run.finished_at ?? null,
+        durationMs: run.duration_ms ?? null,
         exitCode: run.exit_code ?? null,
         error: run.error ?? null,
       };

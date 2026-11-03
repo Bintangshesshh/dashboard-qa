@@ -16,7 +16,7 @@ async function put(path, data) {
 }
 
 try {
-  await put('run.json', { id: 'synthetic', suiteName: 'Suite', status: 'failed', error: hostile, cases: [{ code: 'SECRET_SOURCE_SENTINEL' }] });
+  await put('run.json', { id: 'synthetic', suiteName: 'Suite', status: 'failed', durationMs: 23000, error: hostile, cases: [{ code: 'SECRET_SOURCE_SENTINEL' }] });
   await put('logs.txt', 'Runner error: ' + hostile);
   const reporter = new Reporter({ outputFile: join(runDir, 'artifacts/pw/langkah.json') });
   assert.equal(new Reporter().outputFile, join('pw-out', 'langkah.json'));
@@ -50,12 +50,16 @@ try {
   assert.equal(index[1].status, 'missing');
 
   const html = await readFile(join(outDir, 'synthetic/index.html'), 'utf8');
-  assert(html.includes('Ringkasan kegagalan lebih dulu'));
+  assert(html.includes('Yang perlu dibenahi'));
+  assert(html.includes('Kenapa run selama ini?'));
+  assert(html.includes('23 s'));
   assert(html.includes('locator.click nested'));
   assert(html.includes('nested.spec.ts:17:3'));
   assert(html.includes('Nested API error'));
   assert(html.includes('60/100'));
-  assert(html.includes('Audit prioritas'));
+  assert(html.includes('Kenapa skor segini?'));
+  assert(html.includes('audits-table-wrap'));
+  assert(html.includes('category-tag'));
   assert(html.includes('<details><summary>Tampilkan log runner asli</summary>'));
   assert(html.includes('Langkah gagal: '));
   assert(html.includes('Click checkout'));
@@ -68,8 +72,8 @@ try {
   assert(html.includes('artifacts/pw/screen%20shot.png'));
   assert(html.includes('artifacts/artifacts/pw/report/index.html'.replace(/^artifacts\//, '')) || html.includes('artifacts/pw/report/index.html'));
   assert(html.includes('playwright show-trace'));
+  assert(html.includes('artifacts-grid'));
   assert(html.includes('Report HTML asli'));
-  assert(html.includes('viewer interaktif mungkin tidak jalan'));
   assert(html.includes('<style>'));
   // Satu stylesheet dipakai semua halaman report; tema ikut OS.
   assert(html.includes('prefers-color-scheme:dark'));
@@ -88,6 +92,8 @@ try {
 
   const page = await readFile(join(outDir, 'index.html'), 'utf8');
   assert(page.includes('Laporan run'));
+  assert(page.includes('Sinyal'));
+  assert(page.includes('terlama'));
   assert(page.includes('prefers-color-scheme:dark'));
   assert(page.includes('Run dihapus'));
   assert(!/<script\b/i.test(page));
