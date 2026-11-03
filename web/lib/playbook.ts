@@ -1,10 +1,14 @@
 // Klien API Playbook v5 - kontrak docs/PRD.md §7.
 
 export type User = { id: string; username: string; role: "admin" | "viewer" };
+export type ProjectGroup = {
+  id: string; name: string; created_at: string; project_count: number;
+};
 export type Project = {
   id: string; slug: string; name: string; base_url: string;
   staging_url: string | null; local_url: string | null;
   origins: string[]; allow_production: number; active: number;
+  group_id: string | null; group_name: string | null;
   lastRunAt: string | null;
 };
 export type TestFile = {
@@ -104,6 +108,11 @@ export type AuditRow = {
   id: string; user_id: string | null; username?: string | null; action: string; entity: string;
   entity_id: string | null; detail: string | null; created_at: string;
 };
+// Tab Bantuan (PRD FR-08/T14): versi dibaca server, bukan hardcode di UI.
+export type Help = {
+  version: string; node: string; playwright: string; lighthouse: string;
+  update_commands: string[]; feedback_url: string | null;
+};
 
 // Label audit dalam bahasa manusia; dipakai halaman Settings dan ringkasan Overview.
 const AUDIT_LABELS: Record<string, string> = {
@@ -161,13 +170,25 @@ export const api = {
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   me: () => request<User>("/api/me"),
 
-  projects: () => request<Project[]>("/api/projects"),
+  // `all` ikutkan project arsip; hanya dipakai Seting dan halaman arsip (PRD FR-03).
+  projects: (q: { all?: boolean } = {}) =>
+    request<Project[]>("/api/projects" + (q.all ? "?all=1" : "")),
   createProject: (body: {
-    name: string; base_url?: string; staging_url?: string | null;
+    name: string; base_url: string; staging_url?: string | null;
     local_url?: string | null; origins?: string[]; allow_production?: number;
+    groupId?: string | null;
   }) => request<Project>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
-  patchProject: (id: string, body: Partial<Pick<Project, "base_url" | "staging_url" | "local_url" | "origins" | "allow_production">>) =>
+  patchProject: (id: string, body: Partial<Pick<Project, "name" | "base_url" | "staging_url" | "local_url" | "origins" | "allow_production" | "active">> & { groupId?: string | null }) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteProject: (id: string) => request<null>(`/api/projects/${id}`, { method: "DELETE" }),
+
+  projectGroups: () => request<ProjectGroup[]>("/api/project-groups"),
+  createProjectGroup: (name: string) =>
+    request<ProjectGroup>("/api/project-groups", { method: "POST", body: JSON.stringify({ name }) }),
+  patchProjectGroup: (id: string, name: string) =>
+    request<ProjectGroup>(`/api/project-groups/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  deleteProjectGroup: (id: string) =>
+    request<null>(`/api/project-groups/${id}`, { method: "DELETE" }),
 
   settings: () => request<Settings>("/api/settings"),
   // Halaman sesi butuh angka retensi untuk label; viewer tidak boleh baca settings penuh.
@@ -184,6 +205,7 @@ export const api = {
     request<null>(`/api/auth/cli-token/${id}`, { method: "DELETE" }),
 
   audit: (limit = 50) => request<AuditRow[]>(`/api/audit?limit=${limit}`),
+  help: () => request<Help>("/api/help"),
 
   // all: ikutkan spec nonaktif; hanya dipakai halaman seting (admin).
   testFiles: (q: { project?: string; tool?: string; all?: boolean } = {}) => {
@@ -194,8 +216,13 @@ export const api = {
     const s = p.toString();
     return request<TestFile[]>("/api/test-files" + (s ? "?" + s : ""));
   },
-  patchTestFile: (id: string, body: Partial<Pick<TestFile, "code" | "config" | "label" | "enabled">> & { force?: boolean }) =>
+  patchTestFile: (id: string, body: Partial<Pick<TestFile, "path" | "code" | "config" | "label" | "enabled">> & { force?: boolean }) =>
     request<TestFile>(`/api/test-files/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  createTestFile: (body: {
+    projectId: string; tool: "pw" | "lh"; path: string;
+    label?: string; code?: string; config?: unknown;
+  }) => request<TestFile>("/api/test-files", { method: "POST", body: JSON.stringify(body) }),
+  deleteTestFile: (id: string) => request<null>(`/api/test-files/${id}`, { method: "DELETE" }),
   reloadTestFile: (id: string) =>
     request<TestFile>(`/api/test-files/${id}/reload`, { method: "POST" }),
 
@@ -214,11 +241,12 @@ export const api = {
     return request<Stats>("/api/stats" + (s ? "?" + s : ""));
   },
   session: (id: string) => request<Session>(`/api/sessions/${id}`),
-  createSession: async (projectId: string, env: string, confirm?: string) => {
+  // startNew=true memaksa sesi baru (server menutup sesi terbuka yang idle).
+  createSession: async (projectId: string, env: string, confirm?: string, startNew?: boolean) => {
     const res = await fetch("/api/sessions", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId, env, confirm }),
+      body: JSON.stringify({ projectId, env, confirm, new: startNew }),
     });
     const body = await res.json().catch(() => ({}));
     if (res.status === 401) toLogin();

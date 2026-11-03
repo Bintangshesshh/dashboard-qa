@@ -610,7 +610,7 @@ function NewProjectForm({ onCreate }: {
     try {
       await onCreate({
         name: name.trim(),
-        base_url: base.trim() || undefined,
+        base_url: base.trim(),
         local_url: local.trim() || undefined,
       });
       setName(""); setBase(""); setLocal("");
