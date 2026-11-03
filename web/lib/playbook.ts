@@ -316,12 +316,18 @@ export const fmtDur = (ms: number | null) => {
 // opsi timeZone eksplisit supaya jam laptop yang bukan WIB tidak menggeser tampilan.
 export const TZ = "Asia/Jakarta";
 
-export const fmtDate = (iso: string | null) =>
-  iso
-    ? new Date(iso).toLocaleString("id-ID", {
-        timeZone: TZ, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
-      }) + " WIB"
-    : "-";
+// Tahun hanya muncul kalau bukan tahun berjalan: tanggal lama tetap jelas,
+// tanggal hari ini tetap ringkas. Sama persis dengan formatter di scripts/.
+const ymd = (v: string) => new Date(v).toLocaleString("id-ID", { timeZone: TZ, year: "numeric" });
+
+export const fmtDate = (iso: string | null) => {
+  if (!iso) return "-";
+  const opts: Intl.DateTimeFormatOptions = {
+    timeZone: TZ, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+  };
+  if (ymd(iso) !== ymd(new Date().toISOString())) opts.year = "numeric";
+  return new Date(iso).toLocaleString("id-ID", opts) + " WIB";
+};
 
 export const fmtTime = (iso: string | null) =>
   iso

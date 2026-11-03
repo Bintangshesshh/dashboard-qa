@@ -4,7 +4,17 @@
 
 const cell = v => String(v ?? '-').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim() || '-';
 
-const date = v => (v ? new Date(v).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }) : '-');
+// Satu format waktu untuk web dan report, supaya angka tidak pernah beda.
+// Tahun hanya muncul kalau bukan tahun berjalan: tanggal lama tetap jelas,
+// tanggal hari ini tetap ringkas.
+const TZ = 'Asia/Jakarta';
+const ymd = v => new Date(v).toLocaleString('id-ID', { timeZone: TZ, year: 'numeric' });
+const date = v => {
+  if (!v) return '-';
+  const opts = { timeZone: TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' };
+  if (ymd(v) !== ymd(Date.now())) opts.year = 'numeric';
+  return new Date(v).toLocaleString('id-ID', opts) + ' WIB';
+};
 
 const dur = v => (v == null ? '-' : v >= 60000 ? `${Math.floor(v / 60000)}m ${Math.round((v % 60000) / 1000)}s` : `${(v / 1000).toFixed(1)}s`);
 

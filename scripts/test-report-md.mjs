@@ -33,6 +33,16 @@ assert.ok(md.includes('performance 55%'), 'audit Lighthouse di bawah 100% harus 
 assert.ok(md.includes('- [ ] http://127.0.0.1:4173/ - budget: lcp'), 'budget gagal harus jadi checklist');
 assert.ok(!md.includes('\u2014'), 'tanpa em-dash');
 assert.ok(md.includes('| r1 |'), 'tabel artefak per run harus ada');
+// Waktu harus memakai WIB dan bentuk yang sama dengan web.
+assert.ok(md.includes('30 Okt, 08.00 WIB'), 'timestamp tahun berjalan tanpa tahun: "30 Okt, 08.00 WIB"');
+assert.ok(!md.includes('GMT'), 'tanpa sufiks zona bawaan mesin');
+// Tanggal beda tahun tetap harus menyebut tahun supaya tidak ambigu.
+const lama = renderReportMarkdown({
+  session: { ...session, created_at: '2024-10-30T01:00:00.000Z' }, project: null,
+  report: { scope: 'pw', status: 'ready', run_ids: '["r1"]' },
+  runs: [{ run: { ...runs[0].run, status: 'passed' }, results: [runs[0].results[0]] }],
+});
+assert.ok(lama.includes('2024'), 'tanggal beda tahun wajib menyertakan tahun');
 
 const lulus = renderReportMarkdown({
   session, project: null, report: { scope: 'pw', status: 'ready', run_ids: '["r1"]' },
