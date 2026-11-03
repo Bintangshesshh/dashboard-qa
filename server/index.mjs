@@ -208,7 +208,10 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   app.delete('/api/auth/cli-token/:id', requireAuth, requireAdmin, route(async (req, res) => {
-    if (!store.revokeCliToken(id(req.params.id))) fail('Token tidak ditemukan atau sudah dicabut', 404);
+    const tokenId = id(req.params.id);
+    if (!store.revokeCliToken(tokenId)) fail('Token tidak ditemukan atau sudah dicabut', 404);
+    // Pencabutan kredensial wajib tercatat: tanpa ini insiden token tidak bisa direkonstruksi.
+    store.audit({ userId: req.user.id, action: 'revoke_cli_token', entity: 'cli_tokens', entityId: tokenId });
     res.sendStatus(204);
   }));
 
@@ -660,6 +663,7 @@ export function createApp({ store, runner, token, origins }) {
         console.error('[run]', err.message);
         try { store.systemLog(runId, `runner gagal start: ${err.message}`); } catch {}
       });
+    store.audit({ userId: req.user.id, action: 'create_run', entity: 'runs', entityId: runId, detail: JSON.stringify({ session: session.id, testFile: tf.path }) });
     res.status(202).json({ runId });
   }));
 
@@ -717,7 +721,9 @@ export function createApp({ store, runner, token, origins }) {
     if (!run) fail('Not found', 404);
     if (['passed', 'failed', 'cancelled', 'interrupted'].includes(run.status)) fail('Run sudah final', 409);
     requireActiveProject(store.getProject(store.getSession(run.session_id).project_id));
-    res.json(store.patchRun(run.id, { status: 'running', started_at: run.started_at ?? new Date().toISOString() }));
+    const started = store.patchRun(run.id, { status: 'running', started_at: run.started_at ?? new Date().toISOString() });
+    store.audit({ userId: req.user.id, action: 'start_run', entity: 'runs', entityId: run.id });
+    res.json(started);
   }));
 
   app.post('/api/runs/:id/logs', requireAuth, requireAdmin, route(async (req, res) => {
@@ -752,6 +758,7 @@ export function createApp({ store, runner, token, origins }) {
     await mkdir(dirname(dest), { recursive: true });
     await writeFile(dest, body);
     store.addArtifact({ runId: run.id, kind, path: rel, bytes: body.length });
+    store.audit({ userId: req.user.id, action: 'upload_artifact', entity: 'runs', entityId: run.id, detail: JSON.stringify({ kind, path: rel, bytes: body.length }) });
     res.status(201).json({ path: rel, bytes: body.length });
   }));
 
@@ -829,6 +836,8 @@ export function createApp({ store, runner, token, origins }) {
     }
     const run = store.patchRun(existing.id, fields);
     if (fields.finalized_at) store.markReportsStale(existing.session_id);
+    // Bukti rilis: status final dan siapa yang menuliskannya harus tercatat.
+    store.audit({ userId: req.user.id, action: 'update_run', entity: 'runs', entityId: run.id, detail: JSON.stringify(fields) });
     res.json(run);
   }));
 
@@ -840,9 +849,11 @@ export function createApp({ store, runner, token, origins }) {
     if (run.status === 'queued') {
       store.patchRun(run.id, { status: 'cancelled', finished_at: new Date().toISOString() });
       store.markReportsStale(run.session_id);
+      store.audit({ userId: req.user.id, action: 'cancel_run', entity: 'runs', entityId: run.id });
       return res.json(store.getRun(run.id));
     }
     if (!await runner.cancel(run.id)) fail('Run is not active', 409);
+    store.audit({ userId: req.user.id, action: 'cancel_run', entity: 'runs', entityId: run.id });
     res.json(store.getRun(run.id));
   }));
 
@@ -882,6 +893,7 @@ export function createApp({ store, runner, token, origins }) {
     const session = store.getSession(id(req.params.id));
     if (!session) fail('Not found', 404);
     const report = publishReport(session.id, req.body?.scope, req.user.id);
+    store.audit({ userId: req.user.id, action: 'publish_report', entity: 'reports', entityId: report.id, detail: JSON.stringify({ session: session.id, scope: report.scope }) });
     res.status(202).json({ reportId: report.id, runIds: JSON.parse(report.run_ids ?? '[]') });
   }));
 
