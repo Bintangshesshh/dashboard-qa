@@ -1297,13 +1297,13 @@ test('T07: label sesi memakai WIB', async t => {
   assert.match(r.body.session.label, / WIB$/, 'label sesi berakhir WIB');
   assert.equal(/T\d{2}:\d{2}.*Z/.test(r.body.session.label), false);
 });
-test('T01: fresh DB → project_groups ada, user_version=6, reuse=20', async t => {
+test('T01: fresh DB → project_groups ada, user_version=7, reuse=20', async t => {
   const store = new Store(':memory:');
   await store.init();
   t.after(() => store.close());
 
   const version = store.db.prepare('PRAGMA user_version').get().user_version;
-  assert.equal(version, 6);
+  assert.equal(version, 7);
 
   // Tabel project_groups harus ada
   const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='project_groups'").all();
@@ -1620,4 +1620,21 @@ test('login dibatasi setelah 5 percobaan gagal', async t => {
   // Username lain tidak boleh ikut terkunci oleh IP yang sama.
   const other = await f.call('/api/auth/login', { method: 'POST', body: { username: 'lain', password: 'apa-saja' } });
   assert.equal(other.status, 401, 'username lain tetap boleh mencoba');
+});
+
+// Dua query yang dipoll tiap 5 detik harus memakai index, bukan temp B-tree.
+// EXPLAIN dipakai supaya regresi performa ketahuan tanpa mengukur waktu.
+test('B11: index runs_queued dan runs_finalized dipakai query daftar run', async t => {
+  const store = new Store(':memory:');
+  await store.init();
+  t.after(() => store.close());
+
+  const plan = sql => store.db.prepare('EXPLAIN QUERY PLAN ' + sql).all().map(r => r.detail).join(' | ');
+
+  const listRuns = plan('SELECT r.* FROM runs r ORDER BY r.queued_at DESC LIMIT 8');
+  assert.ok(!/TEMP B-TREE/.test(listRuns), 'listRuns tidak boleh mengurutkan di temp B-tree: ' + listRuns);
+  assert.match(listRuns, /runs_queued/);
+
+  const perDay = plan("SELECT substr(finalized_at,1,10) AS d, COUNT(*) FROM runs WHERE finalized_at IS NOT NULL GROUP BY d");
+  assert.match(perDay, /runs_finalized/);
 });
