@@ -152,7 +152,7 @@ export default function SessionDetail() {
           <div className="pb-btn-group">
             <button className="pb-btn sm primary" onClick={() => publish(hasBoth ? "both" : hasPw ? "pw" : "lh")}
               disabled={(!hasPw && !hasLh) || !!busy}>
-              {busy ? "…" : hasBoth ? "Buat dokumen (Gabungan)" : hasPw ? "Buat dokumen (Playwright)" : "Buat dokumen (Lighthouse)"}
+              {busy ? "…" : hasBoth ? "Buat laporan (Gabungan)" : hasPw ? "Buat laporan (Playwright)" : "Buat laporan (Lighthouse)"}
             </button>
             {/* Scope tunggal hanya relevan kalau dua-duanya punya run final. */}
             {hasBoth && (
@@ -227,7 +227,7 @@ export default function SessionDetail() {
                         {busy === r.id ? "…" : "Cancel"}
                       </button>
                     )}
-                    <button className="pb-btn sm" onClick={() => openRunDetail(r)}>Hasil</button>
+                    <button className="pb-btn sm" onClick={() => openRunDetail(r)}>Lihat hasil run</button>
                     {FINAL.includes(r.status) && (
                       <button className="pb-btn sm" onClick={() => deleteRun(r)} disabled={busy === r.id}>Hapus</button>
                     )}
@@ -277,7 +277,7 @@ export default function SessionDetail() {
                     <div className="pb-repcard-act">
                       {canOpen
                         ? <ArtifactLink className="pb-btn sm primary" href={reportUrl(rep.id)}
-                            missing="report hilang - build ulang">Buka</ArtifactLink>
+                            missing="report hilang - perbarui laporan">Buka HTML</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>{publishNote(rep)}</span>}
                       {rep.status === "ready" && (
                         <ArtifactLink href={reportUrl(rep.id, "report.md")}
@@ -287,7 +287,7 @@ export default function SessionDetail() {
                       {canOpen && <CopyRingkas reportId={rep.id} runIds={ids} />}
                       <button className="pb-btn sm" onClick={() => publish(rep.scope)}
                         disabled={busy === rep.scope || !canPublish(rep)}>
-                        {busy === rep.scope ? "…" : rep.status === "ready" || rep.status === "stale" ? "Build ulang" : "Terbitkan"}
+                        {busy === rep.scope ? "…" : rep.status === "ready" ? "Perbarui laporan" : rep.status === "stale" ? "Perbarui laporan" : "Terbitkan"}
                       </button>
                     </div>
                   </div>
