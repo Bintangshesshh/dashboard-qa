@@ -2,18 +2,16 @@
 
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
-import { RunClock } from "../../_components/run-clock";
+import { CodeEditor } from "../code-editor";
+import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, fmtDate, fmtDur,
+  api, artifactUrl, fmtDur,
   type LogEntry, type PlaywrightResult, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
-// Log lama di DB menyimpan escape ANSI dari Playwright/lhci; buang saat render.
-// Sebagian tersimpan tanpa karakter ESC, jadi pola SGR telanjang ikut dibuang.
-const stripAnsi = (s: string) => s.replace(/\u001b?\[[0-9;]*m/g, "");
 
 export default function PlaywrightPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -40,7 +38,6 @@ export default function PlaywrightPage() {
   );
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const termRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (runId) sessionStorage.setItem("pw-runId", runId);
@@ -104,10 +101,6 @@ export default function PlaywrightPage() {
     tick();
     return () => { alive = false; clearTimeout(timer); };
   }, [runId]);
-
-  useEffect(() => {
-    termRef.current?.scrollTo({ top: termRef.current.scrollHeight });
-  }, [logs]);
 
   const save = async (force = false) => {
     if (!selected) return;
@@ -224,38 +217,25 @@ export default function PlaywrightPage() {
           </div>
         )}
         {selected ? (
-          <textarea className="pb-input pb-mono" style={{ minHeight: 320, lineHeight: 1.5, resize: "vertical" }}
-            value={draft} spellCheck={false} onChange={e => setDraft(e.target.value)} />
+          <CodeEditor value={draft} onChange={setDraft} disabled={running} />
         ) : (
           <p className="pb-empty">Project ini belum punya spec Playwright.</p>
         )}
       </section>
 
-      <section className="pb-card" style={{ marginBottom: 16 }}>
-        <div className="pb-card-head" style={{ marginBottom: 10 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 15 }}>Terminal</h2>
-            <div className="pb-card-sub pb-row" style={{ gap: 8 }}>
-              {run
-                ? <><span>{run.status}</span><RunClock run={run} /><span>{fmtDate(run.finished_at ?? run.queued_at)}</span></>
-                : "Belum ada run."}
-            </div>
-          </div>
-          {run && <span className={`pb-badge ${run.status}`}>{run.status}</span>}
-        </div>
-        <div className="pb-term" ref={termRef} style={{ maxHeight: 300, minHeight: 120 }}>
-          {logs.length === 0
-            ? (runId ? "Menunggu log…" : "Log run akan muncul di sini.")
-            : logs.map(l => <div key={l.seq} className={l.stream === "stderr" ? "pb-log-err" : undefined}>{stripAnsi(l.text)}</div>)}
-        </div>
-        <div className="pb-row" style={{ marginTop: 12 }}>
-          <button className="pb-btn primary" onClick={start}
-            disabled={starting || running || !selected || !target || dirty}>
-            {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
-          </button>
-          {running && <button className="pb-btn" onClick={stop}>Stop</button>}
-        </div>
-      </section>
+      <RunPanel
+        logs={logs}
+        run={run}
+        live={running}
+        downloadHref={runId ? `/api/runs/${runId}/logs/download` : null}
+      />
+      <div className="pb-row" style={{ marginTop: 12 }}>
+        <button className="pb-btn primary" onClick={start}
+          disabled={starting || running || !selected || !target || dirty}>
+          {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
+        </button>
+        {running && <button className="pb-btn" onClick={stop}>Stop</button>}
+      </div>
 
       {done && run && (
         <section className="pb-card">

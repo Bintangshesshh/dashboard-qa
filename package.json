@@ -10,6 +10,7 @@
     "test": "npm test --prefix server",
     "test:md": "node scripts/test-report-md.mjs",
     "test:report": "node scripts/test-report-html.mjs",
+    "test:editor": "node scripts/check-editor-term.mjs",
     "test:integration": "node scripts/verify-dashboard.mjs",
     "fixture": "node scripts/local-fixture.mjs",
     "dev:web": "npm run dev --prefix web",

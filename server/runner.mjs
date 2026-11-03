@@ -60,7 +60,7 @@ export function lhConfig(cfg, targetUrl, outDir) {
   }, null, 2)};\n`;
 }
 
-// PRD §8.8: runWarnings LH ikut ke run_logs (`system`). Tahan nilai yang bukan
+// PRD Â§8.8: runWarnings LH ikut ke run_logs (`system`). Tahan nilai yang bukan
 // JSON valid (lhci kadang menulis string mentah).
 export function warningLines(results) {
   const out = [];
@@ -123,9 +123,9 @@ export class Runner extends EventEmitter {
     this.active.cancelled = true;
     const child = this.active.child;
     if (!child) return true;
-    // shell:true → child.pid adalah shell; matikan seluruh pohon proses.
+    // shell:true â†’ child.pid adalah shell; matikan seluruh pohon proses.
     this.killTree(child);
-    // PRD §8.6: tunggu 10 s, lalu SIGKILL.
+    // PRD Â§8.6: tunggu 10 s, lalu SIGKILL.
     setTimeout(() => { if (child.exitCode === null) this.killTree(child, true); }, 10000).unref();
     return true;
   }
@@ -160,7 +160,7 @@ export class Runner extends EventEmitter {
 
   async execute(state) {
     const { runId, testFile } = state;
-    // PRD §7/G11: runner tidak percaya pemanggil - target harus tetap di allowlist.
+    // PRD Â§7/G11: runner tidak percaya pemanggil - target harus tetap di allowlist.
     // Origin milik project (dari sesi) ikut diizinkan, sama seperti resolveTarget.
     if (state.targetUrl) {
       const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
@@ -233,7 +233,7 @@ export class Runner extends EventEmitter {
       await writeFile(generatedCfg, runConfig(dirname(original), basename(generated)));
       cfgPath = generatedCfg;
       specPath = basename(generated);
-      await this.log(state, 'system', `[runner] Spec dari database → ${basename(generated)}\n`);
+      await this.log(state, 'system', `[runner] Spec dari database â†’ ${basename(generated)}\n`);
     }
     // `--output` (test-results) harus terpisah dari folder report HTML; kalau
     // bersarang, Playwright menolak karena reporter HTML menghapus foldernya.
@@ -250,7 +250,7 @@ export class Runner extends EventEmitter {
     if (generatedCfg) await rm(generatedCfg, { force: true }).catch(() => {});
     await state.chain;
 
-    // Parse hasil JSON Playwright → playwright_results
+    // Parse hasil JSON Playwright â†’ playwright_results
     const results = await this.parsePlaywright(dir);
     const status = state.cancelled ? 'cancelled'
       : state.timedOut ? 'failed'
@@ -258,18 +258,20 @@ export class Runner extends EventEmitter {
       : code === 0 && results.every(r => r.status === 'passed') ? 'passed' : 'failed';
     const error = state.timedOut ? 'timeout'
       : !results.length && !state.cancelled ? 'JSON Playwright tidak ditemukan' : null;
+    if (results.length) await this.store.addPlaywrightResults(runId, results);
+    await this.ingestCapture(state, captureFile);
+    await this.collectArtifacts(runId, dir, 'pw');
+    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw' });
+    // Status final di-patch paling akhir: UI berhenti polling begitu status final,
+    // jadi artifact harus sudah masuk DB sebelum itu.
     await this.store.patchRun(runId, {
       status,
       error,
       finished_at: new Date().toISOString(),
       exit_code: code,
       duration_ms: Date.now() - state.startTime,
+      finalized_at: new Date().toISOString(),
     });
-    if (results.length) await this.store.addPlaywrightResults(runId, results);
-    await this.ingestCapture(state, captureFile);
-    await this.collectArtifacts(runId, dir, 'pw');
-    await this.store.patchRun(runId, { finalized_at: new Date().toISOString() });
-    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw' });
     this.store.markReportsStale(state.sessionId);
   }
 
@@ -279,7 +281,7 @@ export class Runner extends EventEmitter {
     await this.log(state, 'system', `[runner] Menjalankan Lighthouse CI ${testFile.path}\n`);
     const outDir = join(dir, 'artifacts');
     await mkdir(outDir, { recursive: true });
-    // Config digenerate dari test_files.config (PRD §8.3): URL sesi + urls tambahan.
+    // Config digenerate dari test_files.config (PRD Â§8.3): URL sesi + urls tambahan.
     // Tanpa ini, memilih env local/staging tetap menembak URL produksi di file repo.
     const cfg = (() => { try { return JSON.parse(testFile.config ?? 'null'); } catch { return null; } })();
     let configPath = isAbsolute(testFile.path) ? testFile.path : join(root, testFile.path);
@@ -298,26 +300,27 @@ export class Runner extends EventEmitter {
     state.child = null;
     await state.chain;
 
-    const results = await this.parseLighthouse(dir);
+    const results = await this.parseLighthouse(dir, state);
     const status = state.cancelled ? 'cancelled' : state.timedOut ? 'failed' : !results.length ? 'failed' : code === 0 ? 'passed' : 'failed';
     const error = state.timedOut ? 'timeout' : !results.length && !state.cancelled ? 'JSON Lighthouse tidak ditemukan' : null;
+    if (results.length) await this.store.addLighthouseResults(runId, results);
+    // PRD Â§8.8: runWarnings LH juga tampil di terminal, bukan cuma kolom warnings.
+    for (const line of warningLines(results)) await this.log(state, 'system', line);
+    await this.collectArtifacts(runId, dir, 'lh');
+    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'lh' });
+    // Sama seperti Playwright: artifact dulu, status final terakhir.
     await this.store.patchRun(runId, {
       status,
       error,
       finished_at: new Date().toISOString(),
       exit_code: code,
       duration_ms: Date.now() - state.startTime,
+      finalized_at: new Date().toISOString(),
     });
-    if (results.length) await this.store.addLighthouseResults(runId, results);
-    // PRD §8.8: runWarnings LH juga tampil di terminal, bukan cuma kolom warnings.
-    for (const line of warningLines(results)) await this.log(state, 'system', line);
-    await this.collectArtifacts(runId, dir, 'lh');
-    await this.store.patchRun(runId, { finalized_at: new Date().toISOString() });
-    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'lh' });
     this.store.markReportsStale(state.sessionId);
   }
 
-  // PRD §8.8: console/network dari reporter masuk ke run_logs sebagai stream terpisah.
+  // PRD Â§8.8: console/network dari reporter masuk ke run_logs sebagai stream terpisah.
   async ingestCapture(state, file) {
     const raw = await readFile(file, 'utf8').catch(() => '');
     if (!raw.trim()) return;
@@ -363,10 +366,44 @@ export class Runner extends EventEmitter {
     return out;
   }
 
+  // Console & network untuk Lighthouse: LHR sudah memuatnya
+  // (audits.network-requests / audits.errors-in-console), jadi tidak perlu hook
+  // browser seperti Playwright. Baris ditulis sebagai JSON satu baris, format
+  // sama dengan reporter Playwright.
+  // ponytail: dipotong di 500 request per halaman; naikkan kalau halaman berat
+  // butuh semua request (log_max_bytes 5 MB tetap jadi batas akhir).
+  async captureLighthouse(state, data, pageUrl) {
+    const MAX = 500;
+    const reqs = data.audits?.['network-requests']?.details?.items ?? [];
+    for (const r of reqs.slice(0, MAX)) {
+      if (!r?.url) continue;
+      const ms = Number.isFinite(r.networkEndTime) && Number.isFinite(r.networkRequestTime)
+        ? Math.round(r.networkEndTime - r.networkRequestTime) : null;
+      await this.log(state, 'network', JSON.stringify({
+        url: r.url,
+        method: null, // LHR tidak menyimpan method HTTP
+        status: r.statusCode ?? null,
+        failure: r.finished === false ? 'tidak selesai' : null,
+        ms,
+      }) + '\n');
+    }
+    if (reqs.length > MAX) {
+      await this.log(state, 'system', `[lh] network dipotong di ${MAX} dari ${reqs.length} request (${pageUrl})\n`);
+    }
+    for (const e of data.audits?.['errors-in-console']?.details?.items ?? []) {
+      const loc = e?.sourceLocation;
+      await this.log(state, 'console', JSON.stringify({
+        type: 'error',
+        text: String(e?.description ?? '').slice(0, 2000),
+        location: loc?.url ? (loc.line ? `${loc.url}:${loc.line}` : loc.url) : null,
+      }) + '\n');
+    }
+  }
+
   // Lighthouse writes LHRs and the HTML report to `.lighthouseci/` first and the
   // filesystem upload copies them afterwards. Reading both keeps scores when a
   // run is killed before upload finishes.
-  async parseLighthouse(dir) {
+  async parseLighthouse(dir, state = null) {
     const artifactsDir = join(dir, 'artifacts');
     const lhciDir = join(dir, '.lighthouseci');
     const files = await filesBelow(artifactsDir).catch(() => []);
@@ -396,6 +433,7 @@ export class Runner extends EventEmitter {
     }
 
     const fileByUrl = new Map();
+    const lhrByUrl = new Map();
     for (const f of lhrFiles) {
       const data = await readFile(join(lhrDir, f), 'utf8').then(JSON.parse).catch(() => null);
       if (!data?.categories) continue;
@@ -403,6 +441,7 @@ export class Runner extends EventEmitter {
       const at = Number(data.fetchTime ?? 0);
       // numberOfRuns > 1 yields several LHRs per URL; keep the newest.
       if ((out.get(url)?.at ?? -1) > at) continue;
+      if (state) lhrByUrl.set(url, data);
       const cat = (k) => data.categories[k]?.score ?? null;
       fileByUrl.set(url, f);
       out.set(url, {
@@ -420,6 +459,9 @@ export class Runner extends EventEmitter {
         reportPath: htmlByUrl.get(url) ?? null,
       });
     }
+
+    // Capture sekali per URL, dari LHR yang menang (bukan tiap file LHR).
+    if (state) for (const [url, data] of lhrByUrl) await this.captureLighthouse(state, data, url);
 
     // Report never uploaded: adopt the lhci copy so the link still resolves.
     if (out.size) await mkdir(artifactsDir, { recursive: true }).catch(() => {});

@@ -527,6 +527,48 @@ test('parseLighthouse: baca .lighthouseci/ saat upload tak sempat jalan', async 
   await rm(runsDir, { recursive: true, force: true });
 });
 
+test('captureLighthouse: network & console diambil dari LHR', async () => {
+  const { Runner } = await import('../runner.mjs');
+  const runner = new Runner({}, { runsDir: tmpdir() });
+  const rows = [];
+  runner.log = async (_state, stream, text) => { rows.push({ stream, text }); };
+
+  const lhr = {
+    audits: {
+      'network-requests': {
+        details: {
+          items: [
+            { url: 'https://a.test/', statusCode: 200, networkRequestTime: 10, networkEndTime: 60, finished: true },
+            { url: 'https://a.test/app.js', statusCode: 404, networkRequestTime: 0, networkEndTime: 0, finished: true },
+            { url: 'https://a.test/slow.js', statusCode: 0, networkRequestTime: 5, networkEndTime: 900, finished: false },
+          ],
+        },
+      },
+      'errors-in-console': {
+        details: {
+          items: [
+            { source: 'javascript', description: 'boom', sourceLocation: { url: 'https://a.test/app.js', line: 12 } },
+            { source: 'network', description: 'gagal muat', sourceLocation: null },
+          ],
+        },
+      },
+    },
+  };
+
+  await runner.captureLighthouse({}, lhr, 'https://a.test/');
+
+  const net = rows.filter(r => r.stream === 'network').map(r => JSON.parse(r.text));
+  const con = rows.filter(r => r.stream === 'console').map(r => JSON.parse(r.text));
+  assert.equal(net.length, 3);
+  assert.deepEqual(net[0], { url: 'https://a.test/', method: null, status: 200, failure: null, ms: 50 });
+  assert.equal(net[2].failure, 'tidak selesai', 'request tak selesai ditandai');
+  assert.equal(con.length, 2);
+  assert.equal(con[0].text, 'boom');
+  assert.equal(con[0].location, 'https://a.test/app.js:12');
+  assert.equal(con[1].location, null);
+  assert.ok(!rows.some(r => r.stream === 'stdout'), 'tidak ada baris mentah ke terminal');
+});
+
 test('warningLines: runWarnings LH jadi baris log system', async () => {
   const { warningLines } = await import('../runner.mjs');
   const rows = [

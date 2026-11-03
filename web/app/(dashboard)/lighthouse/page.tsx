@@ -5,17 +5,15 @@
 // Layout menumpuk: Project → Config → Terminal → Run → Hasil.
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
-import { RunClock } from "../../_components/run-clock";
+import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, fmtDate, pct,
+  api, artifactUrl, pct,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
-// Log lama/baru dari lhci menyimpan escape ANSI; buang saat render.
-const stripAnsi = (s: string) => s.replace(/\u001b?\[[0-9;]*m/g, "");
 
 type Budgets = Record<string, { minScore: number }>;
 
@@ -56,7 +54,6 @@ export default function LighthousePage() {
   );
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const termRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (runId) sessionStorage.setItem("lh-runId", runId);
@@ -116,8 +113,6 @@ export default function LighthousePage() {
     tick();
     return () => { alive = false; clearTimeout(timer); };
   }, [runId]);
-
-  useEffect(() => { termRef.current?.scrollTo({ top: termRef.current.scrollHeight }); }, [logs]);
 
   const extraUrlList = extraUrls.split("\n").map(s => s.trim()).filter(Boolean);
 
@@ -200,16 +195,18 @@ export default function LighthousePage() {
           </button>
         </div>
         {selected ? (
-          <div className="pb-grid" style={{ gap: 12 }}>
+          <div className="pb-panel pb-grid" style={{ gap: 12 }}>
             <label className="pb-field">
-              numberOfRuns
+              Jumlah run
               <input className="pb-input" type="number" min={1} max={10} value={runs}
                 onChange={e => setRuns(Math.max(1, Math.min(10, Number(e.target.value) || 1)))} />
+              <span className="pb-hint">1-10. Lebih banyak run = skor lebih stabil, durasi lebih lama.</span>
             </label>
             <label className="pb-field">
-              URL tambahan (satu per baris) - {extraUrlList.length}/{MAX_EXTRA_URLS}
+              URL tambahan ({extraUrlList.length}/{MAX_EXTRA_URLS})
               <textarea className="pb-input pb-mono" rows={3} value={extraUrls}
                 placeholder="https://contoh.test/halaman-lain" onChange={e => setExtraUrls(e.target.value)} />
+              <span className="pb-hint">Satu URL per baris. Target utama dari project ikut diaudit.</span>
             </label>
             <div className="pb-grid two">
               {CATEGORIES.map(c => (
@@ -218,6 +215,7 @@ export default function LighthousePage() {
                   <input className="pb-input" type="number" min={0} max={1} step={0.05}
                     value={scores[c.key] ?? 0.6}
                     onChange={e => setScores(s => ({ ...s, [c.key]: Math.max(0, Math.min(1, Number(e.target.value) || 0)) }))} />
+                  <span className="pb-hint">0-1. Di bawah nilai ini dianggap gagal.</span>
                 </label>
               ))}
             </div>
@@ -225,31 +223,19 @@ export default function LighthousePage() {
         ) : <p className="pb-empty">Project ini belum punya config Lighthouse.</p>}
       </section>
 
-      <section className="pb-card" style={{ marginBottom: 16 }}>
-        <div className="pb-card-head" style={{ marginBottom: 10 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 15 }}>Terminal</h2>
-            <div className="pb-card-sub pb-row" style={{ gap: 8 }}>
-              {run
-                ? <><span>{run.status}</span><RunClock run={run} /><span>{fmtDate(run.finished_at ?? run.queued_at)}</span></>
-                : "Belum ada run."}
-            </div>
-          </div>
-          {run && <span className={`pb-badge ${run.status}`}>{run.status}</span>}
-        </div>
-        <div className="pb-term" ref={termRef} style={{ maxHeight: 300, minHeight: 120 }}>
-          {logs.length === 0
-            ? (runId ? "Menunggu log…" : "Log run akan muncul di sini.")
-            : logs.map(l => <div key={l.seq} className={l.stream === "stderr" ? "pb-log-err" : undefined}>{stripAnsi(l.text)}</div>)}
-        </div>
-        <div className="pb-row" style={{ marginTop: 12 }}>
-          <button className="pb-btn primary" onClick={start}
-            disabled={starting || running || !selected || !target}>
-            {starting ? "Mengantre…" : running ? "Berjalan…" : "Run Lighthouse"}
-          </button>
-          {running && <button className="pb-btn" onClick={stop}>Stop</button>}
-        </div>
-      </section>
+      <RunPanel
+        logs={logs}
+        run={run}
+        live={running}
+        downloadHref={runId ? `/api/runs/${runId}/logs/download` : null}
+      />
+      <div className="pb-row" style={{ marginTop: 12 }}>
+        <button className="pb-btn primary" onClick={start}
+          disabled={starting || running || !selected || !target}>
+          {starting ? "Mengantre…" : running ? "Berjalan…" : "Run Lighthouse"}
+        </button>
+        {running && <button className="pb-btn" onClick={stop}>Stop</button>}
+      </div>
 
       {done && run && (
         <section className="pb-card">
