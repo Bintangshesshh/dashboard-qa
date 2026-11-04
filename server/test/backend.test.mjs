@@ -1088,6 +1088,15 @@ test('T04: test file — path unik global, config LHCI divalidasi, hapus ditolak
   assert.equal(r.body.code, '');
   const lhId = r.body.id;
 
+  // Label kosong diturunkan dari nama file: klien lama yang belum mengirim
+  // label tidak boleh gagal hanya karena metadata.
+  r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: { projectId: 'p1', tool: 'pw', path: 'tests/tanpa-label.spec.ts', code: 'test("x",()=>{})' },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.label, 'tanpa-label.spec.ts');
+
   // Path sama di project lain ditolak (file ditulis relatif root repo).
   r = await call('/api/test-files', {
     method: 'POST', cookie,

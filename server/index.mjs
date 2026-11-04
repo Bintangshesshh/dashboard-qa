@@ -14,6 +14,7 @@ import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check
 import { reportMarkdownFor } from '../scripts/report-md.mjs';
 import { runRetention } from './retention.mjs';
 import { specPath, readSpec, writeSpec } from './spec-sync.mjs';
+import { generateSpec } from './spec-generator.mjs';
 import { backupDatabase } from './backup.mjs';
 import { fail, id, text, code as codeValue, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, authorized, cursor, bool, rangeDays, isoTimestamp, testFilePath, checkLhConfig, checkPwConfig } from './validation.mjs';
 
@@ -73,6 +74,10 @@ export function createApp({ store, runner, token, origins }) {
   const runsDir = runner?.runsDir ?? resolve(root, '.runs');
   const reportsDir = resolve(root, process.env.REPORTS_DIR ?? '.reports');
   const dropDirs = (...dirs) => Promise.all(dirs.map(d => rm(d, { recursive: true, force: true }).catch(() => {})));
+
+  // Satu crawl browser pada satu waktu. Crawl bisa puluhan detik; tanpa guard,
+  // beberapa klik beruntun membuka banyak Chromium dan menghabiskan memori.
+  let specGenerating = false;
 
   // Browser session cookie (PRD §7: cookie pb_session + same-origin check).
   const sessionCookie = req => {
@@ -194,6 +199,29 @@ export function createApp({ store, runner, token, origins }) {
   app.get('/api/me', requireAuth, (req, res) => {
     res.json({ id: req.user.id, username: req.user.username, role: req.user.role });
   });
+
+  // Generator spec: admin-only karena membuka Chromium di server. URL wajib
+  // lolos allowlist yang sama dengan run Playwright.
+  app.post('/api/generate-spec', requireAuth, requireAdmin, route(async (req, res) => {
+    if (specGenerating) fail('Generator sedang berjalan. Coba lagi sebentar.', 429);
+    const url = text(req.body?.url, 'url', 2048);
+    // Origin project ikut diizinkan, sama seperti aturan run. Tanpa ini URL
+    // local/staging yang hanya terdaftar di project akan ditolak generator.
+    const projectId = req.body?.projectId == null ? null : id(req.body.projectId);
+    let allowed = origins;
+    if (projectId) {
+      const project = store.getProject(projectId);
+      if (!project) fail('Project tidak ditemukan', 404);
+      allowed = [...new Set([...(project.origins ?? []), ...origins])];
+    }
+    const startUrl = target(url, allowed);
+    specGenerating = true;
+    try {
+      res.json(await generateSpec({ startUrl, origins: allowed }));
+    } finally {
+      specGenerating = false;
+    }
+  }));
 
   app.post('/api/auth/cli-token', requireAuth, requireAdmin, route(async (req, res) => {
     const label = req.body?.label != null ? text(req.body.label, 'label', 64) : null;
@@ -377,7 +405,11 @@ export function createApp({ store, runner, token, origins }) {
     const project = store.getProject(projectId);
     if (!project) fail('Project tidak ditemukan', 400);
     const path = testFilePath(req.body?.path);
-    const label = text(req.body?.label, 'label', 200);
+    // Label hanya metadata. Kalau klien lama tidak mengirimnya, turunkan dari
+    // nama file supaya penambahan spec tidak gagal karena field kosong.
+    const label = req.body?.label == null || String(req.body.label).trim() === ''
+      ? path.split('/').pop().slice(0, 200)
+      : text(req.body.label, 'label', 200);
     const code = codeFor(t, req.body?.code ?? '');
     assertPathFree(path);
     const cfg = t === 'lh'

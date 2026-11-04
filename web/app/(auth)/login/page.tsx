@@ -4,6 +4,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { api } from "../../../lib/playbook";
 
+// `next` dari query bisa berisi URL login bersarang (sisa loop lama) atau
+// alamat eksternal. Hanya terima path internal yang bukan halaman login,
+// supaya setelah berhasil masuk user tidak terlempar balik ke form.
+function safeNext(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
+  const path = raw.split(/[?#]/)[0].replace(/\/+$/, "") || "/";
+  return path === "/login" ? "/" : raw;
+}
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -17,9 +26,8 @@ function LoginForm() {
     setBusy(true); setError("");
     try {
       await api.login(username, password);
-      const next = params.get("next") ?? "";
       // Tolak redirect keluar: hanya path internal.
-      router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+      router.replace(safeNext(params.get("next")));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login gagal");
       setBusy(false);

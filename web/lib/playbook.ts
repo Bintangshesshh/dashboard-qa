@@ -16,6 +16,11 @@ export type TestFile = {
   label: string; code: string; config: string | null; enabled: number;
   disk_hash?: string | null;
 };
+// Generator spec: kode siap unduh + ringkasan elemen per halaman.
+export type GeneratedSpec = {
+  code: string;
+  pages: { url: string; inputs: number; buttons: number; links?: number }[];
+};
 export type Run = {
   id: string; session_id: string; test_file_id: string | null; tool: "pw" | "lh";
   status: "queued" | "running" | "uploading" | "passed" | "failed" | "cancelled" | "interrupted";
@@ -143,11 +148,30 @@ export class ApiError extends Error {
 }
 
 // PRD §10.8: sesi kedaluwarsa → redirect sekali, tanpa loop.
+// `trailingSlash: true` membuat location.pathname menjadi "/login/", dan
+// basePath (kalau dipakai) ikut di depan path. Keduanya harus dinormalkan
+// sebelum dibandingkan; tanpa itu halaman login menganggap dirinya halaman
+// lain lalu redirect ke /login?next=/login/... berulang kali.
+const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").replace(/\/+$/, "");
+
+function currentPath(): string {
+  let path = location.pathname;
+  if (basePath && (path === basePath || path.startsWith(basePath + "/"))) {
+    path = path.slice(basePath.length) || "/";
+  }
+  return path.replace(/\/+$/, "") || "/";
+}
+
 let redirecting = false;
-function toLogin() {
-  if (redirecting || typeof window === "undefined" || location.pathname === "/login") return;
+function toLogin(path: string) {
+  if (redirecting || typeof window === "undefined") return;
+  // 401 dari request login berarti kredensial salah, bukan sesi habis.
+  // Redirect di sini menghapus pesan error dan memicu loop next=... .
+  if (path === "/api/auth/login") return;
+  const here = currentPath();
+  if (here === "/login") return;
   redirecting = true;
-  location.replace("/login?next=" + encodeURIComponent(location.pathname + location.search));
+  location.replace("/login?next=" + encodeURIComponent(here + location.search));
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -159,9 +183,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     let msg = `Request gagal (${res.status})`;
     try { const body = await res.json(); if (body?.error) msg = body.error; } catch { /* teks mentah */ }
-    if (res.status === 401) toLogin();
+    if (res.status === 401) toLogin(path);
     throw new ApiError(msg, res.status);
   }
+  // Respons sukses = sesi hidup lagi; izinkan redirect berikutnya.
+  redirecting = false;
   if (res.status === 204) return null as T;
   return res.json() as Promise<T>;
 }
@@ -171,6 +197,11 @@ export const api = {
     request<User>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   me: () => request<User>("/api/me"),
+  generateSpec: (url: string, projectId?: string) =>
+    request<GeneratedSpec>("/api/generate-spec", {
+      method: "POST",
+      body: JSON.stringify({ url, ...(projectId ? { projectId } : {}) }),
+    }),
 
   // `all` ikutkan project arsip; hanya dipakai Pengaturan dan halaman arsip (PRD FR-03).
   projects: (q: { all?: boolean } = {}) =>
@@ -267,7 +298,7 @@ export const api = {
       body: JSON.stringify({ projectId, env, confirm, new: startNew }),
     });
     const body = await res.json().catch(() => ({}));
-    if (res.status === 401) toLogin();
+    if (res.status === 401) toLogin("/api/sessions");
     // 409 = sesi terbuka sudah ada → pakai itu, bukan error.
     if (res.status === 409 && body?.sessionId) {
       const session = await request<Session>(`/api/sessions/${body.sessionId}`);

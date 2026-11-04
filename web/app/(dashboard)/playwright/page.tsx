@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
 import { CodeEditor } from "../code-editor";
 import { RunPanel } from "../run-panel";
+import { SpecGenerator } from "../spec-generator";
 import { useEffect, useRef, useState } from "react";
 import {
   api, artifactUrl, fmtDur, fmtTime, groupProjects,
@@ -24,6 +25,8 @@ export default function PlaywrightPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<TestFile[]>([]);
   const [projectId, setProjectId] = useState("");
+  // Generator membuka Chromium di server → hanya admin yang boleh melihatnya.
+  const [isAdmin, setIsAdmin] = useState(false);
   // Default local: kasus utama menguji web yang jalan di laptop sendiri.
   // Konfirmasi production: ketik nama project. Guard sama ada di server.
   const [confirmName, setConfirmName] = useState("");
@@ -84,6 +87,7 @@ export default function PlaywrightPage() {
       setProjects(p);
       if (p[0]) setProjectId(p[0].id);
     }).catch(e => setError(e.message));
+    api.me().then(u => setIsAdmin(u.role === "admin")).catch(() => {});
   }, []);
 
   // Nilai reuse dari tabel settings; endpoint admin-only, viewer cukup tidak
@@ -310,6 +314,24 @@ const productionOk = env !== "production"
           </label>
         )}
       </section>
+
+      {isAdmin && (
+        <SpecGenerator
+          defaultUrl={target}
+          projectId={projectId || undefined}
+          projectSlug={project?.slug}
+          projectName={project?.name}
+          existingFile={selected}
+          onSaved={file => {
+            // Hasil generate langsung jadi spec aktif, jadi Run memakai kode ini.
+            setFiles([file]);
+            setDraft(file.code);
+            setSavedCode(file.code);
+            setSavedAt(new Date().toISOString());
+            setConflict(false);
+          }}
+        />
+      )}
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
         <div className="pb-row" style={{ justifyContent: "space-between", marginBottom: 10 }}>

@@ -14,9 +14,12 @@ const app = next({ dev, dir: fileURLToPath(new URL('.', import.meta.url)), hostn
 await app.prepare();
 const handle = app.getRequestHandler();
 const upgrade = app.getUpgradeHandler();
+// Generator spec menahan respons sampai crawl selesai (±60 dtk). Timeout
+// inactivity harus lebih panjang dari itu, bukan 30 dtk seperti request biasa.
+const proxyTimeoutMs = Number(process.env.PROXY_TIMEOUT_MS ?? 120_000);
 const upstream = req => {
   const proxy = request({ hostname: backend.hostname, port: backend.port || (backend.protocol === 'https:' ? 443 : 80), method: req.method, path: req.url, headers: { ...req.headers } });
-  proxy.setTimeout(30_000, () => proxy.destroy(new Error('Backend timeout')));
+  proxy.setTimeout(proxyTimeoutMs, () => proxy.destroy(new Error('Backend timeout')));
   return proxy;
 };
 const server = createServer((req, res) => {
