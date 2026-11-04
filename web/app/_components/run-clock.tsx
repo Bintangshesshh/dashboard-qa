@@ -22,7 +22,8 @@ export type RunClockInput = {
 };
 
 // Sumber waktu: duration_ms kalau sudah final, selain itu hitung dari started_at.
-// Mulai dari queued_at supaya stopwatch jalan sejak run masuk antrean.
+// Run queued tidak dihitung: satu runner hanya jalan satu proses, jadi timer LHCI
+// tidak boleh berdetak selama Playwright masih berjalan.
 // diekstrak supaya bisa diuji tanpa DOM.
 export function runElapsed(run: RunClockInput, now: number): number | null {
   const start = Date.parse(run.started_at ?? run.queued_at ?? "") || null;
@@ -30,11 +31,13 @@ export function runElapsed(run: RunClockInput, now: number): number | null {
     if (run.duration_ms != null) return run.duration_ms;
     return start && run.finished_at ? Date.parse(run.finished_at) - start : null;
   }
+  if (run.status === "queued" || !run.started_at) return null;
   return start ? now - start : null;
 }
 
 export function RunClock({ run }: { run: RunClockInput }) {
-  const live = !FINAL.includes(run.status);
+  const queued = run.status === "queued";
+  const live = !FINAL.includes(run.status) && !queued && !!run.started_at;
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -55,8 +58,8 @@ export function RunClock({ run }: { run: RunClockInput }) {
     <span
       className={"pb-clock" + (live ? " live" : "")}
       role="timer"
-      aria-label={live ? `Durasi berjalan ${value}` : `Durasi ${value}`}
-      title={live ? "sedang berjalan" : "durasi eksekusi"}
+      aria-label={queued ? "Menunggu giliran" : live ? `Durasi berjalan ${value}` : `Durasi ${value}`}
+      title={queued ? "menunggu giliran" : live ? "sedang berjalan" : "durasi eksekusi"}
     >
       <span className="pb-clock-digits" aria-hidden="true">
         {parts.map((part, i) => (
