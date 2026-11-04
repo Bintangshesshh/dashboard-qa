@@ -1,13 +1,78 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api, fmtDate, fmtDur, runStatusLabel,
   type Project, type RunRow, type Session, type Stats,
 } from "../../lib/playbook";
 
 const RANGES = [7, 14, 30];
+
+type DayStat = Stats["daily"][number];
+type ChartSeries = { passed: number[]; failed: number[]; max: number };
+
+// Grafik selalu punya jumlah titik tetap supaya bentuk lama bisa bergerak
+// mulus ke bentuk baru, termasuk saat jumlah hari berubah 7 ↔ 14 ↔ 30.
+const CHART_SAMPLES = 30;
+const CHART_MORPH_MS = 600;
+
+// Tanggal WIB (UTC+7), sama dengan pengelompokan grafik di server.
+const wibDay = (back = 0) =>
+  new Date(Date.now() + 7 * 3600_000 - back * 86_400_000).toISOString().slice(0, 10);
+
+const resampleDaily = (daily: DayStat[]): ChartSeries => {
+  const passed: number[] = [];
+  const failed: number[] = [];
+  const last = Math.max(1, daily.length - 1);
+  for (let i = 0; i < CHART_SAMPLES; i++) {
+    const pos = (i / (CHART_SAMPLES - 1)) * last;
+    const lo = Math.floor(pos);
+    const hi = Math.min(last, lo + 1);
+    const f = pos - lo;
+    const a = daily[lo];
+    const b = daily[hi];
+    const total = a.total + (b.total - a.total) * f;
+    const ok = a.passed + (b.passed - a.passed) * f;
+    passed.push(ok);
+    failed.push(total - ok);
+  }
+  return { passed, failed, max: Math.max(1, ...daily.map(d => d.total)) };
+};
+
+function useChartMorph(daily: DayStat[]) {
+  const key = daily.map(d => `${d.day}:${d.total}:${d.passed}`).join("|");
+  const [series, setSeries] = useState<ChartSeries>(() => resampleDaily(daily));
+  const current = useRef(series);
+  const frame = useRef(0);
+
+  useEffect(() => {
+    const to = resampleDaily(daily);
+    const from = current.current;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      current.current = to;
+      setSeries(to);
+      return;
+    }
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / CHART_MORPH_MS);
+      const e = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      const next = {
+        passed: from.passed.map((v, i) => v + (to.passed[i] - v) * e),
+        failed: from.failed.map((v, i) => v + (to.failed[i] - v) * e),
+        max: from.max + (to.max - from.max) * e,
+      };
+      current.current = next;
+      setSeries(next);
+      if (t < 1) frame.current = requestAnimationFrame(tick);
+    };
+    frame.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame.current);
+  }, [key]); // key sudah mewakili isi daily; array baru dari polling tidak memicu animasi ulang
+
+  return series;
+}
 
 export default function OverviewPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -17,6 +82,10 @@ export default function OverviewPage() {
   const [perProject, setPerProject] = useState<Record<string, Stats>>({});
   const [projectId, setProjectId] = useState("");
   const [range, setRange] = useState(14);
+  // Rentang yang benar-benar diwakili `stats`; dipakai agar grafik tidak
+  // sempat beranimasi ke data lama saat rentang baru belum selesai dimuat.
+  const [statsRange, setStatsRange] = useState(0);
+  const [chartDaily, setChartDaily] = useState<DayStat[]>([]);
   // Feed "Run terakhir": semua status, termasuk yang sedang berjalan.
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
@@ -43,7 +112,7 @@ export default function OverviewPage() {
           api.runs({ project: projectId || undefined, limit: 8 }),
         ]);
         if (!alive) return;
-        setSessions(s); setStats(st); setRuns(rs);
+        setSessions(s); setStats(st); setStatsRange(range); setRuns(rs);
       } catch (e) {
         if (alive) setError((e as Error).message);
       }
@@ -62,6 +131,17 @@ export default function OverviewPage() {
       .catch(() => {});
     return () => { alive = false; };
   }, [projects, range]);
+
+  // Data grafik baru dipasang setelah stats untuk rentang itu tiba, supaya
+  // grafik cuma bergerak sekali ke bentuk akhir.
+  useEffect(() => {
+    if (!stats || statsRange !== range) return;
+    const map = new Map(stats.daily.map(d => [d.day, d]));
+    setChartDaily(Array.from({ length: range }, (_, i) => {
+      const day = wibDay(range - 1 - i);
+      return map.get(day) ?? { day, total: 0, passed: 0 };
+    }));
+  }, [stats, statsRange, range]);
 
   // Kartu project dipakai di dalam tiap grup; pass rate dari stats per project.
   const projectCard = (p: Project) => {
@@ -103,14 +183,13 @@ export default function OverviewPage() {
   const rateClass = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
   const lh = stats?.lighthouse ?? null;
   // Lengkapi hari tanpa run dengan nol supaya garis tidak melompati tanggal.
-  // API memakai tanggal WIB (UTC+7), jadi kuncinya dihitung dengan offset sama.
-  const wibDay = (back = 0) =>
-    new Date(Date.now() + 7 * 3600_000 - back * 86_400_000).toISOString().slice(0, 10);
+  // Saat rentang baru masih dimuat, pakai data grafik lama dulu.
   const dailyMap = new Map((stats?.daily ?? []).map(d => [d.day, d]));
-  const daily = Array.from({ length: range }, (_, i) => {
+  const targetDaily = Array.from({ length: range }, (_, i) => {
     const day = wibDay(range - 1 - i);
     return dailyMap.get(day) ?? { day, total: 0, passed: 0 };
   });
+  const daily = chartDaily.length ? chartDaily : targetDaily;
   const totalRuns = daily.reduce((sum, d) => sum + d.total, 0);
   const totalPassed = daily.reduce((sum, d) => sum + d.passed, 0);
   const totalFailed = totalRuns - totalPassed;
@@ -118,24 +197,48 @@ export default function OverviewPage() {
   const peak = daily.reduce((best, d) => (d.total > best.total ? d : best), daily[0]);
   // Grafik garis mengikuti referensi rw-1058: dua area (lulus/gagal), bukan batang.
   const CHART_W = 640, CHART_H = 230, PAD_X = 44, PAD_Y = 20;
-  const chartMax = Math.max(1, ...daily.map(d => d.total));
+  // Nilai grafik dianimasikan antar-data, bukan diganti mentah-mentah.
+  const series = useChartMorph(daily);
+  const chartMax = series.max;
   const chartX = (i: number) => daily.length <= 1
     ? CHART_W / 2
     : PAD_X + (i * (CHART_W - PAD_X * 2)) / (daily.length - 1);
   const chartY = (v: number) => CHART_H - PAD_Y - (v / chartMax) * (CHART_H - PAD_Y * 2);
-  const chartPoints = (pick: (d: (typeof daily)[number]) => number): [number, number][] =>
-    daily.map((d, i) => [chartX(i), chartY(pick(d))]);
-  const smooth = (pts: [number, number][]) => pts.reduce((path, [x, y], i) => {
-    if (i === 0) return `M${x},${y}`;
-    const [px, py] = pts[i - 1];
-    const mid = (px + x) / 2;
-    return `${path} C${mid},${py} ${mid},${y} ${x},${y}`;
-  }, "");
+  const seriesX = (i: number) => PAD_X + (i * (CHART_W - PAD_X * 2)) / (CHART_SAMPLES - 1);
+  const seriesPoints = (vals: number[]): [number, number][] =>
+    vals.map((v, i) => [seriesX(i), chartY(v)]);
+  const seriesValue = (vals: number[], frac: number) => {
+    const pos = frac * (CHART_SAMPLES - 1);
+    const lo = Math.floor(pos);
+    const hi = Math.min(CHART_SAMPLES - 1, lo + 1);
+    return vals[lo] + (vals[hi] - vals[lo]) * (pos - lo);
+  };
+  const smooth = (pts: [number, number][]) => {
+    if (pts.length < 2) return "";
+    const n = pts.length;
+    const h = pts[1][0] - pts[0][0] || 1;
+    const delta = pts.slice(1).map((p, i) => (p[1] - pts[i][1]) / h);
+    // Monotone cubic: datar di puncak/lembah, lurus di tanjakan, tanpa overshoot.
+    const slope = new Array<number>(n);
+    slope[0] = delta[0];
+    slope[n - 1] = delta[n - 2];
+    for (let i = 1; i < n - 1; i++) {
+      const a = delta[i - 1], b = delta[i];
+      slope[i] = a * b <= 0 ? 0 : (2 * a * b) / (a + b);
+    }
+    let path = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 0; i < n - 1; i++) {
+      const [x0, y0] = pts[i];
+      const [x1, y1] = pts[i + 1];
+      path += ` C${x0 + h / 3},${y0 + (slope[i] * h) / 3} ${x1 - h / 3},${y1 - (slope[i + 1] * h) / 3} ${x1},${y1}`;
+    }
+    return path;
+  };
   const smoothArea = (pts: [number, number][]) => pts.length < 2
     ? ""
     : `${smooth(pts)} L${pts[pts.length - 1][0]},${CHART_H - PAD_Y} L${pts[0][0]},${CHART_H - PAD_Y} Z`;
-  const passedPts = chartPoints(d => d.passed);
-  const failedPts = chartPoints(d => d.total - d.passed);
+  const passedPts = seriesPoints(series.passed);
+  const failedPts = seriesPoints(series.failed);
   const labelEvery = Math.max(1, Math.ceil(daily.length / 7));
   const slotW = daily.length > 1 ? (CHART_W - PAD_X * 2) / (daily.length - 1) : CHART_W - PAD_X * 2;
   const hasDailyRuns = totalRuns > 0;
@@ -232,8 +335,8 @@ export default function OverviewPage() {
           {!hasDailyRuns ? (
             <p className="pb-empty">Belum ada run final dalam {range} hari terakhir.</p>
           ) : (
-            <svg key={`${projectId}:${range}`} className="pb-linechart" viewBox={`0 0 ${CHART_W} ${CHART_H}`} role="img"
-              aria-label={`Grafik run per hari, ${range} hari, puncak ${chartMax} run`}>
+            <svg className="pb-linechart" viewBox={`0 0 ${CHART_W} ${CHART_H}`} role="img"
+              aria-label={`Grafik run per hari, ${range} hari, puncak ${Math.round(chartMax)} run`}>
               <defs>
                 <linearGradient id="pb-fill-ok" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" style={{ stopColor: "var(--ok)" }} stopOpacity=".28" />
@@ -263,22 +366,27 @@ export default function OverviewPage() {
               )}
               <path className="pb-chart-line bad" d={smooth(failedPts)} />
               <path className="pb-chart-line ok" d={smooth(passedPts)} />
-              {daily.map((d, i) => (
-                <g key={d.day}>
-                  <rect className="pb-chart-hit"
-                    x={Math.max(0, chartX(i) - slotW / 2)} y={PAD_Y}
-                    width={slotW} height={CHART_H - PAD_Y * 2}>
-                    <title>{`${d.day}: ${d.total} run, ${d.passed} lulus, ${d.total - d.passed} gagal`}</title>
-                  </rect>
-                  <circle className="pb-chart-dot ok" cx={passedPts[i][0]} cy={passedPts[i][1]} r="2.8" />
-                  <circle className="pb-chart-dot bad" cx={failedPts[i][0]} cy={failedPts[i][1]} r="2.8" />
-                  {(i % labelEvery === 0 || i === daily.length - 1) && (
-                    <text className="pb-chart-label" x={chartX(i)} y={CHART_H - 4} textAnchor="middle">
-                      {d.day.slice(5)}
-                    </text>
-                  )}
-                </g>
-              ))}
+              {daily.map((d, i) => {
+                const frac = daily.length > 1 ? i / (daily.length - 1) : 0;
+                return (
+                  <g key={d.day}>
+                    <rect className="pb-chart-hit"
+                      x={Math.max(0, chartX(i) - slotW / 2)} y={PAD_Y}
+                      width={slotW} height={CHART_H - PAD_Y * 2}>
+                      <title>{`${d.day}: ${d.total} run, ${d.passed} lulus, ${d.total - d.passed} gagal`}</title>
+                    </rect>
+                    <circle className="pb-chart-dot ok" cx={chartX(i)}
+                      cy={chartY(seriesValue(series.passed, frac))} r="2.8" />
+                    <circle className="pb-chart-dot bad" cx={chartX(i)}
+                      cy={chartY(seriesValue(series.failed, frac))} r="2.8" />
+                    {(i % labelEvery === 0 || i === daily.length - 1) && (
+                      <text className="pb-chart-label" x={chartX(i)} y={CHART_H - 4} textAnchor="middle">
+                        {d.day.slice(5)}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
             </svg>
           )}
           <div className="pb-chart-note">

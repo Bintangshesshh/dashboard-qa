@@ -531,11 +531,6 @@ button { cursor: pointer; }
   min-height: 150px;
   margin-top: 4px;
   overflow: visible;
-  animation: pb-chart-swap .45s var(--ease-standard) both;
-}
-@keyframes pb-chart-swap {
-  from { opacity: .35; transform: translateX(10px); }
-  to { opacity: 1; transform: none; }
 }
 .pb-chart-grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 5; }
 .pb-chart-area.ok { fill: url(#pb-fill-ok); }
@@ -1475,7 +1470,6 @@ button { cursor: pointer; }
 .pb-pass-toggle svg { width: 18px; height: 18px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .pb-linechart { animation: none; }
   .pb-task-box { background: var(--ok); border-color: var(--ok); animation: none; }
   .pb-task-box::after { transform: rotate(45deg) scale(1); animation: none; }
   .pb-task-text { background-size: 100% 1px; animation: none; }
