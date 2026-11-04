@@ -9,6 +9,7 @@ import {
   api, fmtDate, fmtTime,
   type CliToken, type Help, type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
+import { confirmAction } from "../../../lib/alerts";
 import LhConfigEditor, {
   LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig,
 } from "../../_components/lh-config-editor";
@@ -256,7 +257,12 @@ export default function SettingsPage() {
   };
 
   const removeGroup = async (g: ProjectGroup) => {
-    if (!confirm(`Hapus grup "${g.name}"?`)) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: `Hapus grup "${g.name}"?`,
+      text: "Project di dalamnya harus dipindahkan dulu.",
+      confirmButtonText: "Ya, Hapus",
+    }))) return;
     setError(""); setNotice("");
     try {
       await api.deleteProjectGroup(g.id);
@@ -295,7 +301,12 @@ export default function SettingsPage() {
   };
 
   const removeTestFile = async (file: TestFile) => {
-    if (!confirm(`Hapus ${file.label} (${file.path})?`)) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Hapus test file?",
+      text: `${file.label} (${file.path})`,
+      confirmButtonText: "Ya, Hapus",
+    }))) return;
     setError(""); setNotice("");
     try {
       await api.deleteTestFile(file.id);
@@ -306,7 +317,12 @@ export default function SettingsPage() {
 
   // Hapus permanen hanya untuk project tanpa riwayat; server menolak dengan 409.
   const deleteProject = async (p: Project) => {
-    if (!confirm(`Hapus permanen ${p.name}? Tidak bisa dibatalkan.`)) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: `Hapus permanen ${p.name}?`,
+      text: "Tidak bisa dibatalkan. Hanya project tanpa riwayat yang bisa dihapus.",
+      confirmButtonText: "Ya, Hapus",
+    }))) return;
     setError(""); setNotice("");
     try {
       await api.deleteProject(p.id);
@@ -317,7 +333,12 @@ export default function SettingsPage() {
   };
 
   const revoke = async (id: string) => {
-    if (!confirm("Cabut token ini? CLI yang memakainya langsung gagal.")) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Cabut token ini?",
+      text: "CLI yang memakainya langsung gagal.",
+      confirmButtonText: "Ya, Cabut",
+    }))) return;
     try { await api.revokeCliToken(id); api.cliTokens().then(setTokens).catch(() => {}); }
     catch (e) { setError((e as Error).message); }
   };
@@ -1264,7 +1285,12 @@ function UpdateTools() {
   const [busy, setBusy] = useState(false);
 
   const run = async () => {
-    if (!confirm("Perbarui Playwright dan Lighthouse sekarang? Run yang sedang jalan sebaiknya ditunggu.")) return;
+    if (!(await confirmAction({
+      icon: "question",
+      title: "Perbarui Playwright dan Lighthouse?",
+      text: "Run yang sedang jalan sebaiknya ditunggu sampai selesai.",
+      confirmButtonText: "Ya, Perbarui",
+    }))) return;
     setBusy(true); setOut("");
     try { await api.updateTools(t => setOut(prev => prev + t)); }
     catch (e) { setOut(prev => prev + "\n" + (e as Error).message); }

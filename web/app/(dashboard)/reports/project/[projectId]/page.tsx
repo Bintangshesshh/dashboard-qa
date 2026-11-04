@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, fmtDate, reportUrl, runStatusLabel, type Project, type Session } from "../../../../../lib/playbook";
 import { ArtifactLink } from "../../../../_components/report-link";
+import { promptText } from "../../../../../lib/alerts";
 
 export default function ProjectReports() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -39,8 +40,17 @@ export default function ProjectReports() {
     const env = project.staging_url ? "staging" : project.base_url ? "production" : "local";
     let confirm: string | undefined;
     if (env === "production") {
-      const typed = window.prompt(`Ketik nama project (${project.name}) untuk konfirmasi production:`);
-      if (typed !== project.name) { setBusy(false); setNotice("Quick check production dibatalkan."); return; }
+      const typed = await promptText({
+        icon: "warning",
+        title: "Konfirmasi production",
+        text: `Ketik nama project (${project.name}) untuk menjalankan quick check di situs production.`,
+      });
+      if (typed !== project.name) {
+        setBusy(false);
+        if (typed !== null) setNotice("Nama project tidak cocok. Quick check production dibatalkan.");
+        else setNotice("Quick check production dibatalkan.");
+        return;
+      }
       confirm = typed;
     }
     try {

@@ -9,6 +9,7 @@ import {
   api, artifactUrl, fmtDur, fmtTime, groupProjects,
   type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
+import { confirmAction } from "../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -199,7 +200,12 @@ const productionOk = env !== "production"
   // Arah sebaliknya: ambil versi disk (mis. habis pull dari git).
   const reload = async () => {
     if (!selected) return;
-    if (!confirm("Muat ulang dari disk? Perubahan yang belum disimpan akan hilang.")) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Muat ulang dari disk?",
+      text: "Perubahan yang belum disimpan akan hilang.",
+      confirmButtonText: "Ya, Muat Ulang",
+    }))) return;
     setSaving(true); setError("");
     try {
       const updated = await api.reloadTestFile(selected.id);
@@ -336,7 +342,14 @@ const productionOk = env !== "production"
             <span>File spec di disk sudah berubah sejak sinkron terakhir (kemungkinan ada perubahan di git).</span>
             <span className="pb-row" style={{ gap: 8 }}>
               <button className="pb-btn sm danger" disabled={saving}
-                onClick={() => { if (confirm("Timpa file di disk dengan editor? Perubahan di luar dashboard akan hilang.")) save(true); }}>
+                onClick={async () => {
+                  if (await confirmAction({
+                    icon: "warning",
+                    title: "Timpa file di disk?",
+                    text: "Perubahan di luar dashboard akan hilang.",
+                    confirmButtonText: "Ya, Timpa",
+                  })) save(true);
+                }}>
                 Timpa file di disk
               </button>
               <button className="pb-btn sm" onClick={reload} disabled={saving}>Muat ulang dari disk</button>

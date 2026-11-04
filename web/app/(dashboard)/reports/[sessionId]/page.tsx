@@ -11,6 +11,7 @@ import { RunTerminal } from "../../run-terminal";
 import { ArtifactLink, LoginAgain, useProbe } from "../../../_components/report-link";
 import { RunClock } from "../../../_components/run-clock";
 import { ToolMark } from "../../../_components/tool-mark";
+import { confirmAction } from "../../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -103,7 +104,12 @@ export default function SessionDetail() {
   };
 
   const cancelRun = async (run: Run) => {
-    if (!confirm("Batalkan run ini? Proses tool akan dimatikan.")) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Batalkan run ini?",
+      text: "Proses tool akan dimatikan.",
+      confirmButtonText: "Ya, Batalkan",
+    }))) return;
     setBusy(run.id); setError(""); setNotice("");
     try {
       await api.cancelRun(run.id);
@@ -115,7 +121,12 @@ export default function SessionDetail() {
   const deleteSession = async () => {
     const activeRuns = session?.runs?.filter(r => !FINAL.includes(r.status)).length ?? 0;
     if (activeRuns > 0) { setError("Batalkan run yang masih berjalan sebelum menghapus sesi."); return; }
-    if (!confirm("Hapus sesi ini beserta semua run, artifact, dan laporannya? Tidak bisa dibatalkan.")) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Hapus sesi ini?",
+      text: "Semua run, artifact, dan laporannya ikut terhapus. Tidak bisa dibatalkan.",
+      confirmButtonText: "Ya, Hapus",
+    }))) return;
     setBusy("delete"); setError("");
     const back = session?.project_id ? `/reports/project/${session.project_id}` : "/reports";
     try { await api.deleteSession(sessionId); router.push(back); }
@@ -123,14 +134,24 @@ export default function SessionDetail() {
   };
 
   const closeSession = async () => {
-    if (!confirm("Tutup sesi ini? Run baru akan membuat sesi terpisah.")) return;
+    if (!(await confirmAction({
+      icon: "question",
+      title: "Tutup sesi ini?",
+      text: "Run baru akan membuat sesi terpisah.",
+      confirmButtonText: "Ya, Tutup",
+    }))) return;
     setBusy("close"); setError(""); setNotice("");
     try { await api.closeSession(sessionId); setNotice("Sesi ditutup."); load(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   };
 
   const deleteRun = async (run: Run) => {
-    if (!confirm("Hapus run ini beserta artifact-nya?")) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Hapus run ini?",
+      text: "Artifact run ikut terhapus.",
+      confirmButtonText: "Ya, Hapus",
+    }))) return;
     setBusy(run.id); setError(""); setNotice("");
     try { await api.deleteRun(run.id); setNotice("Run dihapus."); load(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(""); }

@@ -87,6 +87,21 @@
 
 * { box-sizing: border-box; }
 
+/* Dialog SweetAlert2: sama dengan ticketing POS. */
+.swal2-popup.pos-swal-popup {
+  border-radius: 1rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+[data-theme="dark"] .swal2-popup.pos-swal-popup {
+  background: #0f172a;
+  color: #f8fafc;
+}
+.swal2-title,
+.swal2-html-container {
+  color: inherit !important;
+}
+
 html, body { margin: 0; padding: 0; }
 
 body {
@@ -527,21 +542,26 @@ button { cursor: pointer; }
 .pb-chart-dot.ok { fill: var(--ok); }
 .pb-chart-dot.bad { fill: var(--bad); }
 .pb-chart-hit { fill: transparent; }
-.pb-chart-label {
+.pb-chart-label,
+.pb-chart-y {
   fill: var(--meta);
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .pb-chart-note {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 6px 16px;
   border-top: 1px solid var(--border);
   margin-top: 12px;
   padding-top: 10px;
-  font-size: 10.5px;
-  color: var(--meta);
+  font-size: 12px;
+  color: var(--muted);
 }
+.pb-chart-note strong { color: var(--text); font-weight: 600; }
+.pb-chart-note .pb-swatch { display: inline-block; margin-right: 5px; }
 
 /* Daftar kegagalan */
 /* Daftar kegagalan terbaru, bukan seluruh riwayat: batasi tinggi supaya

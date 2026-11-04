@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./pb.css";
+import "sweetalert2/dist/sweetalert2.min.css";
 
 export const metadata: Metadata = {
   title: "Playbook",

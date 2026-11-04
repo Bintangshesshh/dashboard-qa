@@ -14,7 +14,8 @@
     "@uiw/react-codemirror": "^4.25.12",
     "next": "^16.4.2",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "sweetalert2": "^11.26.25"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

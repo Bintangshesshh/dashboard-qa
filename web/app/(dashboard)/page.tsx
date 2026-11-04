@@ -102,9 +102,22 @@ export default function OverviewPage() {
   const rate = stats?.passRate == null ? null : Math.round(stats.passRate * 100);
   const rateClass = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
   const lh = stats?.lighthouse ?? null;
-  const daily = stats?.daily ?? [];
+  // Lengkapi hari tanpa run dengan nol supaya garis tidak melompati tanggal.
+  // API memakai tanggal WIB (UTC+7), jadi kuncinya dihitung dengan offset sama.
+  const wibDay = (back = 0) =>
+    new Date(Date.now() + 7 * 3600_000 - back * 86_400_000).toISOString().slice(0, 10);
+  const dailyMap = new Map((stats?.daily ?? []).map(d => [d.day, d]));
+  const daily = Array.from({ length: range }, (_, i) => {
+    const day = wibDay(range - 1 - i);
+    return dailyMap.get(day) ?? { day, total: 0, passed: 0 };
+  });
+  const totalRuns = daily.reduce((sum, d) => sum + d.total, 0);
+  const totalPassed = daily.reduce((sum, d) => sum + d.passed, 0);
+  const totalFailed = totalRuns - totalPassed;
+  const passRate = totalRuns ? Math.round((totalPassed / totalRuns) * 100) : null;
+  const peak = daily.reduce((best, d) => (d.total > best.total ? d : best), daily[0]);
   // Grafik garis mengikuti referensi rw-1058: dua area (lulus/gagal), bukan batang.
-  const CHART_W = 640, CHART_H = 220, PAD_X = 30, PAD_Y = 18;
+  const CHART_W = 640, CHART_H = 230, PAD_X = 44, PAD_Y = 20;
   const chartMax = Math.max(1, ...daily.map(d => d.total));
   const chartX = (i: number) => daily.length <= 1
     ? CHART_W / 2
@@ -124,6 +137,8 @@ export default function OverviewPage() {
   const passedPts = chartPoints(d => d.passed);
   const failedPts = chartPoints(d => d.total - d.passed);
   const labelEvery = Math.max(1, Math.ceil(daily.length / 7));
+  const slotW = daily.length > 1 ? (CHART_W - PAD_X * 2) / (daily.length - 1) : CHART_W - PAD_X * 2;
+  const hasDailyRuns = totalRuns > 0;
   // Sesi dengan aktivitas terakhir, bukan sesi kosong yang baru dibuat.
   const lastSessionId = runs[0]?.session_id ?? sessions[0]?.id ?? null;
 
@@ -205,18 +220,20 @@ export default function OverviewPage() {
           <div className="pb-card-head">
             <div>
               <h2>Run per hari</h2>
-              <div className="pb-card-sub">Playwright dan Lighthouse, {range} hari terakhir.</div>
+              <div className="pb-card-sub">
+                Jumlah run final per tanggal WIB, {range} hari terakhir. Hari tanpa run tetap ditampilkan sebagai nol.
+              </div>
             </div>
             <div className="pb-legend">
               <span><i className="pb-swatch" />Lulus</span>
               <span><i className="pb-swatch bad" />Gagal</span>
             </div>
           </div>
-          {daily.length === 0 ? (
-            <p className="pb-empty">Belum ada run final dalam rentang ini.</p>
+          {!hasDailyRuns ? (
+            <p className="pb-empty">Belum ada run final dalam {range} hari terakhir.</p>
           ) : (
             <svg className="pb-linechart" viewBox={`0 0 ${CHART_W} ${CHART_H}`} role="img"
-              aria-label={`Grafik run per hari, ${daily.length} hari, puncak ${chartMax} run`}>
+              aria-label={`Grafik run per hari, ${range} hari, puncak ${chartMax} run`}>
               <defs>
                 <linearGradient id="pb-fill-ok" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" style={{ stopColor: "var(--ok)" }} stopOpacity=".28" />
@@ -229,7 +246,14 @@ export default function OverviewPage() {
               </defs>
               {[0, .5, 1].map(t => {
                 const y = chartY(chartMax * t);
-                return <line key={t} className="pb-chart-grid" x1={PAD_X} x2={CHART_W - PAD_X} y1={y} y2={y} />;
+                return (
+                  <g key={t}>
+                    <line className="pb-chart-grid" x1={PAD_X} x2={CHART_W - PAD_X} y1={y} y2={y} />
+                    <text className="pb-chart-y" x={PAD_X - 8} y={y + 3.5} textAnchor="end">
+                      {Math.round(chartMax * t)}
+                    </text>
+                  </g>
+                );
               })}
               {daily.length > 1 && (
                 <>
@@ -241,13 +265,15 @@ export default function OverviewPage() {
               <path className="pb-chart-line ok" d={smooth(passedPts)} />
               {daily.map((d, i) => (
                 <g key={d.day}>
+                  <rect className="pb-chart-hit"
+                    x={Math.max(0, chartX(i) - slotW / 2)} y={PAD_Y}
+                    width={slotW} height={CHART_H - PAD_Y * 2}>
+                    <title>{`${d.day}: ${d.total} run, ${d.passed} lulus, ${d.total - d.passed} gagal`}</title>
+                  </rect>
                   <circle className="pb-chart-dot ok" cx={passedPts[i][0]} cy={passedPts[i][1]} r="2.8" />
                   <circle className="pb-chart-dot bad" cx={failedPts[i][0]} cy={failedPts[i][1]} r="2.8" />
-                  <circle className="pb-chart-hit" cx={chartX(i)} cy={CHART_H / 2} r="12">
-                    <title>{`${d.day}: ${d.total} run, ${d.passed} lulus, ${d.total - d.passed} gagal`}</title>
-                  </circle>
-                  {i % labelEvery === 0 && (
-                    <text className="pb-chart-label" x={chartX(i)} y={CHART_H - 2} textAnchor="middle">
+                  {(i % labelEvery === 0 || i === daily.length - 1) && (
+                    <text className="pb-chart-label" x={chartX(i)} y={CHART_H - 4} textAnchor="middle">
                       {d.day.slice(5)}
                     </text>
                   )}
@@ -256,7 +282,11 @@ export default function OverviewPage() {
             </svg>
           )}
           <div className="pb-chart-note">
-            <span>{stats?.runs ?? 0} run · {stats?.sessions ?? 0} sesi</span>
+            <span><strong>{totalRuns}</strong> run final</span>
+            <span><i className="pb-swatch" />{totalPassed} lulus</span>
+            <span><i className="pb-swatch bad" />{totalFailed} gagal</span>
+            <span>Tingkat lulus <strong>{passRate == null ? "-" : `${passRate}%`}</strong></span>
+            {hasDailyRuns && <span>Puncak <strong>{peak.total}</strong> run · {peak.day.slice(5)}</span>}
           </div>
         </section>
 
@@ -290,29 +320,7 @@ export default function OverviewPage() {
         </section>
       </div>
 
-      <div className="pb-section-title">
-        <h2>Project</h2>
-        <span className="eyebrow">{projectId ? 1 : projects.length} aktif</span>
-      </div>
-      {projects.length === 0 ? (
-        <p className="pb-empty">Belum ada project.</p>
-      ) : (
-        // Grup hanya pengelompokan tampilan; daftarnya diturunkan dari
-        // projects.group_name, jadi tidak butuh endpoint agregasi baru.
-        grouped.map(g => (
-          <section className="pb-group-block" key={g.id}>
-            <div className="pb-group-label">
-              <strong>{g.name}</strong>
-              <span className="pb-muted pb-mono">{g.items.length} project</span>
-            </div>
-            <div className="pb-project-grid">
-              {g.items.map(p => projectCard(p))}
-            </div>
-          </section>
-        ))
-      )}
-
-      <section className="pb-card" style={{ marginTop: 16 }}>
+      <section className="pb-card" style={{ marginBottom: 20 }}>
         <div className="pb-card-head">
           <div>
             <h2>Run terakhir</h2>
@@ -348,6 +356,28 @@ export default function OverviewPage() {
           </div>
         )}
       </section>
+
+      <div className="pb-section-title">
+        <h2>Project</h2>
+        <span className="eyebrow">{projectId ? 1 : projects.length} aktif</span>
+      </div>
+      {projects.length === 0 ? (
+        <p className="pb-empty">Belum ada project.</p>
+      ) : (
+        // Grup hanya pengelompokan tampilan; daftarnya diturunkan dari
+        // projects.group_name, jadi tidak butuh endpoint agregasi baru.
+        grouped.map(g => (
+          <section className="pb-group-block" key={g.id}>
+            <div className="pb-group-label">
+              <strong>{g.name}</strong>
+              <span className="pb-muted pb-mono">{g.items.length} project</span>
+            </div>
+            <div className="pb-project-grid">
+              {g.items.map(p => projectCard(p))}
+            </div>
+          </section>
+        ))
+      )}
 
       <section className="pb-card pb-lh" style={{ marginTop: 16 }}>
         <div className="pb-card-head">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Project, type User } from "../../lib/playbook";
+import { showLogoutConfirm } from "../../lib/alerts";
 
 const NAV = [
   { href: "/", label: "Ringkasan" },
@@ -49,7 +50,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, [isSession, seg[1]]);
 
   const logout = async () => {
-    if (!confirm("Keluar dari dashboard?")) return;
+    if (!(await showLogoutConfirm())) return;
     await api.logout().catch(() => {});
     router.replace("/login");
   };
