@@ -12,7 +12,7 @@
   /* Foreground ramp - slate */
   --text: #0f172a;
   --fg-2: #1e293b;
-  --muted: #334155;
+  --muted: #1e293b;
   --meta: #334155;
 
   /* Border */
@@ -44,8 +44,8 @@
   --elev-raised: 0 8px 28px rgba(15, 23, 42, .08);
   --focus-ring: 0 0 0 3px #0284c7;
 
-  --font-display: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
-  --font: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+  --font-display: Poppins, Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+  --font: Poppins, Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
   --font-body: var(--font);
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
@@ -64,7 +64,7 @@
   --surface-warm: #1e293b;
   --text: #f8fafc;
   --fg-2: #cbd5e1;
-  --muted: #cbd5e1;
+  --muted: #e2e8f0;
   --meta: #cbd5e1;
   --line: #1e293b;
   --border: #1e293b;
@@ -155,7 +155,7 @@ button { cursor: pointer; }
   color: var(--meta);
 }
 
-.pb-login-card .pb-field { font-size: 11.5px; }
+.pb-login-card .pb-field { font-size: 13.5px; }
 .pb-login-card .pb-input { height: 44px; }
 .pb-login-card .pb-btn { height: 44px; width: 100%; margin-top: 4px; }
 
@@ -340,7 +340,7 @@ button { cursor: pointer; }
   border-bottom: 1px solid var(--border);
   background: var(--card);
 }
-.pb-crumb { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--meta); min-width: 0; overflow: hidden; }
+.pb-crumb { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--meta); min-width: 0; overflow: hidden; }
 .pb-crumb strong { color: var(--text); font-weight: 600; }
 /* Nav berlayer di topbar: tiap level bisa diklik. */
 .pb-crumb-item { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
@@ -414,7 +414,7 @@ button { cursor: pointer; }
   font-variant-numeric: tabular-nums;
 }
 .pb-kpi-foot {
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--muted);
   margin-top: auto;
   padding-top: 10px;
@@ -500,8 +500,8 @@ button { cursor: pointer; }
   margin-bottom: 12px;
 }
 .pb-card-head h2 { font-size: 17px; line-height: 1.25; }
-.pb-card-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
-.pb-legend { display: flex; align-items: center; gap: 14px; font-size: 10.5px; color: var(--muted); flex-wrap: wrap; }
+.pb-card-sub { font-size: 13.5px; font-weight: 500; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+.pb-legend { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 .pb-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .pb-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--ok); }
 .pb-swatch.bad { background: var(--bad); }
@@ -606,7 +606,7 @@ button { cursor: pointer; }
 .pb-pcard:hover { border-color: var(--border-soft); box-shadow: var(--elev-raised); }
 .pb-pcard-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .pb-pcard h3 { font-size: 16px; line-height: 1.2; }
-.pb-pcard-meta { font-size: 10.5px; color: var(--meta); margin-top: 3px; }
+.pb-pcard-meta { font-size: 12px; color: var(--meta); margin-top: 3px; }
 .pb-pcard-bar { height: 5px; border-radius: 99px; background: var(--surface-warm); overflow: hidden; }
 .pb-pcard-bar span {
   display: block;
@@ -631,7 +631,8 @@ button { cursor: pointer; }
   border-radius: var(--radius-md);
   padding: 8px 12px;
   width: 100%;
-  font-size: 14px;
+  font-size: 15px;
+  color: var(--text);
   transition: border-color var(--motion-fast) var(--ease-standard),
               box-shadow var(--motion-fast) var(--ease-standard);
 }
@@ -644,7 +645,7 @@ button { cursor: pointer; }
 .pb-input::placeholder { color: var(--meta); }
 /* Select di baris flex tidak boleh full-width, kalau tidak filter memakan satu baris. */
 .pb-filters .pb-select, .pb-row .pb-select, .pb-row .pb-input { width: auto; min-width: 150px; }
-.pb-field { display: grid; gap: 6px; font-size: 12px; font-weight: 500; color: var(--fg-2); }
+.pb-field { display: grid; gap: 6px; font-size: 14px; font-weight: 500; color: var(--fg-2); }
 /* .pb-field dipakai di <label> maupun <div> (editor LH); ::before tidak dipakai
    supaya aturan ini aman untuk keduanya. */
 
@@ -659,7 +660,7 @@ button { cursor: pointer; }
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   transition: background var(--motion-fast) var(--ease-standard),
               border-color var(--motion-fast) var(--ease-standard),
@@ -681,19 +682,19 @@ button { cursor: pointer; }
 .pb-btn.danger { color: var(--bad); border-color: color-mix(in oklab, var(--bad) 35%, transparent); }
 .pb-btn.danger:hover { background: var(--bad-bg); color: var(--bad); }
 .pb-btn:disabled { opacity: .6; cursor: not-allowed; }
-.pb-btn.sm { height: 30px; padding: 0 10px; font-size: 12px; border-radius: var(--radius-sm); }
+.pb-btn.sm { height: 30px; padding: 0 10px; font-size: 13px; border-radius: var(--radius-sm); }
 .pb-icon-btn { width: 30px; padding: 0; flex: none; }
 .pb-icon-btn svg { display: block; }
 
 /* Table */
 .pb-table-wrap { overflow-x: auto; }
-.pb-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.pb-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .pb-table th {
   text-align: left;
   color: var(--meta);
   font-family: var(--mono);
-  font-weight: 400;
-  font-size: 10.5px;
+  font-weight: 600;
+  font-size: 11.5px;
   letter-spacing: .1em;
   text-transform: uppercase;
   padding: 8px 10px;
@@ -709,9 +710,9 @@ button { cursor: pointer; }
 .pb-set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .pb-set-field { display: grid; gap: 6px; min-width: 0; }
 .pb-set-field-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; }
-.pb-set-label { font-size: 12.5px; font-weight: 500; color: var(--fg-2); }
-.pb-set-current { font-family: var(--mono); font-size: 10.5px; color: var(--meta); white-space: nowrap; }
-.pb-set-help { font-size: 11.5px; line-height: 1.45; color: var(--muted); }
+.pb-set-label { font-size: 14px; font-weight: 500; color: var(--fg-2); }
+.pb-set-current { font-family: var(--mono); font-size: 12px; color: var(--meta); white-space: nowrap; }
+.pb-set-help { font-size: 13px; line-height: 1.5; color: var(--muted); }
 .pb-input-unit { position: relative; display: block; }
 /* Ruang kanan untuk sufiks satuan supaya angka tidak tertutup. */
 .pb-input-unit .pb-input { padding-right: 72px; }
@@ -735,16 +736,16 @@ button { cursor: pointer; }
   grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr) auto;
   align-items: center; gap: 10px;
   padding: 9px 0; border-bottom: 1px solid var(--border);
-  font-size: 12.5px;
+  font-size: 13.5px;
 }
 .pb-spec-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pb-spec-path {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-family: var(--mono); font-size: 11px; color: var(--meta);
+  font-family: var(--mono); font-size: 12px; color: var(--meta);
 }
 .pb-lh-field { display: grid; gap: 8px; }
 /* Chip ringkas di header Overview: angka audit lhci project terpilih. */
-.pb-set-status { font-family: var(--mono); font-size: 11.5px; color: var(--meta); white-space: nowrap; }
+.pb-set-status { font-family: var(--mono); font-size: 12px; color: var(--meta); white-space: nowrap; }
 .pb-set-status.dirty { color: var(--warn); }
 .pb-set-status.ok { color: var(--ok); }
 .pb-proj-card {
@@ -824,7 +825,7 @@ button { cursor: pointer; }
   color: var(--meta);
   line-height: 1.4;
 }
-.pb-muted { color: var(--muted); }
+.pb-muted { color: var(--muted); font-weight: 500; }
 .pb-empty { color: var(--meta); text-align: center; padding: 36px 12px; }
 /* ---------- Pohon grup project (Pengaturan > Project) ---------- */
 .pb-empty.sm { padding: 14px 12px; font-size: 12px; }
@@ -1021,7 +1022,7 @@ button { cursor: pointer; }
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 30%, transparent);
 }
-.pb-hint { font-size: 11.5px; color: var(--meta); margin: 0; }
+.pb-hint { font-size: 12.5px; color: var(--meta); margin: 0; }
 
 /* Editor spec: CodeMirror (satu lapisan). Seleksi, caret, dan warna digambar
    oleh engine yang sama, jadi yang disorot selalu karakter yang terlihat.
@@ -1201,7 +1202,7 @@ button { cursor: pointer; }
 .pb-runrow:hover { border-color: var(--meta); background: var(--card-hi); }
 .pb-runrow-main { flex: 1; min-width: 0; }
 .pb-runrow-title { font-size: 13.5px; font-weight: 500; }
-.pb-runrow-sub { color: var(--meta); font-size: 11px; margin-top: 2px; }
+.pb-runrow-sub { color: var(--meta); font-size: 12px; margin-top: 2px; }
 .pb-runrow-act { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* Penanda tool: logo asli, bukan teks. Dua PNG sudah dinormalkan ke persegi
@@ -1240,7 +1241,7 @@ button { cursor: pointer; }
 .pb-repcard-top { display: flex; align-items: center; gap: 10px; }
 .pb-repcard-main { flex: 1; min-width: 0; }
 .pb-repcard-title { font-size: 13.5px; font-weight: 500; }
-.pb-repcard-sub { color: var(--meta); font-size: 11px; margin-top: 2px; }
+.pb-repcard-sub { color: var(--meta); font-size: 12px; margin-top: 2px; }
 .pb-repcard-note { font-size: 11px; color: var(--warn); }
 .pb-repcard-act { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
@@ -1391,7 +1392,7 @@ button { cursor: pointer; }
 }
 .pb-login-points li {
   display: flex; align-items: flex-start; gap: 10px;
-  font-size: 13.5px; line-height: 1.5; color: var(--fg-2);
+  font-size: 14.5px; line-height: 1.5; color: var(--fg-2);
 }
 /* Checklist: kotak terisi lalu centang, teks dicoret seperti tugas selesai. */
 .pb-task-box {
@@ -1420,7 +1421,7 @@ button { cursor: pointer; }
 @keyframes pb-task-box { to { background: var(--ok); border-color: var(--ok); } }
 @keyframes pb-task-tick { to { transform: rotate(45deg) scale(1); } }
 @keyframes pb-task-strike { to { background-size: 100% 1px; } }
-.pb-login-sub { font-size: 13px; color: var(--muted); margin: 10px 0 18px; }
+.pb-login-sub { font-size: 14px; color: var(--muted); margin: 10px 0 18px; }
 
 /* Tombol mata di dalam input password. */
 .pb-pass { position: relative; display: block; }
@@ -1531,16 +1532,16 @@ button { cursor: pointer; }
 .pb-lh-urls .pb-row { align-items: center; gap: 8px; }
 .pb-lh-urls .pb-input { flex: 1; min-width: 0; }
 .pb-lh-budgets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; }
-.pb-lh-budget { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--muted); }
+.pb-lh-budget { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .pb-lh-budget-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.pb-lh-budget-top output { font-family: var(--mono); font-size: 11.5px; color: var(--text); }
+.pb-lh-budget-top output { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
 .pb-lh-budget input[type="range"] { width: 100%; accent-color: var(--accent); }
 /* Pratinjau config: tertutup default supaya form tidak jadi dinding teks. */
-.pb-lh-preview summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.pb-lh-preview summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .pb-lh-preview summary:hover { color: var(--text); }
 .pb-lh-preview pre {
   margin: 8px 0 0; padding: 12px; max-height: 260px; overflow: auto;
-  font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
 }
 
