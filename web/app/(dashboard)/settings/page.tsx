@@ -1,8 +1,9 @@
 "use client";
 
 // Semua endpoint settings butuh admin; viewer kena 403 dan hanya melihat pesan galat.
-// Halaman dibagi tab: Playwright (spec + antrean), Lighthouse (config lhci per project),
-// Report (retensi + tampilan), Akses (alamat project + token CLI).
+// Halaman dibagi tab: Project (struktur + URL), Playwright (generator + spec +
+// antrean), Lighthouse (config lhci), Report (retensi + tampilan), Akses (token CLI),
+// dan Bantuan.
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
@@ -10,6 +11,7 @@ import {
   type CliToken, type Help, type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
 import { confirmAction } from "../../../lib/alerts";
+import { SpecGenerator } from "../spec-generator";
 import LhConfigEditor, {
   LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig,
 } from "../../_components/lh-config-editor";
@@ -32,7 +34,7 @@ const fmtMinutes = (value: string) => {
     : `${minutes.toLocaleString("id-ID")} menit`;
 };
 
-type TabId = "project" | "pw" | "lh" | "report" | "bantuan";
+type TabId = "project" | "pw" | "lh" | "report" | "akses" | "bantuan";
 
 // Urutan tab mengikuti alur kerja: siapkan project dulu, baru pengaturan per tool.
 const TABS: { id: TabId; label: string }[] = [
@@ -40,8 +42,18 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "pw", label: "Playwright" },
   { id: "lh", label: "Lighthouse CI" },
   { id: "report", label: "Report" },
+  { id: "akses", label: "Akses" },
   { id: "bantuan", label: "Bantuan" },
 ];
+
+const TAB_HINT: Record<TabId, string> = {
+  project: "Grup, project, URL target, dan origin yang diizinkan.",
+  pw: "Buat spec, atur antrean run, dan setelan runner Playwright.",
+  lh: "Target audit dan budget Lighthouse per project.",
+  report: "Retensi data, batas upload, dan tampilan ringkasan.",
+  akses: "Token CLI untuk memicu run dari laptop tanpa login dashboard.",
+  bantuan: "Istilah, versi tool, dan pertanyaan yang sering muncul.",
+};
 
 type SettingField = {
   key: keyof Settings;
@@ -164,6 +176,8 @@ export default function SettingsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [showArchived, setShowArchived] = useState(false);
+  const [addPanel, setAddPanel] = useState<"group" | "project" | null>(null);
+  const [genProjectId, setGenProjectId] = useState("");
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [groupName, setGroupName] = useState("");
   const [files, setFiles] = useState<TestFile[]>([]);
@@ -181,6 +195,15 @@ export default function SettingsPage() {
   };
 
   useEffect(load, []);
+
+  // Pilihan project generator ikut daftar project aktif; kalau project itu
+  // diarsipkan/dihapus, pilih project aktif pertama supaya form tidak kosong.
+  useEffect(() => {
+    setGenProjectId(current => {
+      const active = projects.filter(p => p.active);
+      return active.some(p => p.id === current) ? current : active[0]?.id ?? "";
+    });
+  }, [projects]);
 
   const sectionDirty = (section: SettingSection) =>
     section.fields.some(f => draft[f.key] !== undefined && draft[f.key] !== settings?.[f.key]);
@@ -412,12 +435,17 @@ export default function SettingsPage() {
     .sort((a, b) => a.name.localeCompare(b.name));
   const pwFiles = files.filter(f => f.tool === "pw");
   const lhFiles = files.filter(f => f.tool === "lh");
+  const genProjects = activeProjects.map(p => ({ id: p.id, name: p.name }));
+  const genProject = activeProjects.find(p => p.id === genProjectId) ?? null;
+  const genFile = genProject ? pwFiles.find(f => f.project_id === genProject.id) ?? null : null;
+  const genUrl = genProject ? (genProject.local_url || genProject.base_url || "") : "";
 
   return (
     <>
       <div className="pb-head">
         <div>
           <h1>Pengaturan.</h1>
+          <p className="pb-lead">{TAB_HINT[tab]}</p>
         </div>
       </div>
       {error && <div className="pb-err" role="alert">{error}</div>}
@@ -436,6 +464,20 @@ export default function SettingsPage() {
       <div className="pb-set-tab-body">
         {tab === "pw" && (
           <>
+            <SpecGenerator
+              projectOptions={genProjects}
+              onProjectChange={setGenProjectId}
+              defaultUrl={genUrl}
+              projectId={genProject?.id}
+              projectSlug={genProject?.slug}
+              projectName={genProject?.name}
+              existingFile={genFile}
+              onSaved={file => {
+                setFiles(prev => [...prev.filter(f => f.id !== file.id), file]);
+                setNotice(`${file.label} disimpan ke ${file.path}.`);
+              }}
+            />
+
             <section className="pb-card">
               <div className="pb-card-head">
                 <div>
@@ -448,6 +490,11 @@ export default function SettingsPage() {
                   {pwFiles.filter(f => f.enabled).length} spec aktif dari {pwFiles.length}
                 </span>
               </div>
+              {genProjects.length === 0 && (
+                <p className="pb-empty">
+                  Belum ada project aktif. Tambahkan project dulu di tab Project.
+                </p>
+              )}
               {projects.map(p => {
                 const own = pwFiles.filter(f => f.project_id === p.id);
                 if (!own.length) return null;
@@ -562,19 +609,39 @@ export default function SettingsPage() {
                 </label>
               </div>
 
-              {/* Tambah grup dan project di satu panel: keduanya soal struktur. */}
-              <div className="pb-add-panel">
-                <div className="pb-add-row">
+              {/* Aksi tambah selalu di posisi yang sama; form muncul di bawahnya
+                  supaya daftar project tidak terdorong saat panel ditutup. */}
+              <div className="pb-set-toolbar">
+                <button className={`pb-btn sm ${addPanel === "group" ? "primary" : ""}`}
+                  aria-expanded={addPanel === "group"}
+                  onClick={() => setAddPanel(p => (p === "group" ? null : "group"))}>
+                  + Grup
+                </button>
+                <button className={`pb-btn sm ${addPanel === "project" ? "primary" : ""}`}
+                  aria-expanded={addPanel === "project"}
+                  onClick={() => setAddPanel(p => (p === "project" ? null : "project"))}>
+                  + Project
+                </button>
+                <span className="pb-spacer" />
+                <span className="pb-set-status">{projects.length} project · {groups.length} grup</span>
+              </div>
+
+              {addPanel === "group" && (
+                <div className="pb-add-panel">
                   <span className="pb-card-sub">Grup baru</span>
-                  <NewGroupForm onCreate={addGroup} />
+                  <NewGroupForm onCreate={async name => { await addGroup(name); setAddPanel(null); }} />
                 </div>
-                <div className="pb-add-row col">
+              )}
+
+              {addPanel === "project" && (
+                <div className="pb-add-panel">
                   <span className="pb-card-sub">
                     Project baru. base_url wajib; slug dipakai sebagai kunci di CLI dan URL report.
                   </span>
-                  <NewProjectForm groups={groups} onCreate={createProject} />
+                  <NewProjectForm groups={groups}
+                    onCreate={async body => { await createProject(body); setAddPanel(null); }} />
                 </div>
-              </div>
+              )}
 
               <div className="pb-note" style={{ marginTop: 14 }}>
                 <p className="pb-note-title">Env local dijalankan dari mesin server dashboard</p>
@@ -650,42 +717,41 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "bantuan" && (
-          <>
-            <Bantuan />
-            <section className="pb-card">
-              <div className="pb-card-head">
-                <div>
-                  <h2>Token CLI</h2>
-                  <div className="pb-card-sub">
-                    Dipakai playbook CLI di laptop untuk memicu run tanpa login. Token ini
-                    bukan kredensial login dashboard, dan pembuatannya lewat CLI
-                    (<code className="pb-mono">playbook login</code>).
-                  </div>
+        {tab === "akses" && (
+          <section className="pb-card">
+            <div className="pb-card-head">
+              <div>
+                <h2>Token CLI</h2>
+                <div className="pb-card-sub">
+                  Dipakai playbook CLI di laptop untuk memicu run tanpa login. Token ini
+                  bukan kredensial login dashboard, dan pembuatannya lewat CLI
+                  (<code className="pb-mono">playbook login</code>).
                 </div>
               </div>
-              {tokens.length === 0
-                ? <p className="pb-empty">Belum ada token.</p>
-                : <div className="pb-table-wrap"><table className="pb-table">
-                  <thead><tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th /></tr></thead>
-                  <tbody>
-                    {tokens.map(t => (
-                      <tr key={t.id}>
-                        <td>{t.label ?? "-"}</td>
-                        <td className="mono">{fmtDate(t.created_at)}</td>
-                        <td className="mono">{t.last_used_at ? fmtDate(t.last_used_at) : "belum"}</td>
-                        <td className="pb-right">
-                          {t.revoked_at
-                            ? <span className="pb-muted">dicabut</span>
-                            : <button className="pb-btn sm danger" onClick={() => revoke(t.id)}>Cabut</button>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table></div>}
-            </section>
-          </>
+            </div>
+            {tokens.length === 0
+              ? <p className="pb-empty">Belum ada token.</p>
+              : <div className="pb-table-wrap"><table className="pb-table">
+                <thead><tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th /></tr></thead>
+                <tbody>
+                  {tokens.map(t => (
+                    <tr key={t.id}>
+                      <td>{t.label ?? "-"}</td>
+                      <td className="mono">{fmtDate(t.created_at)}</td>
+                      <td className="mono">{t.last_used_at ? fmtDate(t.last_used_at) : "belum"}</td>
+                      <td className="pb-right">
+                        {t.revoked_at
+                          ? <span className="pb-muted">dicabut</span>
+                          : <button className="pb-btn sm danger" onClick={() => revoke(t.id)}>Cabut</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table></div>}
+          </section>
         )}
+
+        {tab === "bantuan" && <Bantuan />}
 
       </div>
     </>
@@ -1200,8 +1266,8 @@ const FAQ: { q: string; a: string }[] = [
   {
     q: "Bagaimana token CLI dipakai?",
     a: "Token hanya untuk playbook CLI di laptop, bukan login dashboard. Setiap user "
-      + "punya tokennya sendiri, dibuat otomatis saat playbook login. Cabut dari tabel "
-      + "Token CLI di bawah kalau perangkat hilang; password tidak perlu diganti.",
+      + "punya tokennya sendiri, dibuat otomatis saat playbook login. Cabut dari tab "
+      + "Akses kalau perangkat hilang; password tidak perlu diganti.",
   },
   {
     q: "Kenapa config Lighthouse ditolak?",
