@@ -576,6 +576,13 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              <div className="pb-note" style={{ marginTop: 14 }}>
+                <p className="pb-note-title">Env local dijalankan dari mesin server dashboard</p>
+                Kalau dashboard dihosting, isi <code>local_url</code> dengan URL tunnel
+                (cloudflared/ngrok) ke web lokal, bukan 127.0.0.1. Origin-nya wajib terdaftar
+                di origins project atau <code>TARGET_ALLOWLIST</code>.
+              </div>
+
               {groups.length === 0 && orphans.length === 0 && (
                 <p className="pb-empty">
                   Belum ada project. Tambahkan grup dulu, lalu project di dalamnya.

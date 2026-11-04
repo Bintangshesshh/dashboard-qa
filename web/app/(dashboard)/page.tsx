@@ -89,6 +89,7 @@ export default function OverviewPage() {
   // Feed "Run terakhir": semua status, termasuk yang sedang berjalan.
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
+  const [hoverDay, setHoverDay] = useState<number | null>(null);
 
   useEffect(() => {
     api.projects().then(setProjects).catch(e => setError(e.message));
@@ -241,6 +242,12 @@ export default function OverviewPage() {
   const failedPts = seriesPoints(series.failed);
   const labelEvery = Math.max(1, Math.ceil(daily.length / 7));
   const slotW = daily.length > 1 ? (CHART_W - PAD_X * 2) / (daily.length - 1) : CHART_W - PAD_X * 2;
+  // Jaga label terakhir tidak menabrak label periodik sebelumnya.
+  const labelIdx = daily.map((_, i) => i)
+    .filter(i => i % labelEvery === 0 || i === daily.length - 1);
+  while (labelIdx.length > 1 && chartX(daily.length - 1) - chartX(labelIdx[labelIdx.length - 2]) < slotW * 1.8) {
+    labelIdx.splice(labelIdx.length - 2, 1);
+  }
   const hasDailyRuns = totalRuns > 0;
   // Sesi dengan aktivitas terakhir, bukan sesi kosong yang baru dibuat.
   const lastSessionId = runs[0]?.session_id ?? sessions[0]?.id ?? null;
@@ -368,18 +375,32 @@ export default function OverviewPage() {
               <path className="pb-chart-line ok" d={smooth(passedPts)} />
               {daily.map((d, i) => {
                 const frac = daily.length > 1 ? i / (daily.length - 1) : 0;
+                const ok = d.passed;
+                const bad = d.total - d.passed;
+                const okY = chartY(seriesValue(series.passed, frac));
+                const badY = chartY(seriesValue(series.failed, frac));
                 return (
                   <g key={d.day}>
                     <rect className="pb-chart-hit"
                       x={Math.max(0, chartX(i) - slotW / 2)} y={PAD_Y}
-                      width={slotW} height={CHART_H - PAD_Y * 2}>
-                      <title>{`${d.day}: ${d.total} run, ${d.passed} lulus, ${d.total - d.passed} gagal`}</title>
-                    </rect>
-                    <circle className="pb-chart-dot ok" cx={chartX(i)}
-                      cy={chartY(seriesValue(series.passed, frac))} r="2.8" />
-                    <circle className="pb-chart-dot bad" cx={chartX(i)}
-                      cy={chartY(seriesValue(series.failed, frac))} r="2.8" />
-                    {(i % labelEvery === 0 || i === daily.length - 1) && (
+                      width={slotW} height={CHART_H - PAD_Y * 2}
+                      tabIndex={0} role="img"
+                      aria-label={`${d.day}: ${ok} lulus, ${bad} gagal`}
+                      onPointerEnter={() => setHoverDay(i)}
+                      onPointerLeave={() => setHoverDay(null)}
+                      onFocus={() => setHoverDay(i)}
+                      onBlur={() => setHoverDay(null)} />
+                    <circle className="pb-chart-dot ok" cx={chartX(i)} cy={okY}
+                      r={hoverDay === i ? 4.2 : 2.8} />
+                    <circle className="pb-chart-dot bad" cx={chartX(i)} cy={badY}
+                      r={hoverDay === i ? 4.2 : 2.8} />
+                    {hoverDay === i && (
+                      <>
+                        <text className="pb-chart-value ok" x={chartX(i)} y={okY - 9} textAnchor="middle">{ok}</text>
+                        <text className="pb-chart-value bad" x={chartX(i)} y={badY + 15} textAnchor="middle">{bad}</text>
+                      </>
+                    )}
+                    {labelIdx.includes(i) && (
                       <text className="pb-chart-label" x={chartX(i)} y={CHART_H - 4} textAnchor="middle">
                         {d.day.slice(5)}
                       </text>
