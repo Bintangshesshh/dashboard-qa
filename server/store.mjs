@@ -578,7 +578,8 @@ export class Store {
         ${from ? ' AND s.created_at>=?' : ''}`).get(...(projectId ? [projectId] : []), ...(from ? [from] : []));
     const runs = this.db.prepare(`
       SELECT count(*) AS total, avg(r.duration_ms) AS avg_ms,
-        sum(CASE WHEN r.status IN ('failed','cancelled','interrupted') THEN 1 ELSE 0 END) AS failed
+        sum(CASE WHEN r.status IN ('failed','cancelled','interrupted') THEN 1 ELSE 0 END) AS failed,
+        count(DISTINCT CASE WHEN r.status IN ('failed','cancelled','interrupted') THEN r.session_id END) AS failed_sessions
       FROM runs r JOIN sessions s ON s.id = r.session_id
       WHERE r.finalized_at IS NOT NULL AND ${w}`).get(...vals);
     const lh = this.db.prepare(`
@@ -600,6 +601,7 @@ export class Store {
       runs: runs.total,
       activeRuns: active.total,
       failedRuns: runs.failed ?? 0,
+      failedSessions: runs.failed_sessions ?? 0,
       avgDurationMs: runs.avg_ms == null ? null : Math.round(runs.avg_ms),
       lighthouse: lh.urls ? {
         urls: lh.urls,

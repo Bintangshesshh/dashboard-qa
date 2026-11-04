@@ -116,7 +116,8 @@ export default function OverviewPage() {
   const lh = stats?.lighthouse ?? null;
   const daily = stats?.daily ?? [];
   const maxDay = Math.max(1, ...daily.map(d => d.total));
-  const lastSession = sessions[0] ?? null;
+  // Sesi dengan aktivitas terakhir, bukan sesi kosong yang baru dibuat.
+  const lastSessionId = runs[0]?.session_id ?? sessions[0]?.id ?? null;
 
   return (
     <>
@@ -132,13 +133,17 @@ export default function OverviewPage() {
         <div className="pb-filters">
           <select className="pb-select" value={projectId} onChange={e => setProjectId(e.target.value)} aria-label="Project">
             <option value="">Semua project</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {grouped.map(g => (
+              <optgroup key={g.id} label={g.name}>
+                {g.items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </optgroup>
+            ))}
           </select>
           <select className="pb-select" value={String(range)} onChange={e => setRange(Number(e.target.value))} aria-label="Rentang">
             {RANGES.map(d => <option key={d} value={d}>{d} hari</option>)}
           </select>
-          {lastSession && (
-            <Link className="pb-btn" href={`/reports/${lastSession.id}`}>Buka sesi terakhir</Link>
+          {lastSessionId && (
+            <Link className="pb-btn" href={`/reports/${lastSessionId}`}>Buka sesi terakhir</Link>
           )}
         </div>
       </div>
@@ -180,7 +185,7 @@ export default function OverviewPage() {
           <div>
             <div className="pb-kpi-val">{stats?.failedRuns ?? "-"}</div>
             <div className="pb-kpi-foot">
-              <span className="dot bad" />{stats?.failures?.length ?? 0} sesi terdampak
+              <span className="dot bad" />{stats?.failedSessions ?? 0} sesi terdampak
               {!!stats?.activeRuns && <> · <strong>{stats.activeRuns} berjalan</strong></>}
             </div>
           </div>
