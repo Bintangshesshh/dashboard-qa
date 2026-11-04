@@ -10,62 +10,103 @@ import {
 const RANGES = [7, 14, 30];
 
 type DayStat = Stats["daily"][number];
-type ChartSeries = { passed: number[]; failed: number[]; max: number };
+type Curve = {
+  xs: number[]; ok: number[]; bad: number[];
+  mOk: number[]; mBad: number[]; max: number;
+};
+type ChartSeries = { us: number[]; ok: number[]; bad: number[]; max: number };
 
-// Grafik selalu punya jumlah titik tetap supaya bentuk lama bisa bergerak
-// mulus ke bentuk baru, termasuk saat jumlah hari berubah 7 ↔ 14 ↔ 30.
-const CHART_SAMPLES = 30;
 const CHART_MORPH_MS = 600;
+// Jumlah sampel garis; cukup rapat supaya kurva halus tanpa smoothing ulang.
+const CHART_SAMPLES = 200;
 
 // Tanggal WIB (UTC+7), sama dengan pengelompokan grafik di server.
 const wibDay = (back = 0) =>
   new Date(Date.now() + 7 * 3600_000 - back * 86_400_000).toISOString().slice(0, 10);
 
-const resampleDaily = (daily: DayStat[]): ChartSeries => {
-  const passed: number[] = [];
-  const failed: number[] = [];
-  const last = Math.max(1, daily.length - 1);
-  for (let i = 0; i < CHART_SAMPLES; i++) {
-    const pos = (i / (CHART_SAMPLES - 1)) * last;
-    const lo = Math.floor(pos);
-    const hi = Math.min(last, lo + 1);
-    const f = pos - lo;
-    const a = daily[lo];
-    const b = daily[hi];
-    const total = a.total + (b.total - a.total) * f;
-    const ok = a.passed + (b.passed - a.passed) * f;
-    passed.push(ok);
-    failed.push(total - ok);
+// Monotone cubic: datar di puncak/lembah, lurus di tanjakan, tanpa overshoot.
+const pchipSlopes = (ys: number[], xs: number[]) => {
+  const n = ys.length;
+  const m = new Array<number>(n).fill(0);
+  if (n < 2) return m;
+  const h = xs[1] - xs[0] || 1;
+  const delta = ys.slice(1).map((y, i) => (y - ys[i]) / h);
+  m[0] = delta[0];
+  m[n - 1] = delta[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    const a = delta[i - 1], b = delta[i];
+    m[i] = a * b <= 0 ? 0 : (2 * a * b) / (a + b);
   }
-  return { passed, failed, max: Math.max(1, ...daily.map(d => d.total)) };
+  return m;
+};
+
+const buildCurve = (daily: DayStat[]): Curve => {
+  const n = daily.length;
+  const xs = n ? daily.map((_, i) => (n > 1 ? i / (n - 1) : 0)) : [0];
+  const ok = n ? daily.map(d => d.passed) : [0];
+  const bad = n ? daily.map(d => d.total - d.passed) : [0];
+  return {
+    xs, ok, bad,
+    mOk: pchipSlopes(ok, xs),
+    mBad: pchipSlopes(bad, xs),
+    max: n ? Math.max(1, ...daily.map(d => d.total)) : 1,
+  };
+};
+
+// Evaluasi kurva pada posisi 0..1, jadi titik hari asli selalu kena persis
+// (puncak tidak bergeser atau naik melewati angka sebenarnya).
+const evalCurve = (ys: number[], ms: number[], xs: number[], u: number) => {
+  if (xs.length === 1) return ys[0];
+  let i = 0;
+  while (i < xs.length - 2 && u > xs[i + 1]) i++;
+  const h = xs[i + 1] - xs[i] || 1;
+  const t = Math.min(1, Math.max(0, (u - xs[i]) / h));
+  const t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * ys[i]
+    + (t3 - 2 * t2 + t) * h * ms[i]
+    + (-2 * t3 + 3 * t2) * ys[i + 1]
+    + (t3 - t2) * h * ms[i + 1];
 };
 
 function useChartMorph(daily: DayStat[]) {
   const key = daily.map(d => `${d.day}:${d.total}:${d.passed}`).join("|");
-  const [series, setSeries] = useState<ChartSeries>(() => resampleDaily(daily));
-  const current = useRef(series);
+  const initial = buildCurve(daily);
+  const [series, setSeries] = useState<ChartSeries>(() => ({
+    us: initial.xs, ok: initial.ok, bad: initial.bad, max: initial.max,
+  }));
+  const current = useRef(daily);
   const frame = useRef(0);
 
   useEffect(() => {
-    const to = resampleDaily(daily);
-    const from = current.current;
+    const from = buildCurve(current.current);
+    const to = buildCurve(daily);
+    // Titik sampel memuat semua tanggal kedua rentang, supaya bentuk akhir
+    // persis melewati titik data dan tidak ada puncak palsu di antaranya.
+    const us = [...new Set([
+      ...Array.from({ length: CHART_SAMPLES + 1 }, (_, i) => i / CHART_SAMPLES),
+      ...from.xs,
+      ...to.xs,
+    ].map(u => u.toFixed(6)))].map(Number).sort((a, b) => a - b);
+    const blend = (e: number): ChartSeries => ({
+      us,
+      ok: us.map(u => evalCurve(from.ok, from.mOk, from.xs, u) * (1 - e)
+        + evalCurve(to.ok, to.mOk, to.xs, u) * e),
+      bad: us.map(u => evalCurve(from.bad, from.mBad, from.xs, u) * (1 - e)
+        + evalCurve(to.bad, to.mBad, to.xs, u) * e),
+      max: from.max + (to.max - from.max) * e,
+    });
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      current.current = to;
-      setSeries(to);
+      current.current = daily;
+      setSeries({ us: to.xs, ok: to.ok, bad: to.bad, max: to.max });
       return;
     }
     const start = performance.now();
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / CHART_MORPH_MS);
       const e = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-      const next = {
-        passed: from.passed.map((v, i) => v + (to.passed[i] - v) * e),
-        failed: from.failed.map((v, i) => v + (to.failed[i] - v) * e),
-        max: from.max + (to.max - from.max) * e,
-      };
-      current.current = next;
-      setSeries(next);
+      setSeries(blend(e));
       if (t < 1) frame.current = requestAnimationFrame(tick);
+      else current.current = daily;
     };
     frame.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame.current);
@@ -205,41 +246,29 @@ export default function OverviewPage() {
     ? CHART_W / 2
     : PAD_X + (i * (CHART_W - PAD_X * 2)) / (daily.length - 1);
   const chartY = (v: number) => CHART_H - PAD_Y - (v / chartMax) * (CHART_H - PAD_Y * 2);
-  const seriesX = (i: number) => PAD_X + (i * (CHART_W - PAD_X * 2)) / (CHART_SAMPLES - 1);
+  const seriesX = (u: number) => PAD_X + u * (CHART_W - PAD_X * 2);
   const seriesPoints = (vals: number[]): [number, number][] =>
-    vals.map((v, i) => [seriesX(i), chartY(v)]);
-  const seriesValue = (vals: number[], frac: number) => {
-    const pos = frac * (CHART_SAMPLES - 1);
-    const lo = Math.floor(pos);
-    const hi = Math.min(CHART_SAMPLES - 1, lo + 1);
-    return vals[lo] + (vals[hi] - vals[lo]) * (pos - lo);
+    vals.map((v, i) => [seriesX(series.us[i]), chartY(v)]);
+  const seriesValue = (vals: number[], u: number) => {
+    const us = series.us;
+    if (us.length === 1) return vals[0];
+    let i = 0;
+    while (i < us.length - 2 && u > us[i + 1]) i++;
+    const span = us[i + 1] - us[i] || 1;
+    const t = Math.min(1, Math.max(0, (u - us[i]) / span));
+    return vals[i] + (vals[i + 1] - vals[i]) * t;
   };
-  const smooth = (pts: [number, number][]) => {
+  // Path dirakit dari sampel rapat (bukan smoothing ulang) supaya bentuk
+  // animasi tetap sama dengan kurva data dan puncak tidak bergeser.
+  const linePath = (pts: [number, number][]) => {
     if (pts.length < 2) return "";
-    const n = pts.length;
-    const h = pts[1][0] - pts[0][0] || 1;
-    const delta = pts.slice(1).map((p, i) => (p[1] - pts[i][1]) / h);
-    // Monotone cubic: datar di puncak/lembah, lurus di tanjakan, tanpa overshoot.
-    const slope = new Array<number>(n);
-    slope[0] = delta[0];
-    slope[n - 1] = delta[n - 2];
-    for (let i = 1; i < n - 1; i++) {
-      const a = delta[i - 1], b = delta[i];
-      slope[i] = a * b <= 0 ? 0 : (2 * a * b) / (a + b);
-    }
-    let path = `M${pts[0][0]},${pts[0][1]}`;
-    for (let i = 0; i < n - 1; i++) {
-      const [x0, y0] = pts[i];
-      const [x1, y1] = pts[i + 1];
-      path += ` C${x0 + h / 3},${y0 + (slope[i] * h) / 3} ${x1 - h / 3},${y1 - (slope[i + 1] * h) / 3} ${x1},${y1}`;
-    }
-    return path;
+    return pts.map(([x, y], i) => `${i ? " L" : "M"}${x},${y}`).join("");
   };
-  const smoothArea = (pts: [number, number][]) => pts.length < 2
+  const areaPath = (pts: [number, number][]) => pts.length < 2
     ? ""
-    : `${smooth(pts)} L${pts[pts.length - 1][0]},${CHART_H - PAD_Y} L${pts[0][0]},${CHART_H - PAD_Y} Z`;
-  const passedPts = seriesPoints(series.passed);
-  const failedPts = seriesPoints(series.failed);
+    : `${linePath(pts)} L${pts[pts.length - 1][0]},${CHART_H - PAD_Y} L${pts[0][0]},${CHART_H - PAD_Y} Z`;
+  const passedPts = seriesPoints(series.ok);
+  const failedPts = seriesPoints(series.bad);
   const labelEvery = Math.max(1, Math.ceil(daily.length / 7));
   const slotW = daily.length > 1 ? (CHART_W - PAD_X * 2) / (daily.length - 1) : CHART_W - PAD_X * 2;
   // Jaga label terakhir tidak menabrak label periodik sebelumnya.
@@ -367,18 +396,18 @@ export default function OverviewPage() {
               })}
               {daily.length > 1 && (
                 <>
-                  <path className="pb-chart-area ok" d={smoothArea(passedPts)} />
-                  <path className="pb-chart-area bad" d={smoothArea(failedPts)} />
+                  <path className="pb-chart-area ok" d={areaPath(passedPts)} />
+                  <path className="pb-chart-area bad" d={areaPath(failedPts)} />
                 </>
               )}
-              <path className="pb-chart-line bad" d={smooth(failedPts)} />
-              <path className="pb-chart-line ok" d={smooth(passedPts)} />
+              <path className="pb-chart-line bad" d={linePath(failedPts)} />
+              <path className="pb-chart-line ok" d={linePath(passedPts)} />
               {daily.map((d, i) => {
                 const frac = daily.length > 1 ? i / (daily.length - 1) : 0;
                 const ok = d.passed;
                 const bad = d.total - d.passed;
-                const okY = chartY(seriesValue(series.passed, frac));
-                const badY = chartY(seriesValue(series.failed, frac));
+                const okY = chartY(seriesValue(series.ok, frac));
+                const badY = chartY(seriesValue(series.bad, frac));
                 const isHover = hoverDay === i;
                 // Hari tanpa run tidak perlu dua titik nol yang menumpuk.
                 const hasRuns = d.total > 0;
