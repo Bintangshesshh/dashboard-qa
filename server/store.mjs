@@ -494,6 +494,8 @@ export class Store {
     const ins = this.db.prepare(`INSERT INTO playwright_results (id, run_id, tc_id, file, title, status, duration_ms, retry, error) VALUES (?,?,?,?,?,?,?,?,?)`);
     this.db.exec('BEGIN');
     try {
+      // CLI boleh mengunggah ulang setelah run selesai; ganti, jangan 500.
+      this.db.prepare('DELETE FROM playwright_results WHERE run_id=?').run(runId);
       for (const t of tests) ins.run(randomUUID(), runId, t.tcId ?? null, t.file, t.title, t.status, t.durationMs ?? null, t.retry ?? 0, t.error ?? null);
       this.db.exec('COMMIT');
     } catch (e) { this.db.exec('ROLLBACK'); throw e; }
@@ -509,6 +511,7 @@ export class Store {
     const ins = this.db.prepare(`INSERT INTO lighthouse_results (id, run_id, url, performance, accessibility, best_practices, seo, lcp_ms, cls, tbt_ms, budget_failed, warnings, report_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     this.db.exec('BEGIN');
     try {
+      this.db.prepare('DELETE FROM lighthouse_results WHERE run_id=?').run(runId);
       for (const r of rows) ins.run(randomUUID(), runId, r.url, r.performance ?? null, r.accessibility ?? null, r.bestPractices ?? null, r.seo ?? null, r.lcpMs ?? null, r.cls ?? null, r.tbtMs ?? null, r.budgetFailed ?? null, r.warnings ?? null, r.reportPath ?? null);
       this.db.exec('COMMIT');
     } catch (e) { this.db.exec('ROLLBACK'); throw e; }
@@ -529,6 +532,8 @@ export class Store {
 
   // ─── Artifacts ───────────────────────────────────────────────────────────
   addArtifact({ id, runId, kind, path, bytes }) {
+    // Upload ulang path yang sama memperbarui baris, bukan menumpuk tautan.
+    this.db.prepare('DELETE FROM artifacts WHERE run_id=? AND path=?').run(runId, path);
     this.db.prepare('INSERT INTO artifacts (id, run_id, kind, path, bytes, created_at) VALUES (?,?,?,?,?,?)').run(id ?? randomUUID(), runId, kind, path, bytes ?? null, new Date().toISOString());
   }
   listArtifacts(runId) { return this.db.prepare('SELECT * FROM artifacts WHERE run_id=? ORDER BY path').all(runId); }

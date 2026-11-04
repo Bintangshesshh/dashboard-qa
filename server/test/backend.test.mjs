@@ -396,12 +396,25 @@ test('CLI lokal: local → start → logs → upload artifact → finalisasi', a
   assert.equal(r.status, 200);
   assert.deepEqual(r.body, { a: 1 });
 
+  // Upload ulang path yang sama tidak boleh menggandakan baris artifact.
+  r = await f.call(`/api/runs/${runId}/artifacts?kind=pw-json&path=report.json`, { method: 'PUT', cookie, body: { b: 2 } });
+  assert.equal(r.status, 201);
+  assert.equal(f.store.listArtifacts(runId).length, 1);
+
   r = await f.call(`/api/runs/${runId}/artifacts?kind=pw-json&path=..%2Fescape.json`, { method: 'PUT', cookie, body: { a: 1 } });
   assert.equal(r.status, 400);
 
   r = await f.call(`/api/runs/${runId}`, { method: 'PATCH', cookie, body: { status: 'passed', exitCode: 0 } });
   assert.equal(r.status, 200);
   assert.ok(r.body.finalized_at);
+
+  // CLI `upload` boleh diulang: hasil diganti, bukan 500 karena UNIQUE.
+  const results = [{ tcId: 'tc1', file: 'a.spec.ts', title: 'A', status: 'passed', durationMs: 3 }];
+  r = await f.call(`/api/runs/${runId}`, { method: 'PATCH', cookie, body: { results } });
+  assert.equal(r.status, 200);
+  r = await f.call(`/api/runs/${runId}`, { method: 'PATCH', cookie, body: { results } });
+  assert.equal(r.status, 200);
+  assert.equal(f.store.listPlaywrightResults(runId).length, 1);
 
   const run = f.store.getRun(runId);
   assert.equal(run.status, 'passed');
@@ -1614,6 +1627,12 @@ test('websocket log menolak klien tanpa sesi', async t => {
   const authClose = await closed(auth);
   assert.equal(authClose.code, 1008);
   assert.equal(authClose.reason, 'Unknown run', 'sesi valid harus lolos gerbang auth');
+
+  // Cookie dari origin lain tidak boleh membuka stream log.
+  const evil = new WebSocket(url, { origin: 'http://evil.test', headers: { cookie } });
+  const evilClose = await closed(evil);
+  assert.equal(evilClose.code, 1008);
+  assert.equal(evilClose.reason, 'Forbidden');
 });
 
 // Password tidak boleh bisa ditebak dalam jumlah tak terbatas. Batasnya lima

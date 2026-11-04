@@ -88,7 +88,7 @@ export function createApp({ store, runner, token, origins }) {
     const site = req.headers['sec-fetch-site'];
     if (site && site !== 'same-origin' && site !== 'same-site') return false;
     if (req.headers.origin) {
-      try { return new URL(req.headers.origin).host === req.get('host'); } catch { return false; }
+      try { return new URL(req.headers.origin).host === req.headers.host; } catch { return false; }
     }
     return !site;
   };
@@ -1066,7 +1066,7 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   // ─── WebSocket (log streaming) ───────────────────────────────────────────
-  attachWebSocket(app, { store, runner, resolveUser });
+  attachWebSocket(app, { store, runner, resolveUser, sameOrigin });
 
   // ─── Error handler ───────────────────────────────────────────────────────
   app.use((err, req, res, next) => {
@@ -1078,14 +1078,17 @@ export function createApp({ store, runner, token, origins }) {
   return app;
 }
 
-function attachWebSocket(app, { store, runner, resolveUser }) {
+function attachWebSocket(app, { store, runner, resolveUser, sameOrigin }) {
   const server = app.__wssServer ?? createServer(app);
   app.__wssServer = server;
   const wss = new WebSocketServer({ server, path: '/ws' });
   wss.on('connection', (ws, req) => {
     // Log run memuat data pelanggan; tanpa sesi valid tidak ada yang boleh mendengar.
     // Resolver-nya sama dengan requireAuth, jadi aturan cookie/bearer tidak bercabang.
-    if (!resolveUser(req)) return ws.close(1008, 'Unauthorized');
+    const auth = resolveUser(req);
+    if (!auth) return ws.close(1008, 'Unauthorized');
+    // Cookie browser wajib same-origin, sama seperti mutasi HTTP.
+    if (auth.via === 'cookie' && !sameOrigin(req)) return ws.close(1008, 'Forbidden');
     // Satu socket hanya boleh menerima run yang dilanggannya; runner
     // menyiarkan log semua run ke semua listener.
     let subscribedRun = null;
