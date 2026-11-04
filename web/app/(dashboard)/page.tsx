@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   api, fmtDate, fmtDur, runStatusLabel,
-  type Project, type RunRow, type Session, type Settings, type Stats, type User,
+  type Project, type RunRow, type Session, type Stats,
 } from "../../lib/playbook";
 
 const RANGES = [7, 14, 30];
@@ -20,18 +20,6 @@ export default function OverviewPage() {
   // Feed "Run terakhir": semua status, termasuk yang sedang berjalan.
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
-  // Kartu "Pengaturan aktif" hanya untuk admin; viewer tidak boleh lihat nilainya.
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    api.me().then(u => {
-      if (u.role !== "admin") return;
-      setIsAdmin(true);
-      // Nilai dari DB, bukan konstanta UI.
-      api.settings().then(setSettings).catch(() => {});
-    }).catch(() => {});
-  }, []);
 
   useEffect(() => {
     api.projects().then(setProjects).catch(e => setError(e.message));
@@ -115,7 +103,27 @@ export default function OverviewPage() {
   const rateClass = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
   const lh = stats?.lighthouse ?? null;
   const daily = stats?.daily ?? [];
-  const maxDay = Math.max(1, ...daily.map(d => d.total));
+  // Grafik garis mengikuti referensi rw-1058: dua area (lulus/gagal), bukan batang.
+  const CHART_W = 640, CHART_H = 220, PAD_X = 30, PAD_Y = 18;
+  const chartMax = Math.max(1, ...daily.map(d => d.total));
+  const chartX = (i: number) => daily.length <= 1
+    ? CHART_W / 2
+    : PAD_X + (i * (CHART_W - PAD_X * 2)) / (daily.length - 1);
+  const chartY = (v: number) => CHART_H - PAD_Y - (v / chartMax) * (CHART_H - PAD_Y * 2);
+  const chartPoints = (pick: (d: (typeof daily)[number]) => number): [number, number][] =>
+    daily.map((d, i) => [chartX(i), chartY(pick(d))]);
+  const smooth = (pts: [number, number][]) => pts.reduce((path, [x, y], i) => {
+    if (i === 0) return `M${x},${y}`;
+    const [px, py] = pts[i - 1];
+    const mid = (px + x) / 2;
+    return `${path} C${mid},${py} ${mid},${y} ${x},${y}`;
+  }, "");
+  const smoothArea = (pts: [number, number][]) => pts.length < 2
+    ? ""
+    : `${smooth(pts)} L${pts[pts.length - 1][0]},${CHART_H - PAD_Y} L${pts[0][0]},${CHART_H - PAD_Y} Z`;
+  const passedPts = chartPoints(d => d.passed);
+  const failedPts = chartPoints(d => d.total - d.passed);
+  const labelEvery = Math.max(1, Math.ceil(daily.length / 7));
   // Sesi dengan aktivitas terakhir, bukan sesi kosong yang baru dibuat.
   const lastSessionId = runs[0]?.session_id ?? sessions[0]?.id ?? null;
 
@@ -207,20 +215,45 @@ export default function OverviewPage() {
           {daily.length === 0 ? (
             <p className="pb-empty">Belum ada run final dalam rentang ini.</p>
           ) : (
-            <div className="pb-bars" role="img" aria-label="Grafik jumlah run per hari">
-              {daily.map(d => {
-                const h = Math.max(3, (d.total / maxDay) * 100);
-                const hp = d.total ? (d.passed / d.total) * 100 : 0;
-                return (
-                  <div className="pb-bar-col" key={d.day} title={`${d.day}: ${d.total} run, ${d.passed} lulus`}>
-                    <span className="pb-bar" style={{ height: `${h}%` }}>
-                      <span className="pb-bar-passed" style={{ height: `${hp}%` }} />
-                    </span>
-                    <small>{d.day.slice(5)}</small>
-                  </div>
-                );
+            <svg className="pb-linechart" viewBox={`0 0 ${CHART_W} ${CHART_H}`} role="img"
+              aria-label={`Grafik run per hari, ${daily.length} hari, puncak ${chartMax} run`}>
+              <defs>
+                <linearGradient id="pb-fill-ok" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" style={{ stopColor: "var(--ok)" }} stopOpacity=".28" />
+                  <stop offset="100%" style={{ stopColor: "var(--ok)" }} stopOpacity="0" />
+                </linearGradient>
+                <linearGradient id="pb-fill-bad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" style={{ stopColor: "var(--bad)" }} stopOpacity=".22" />
+                  <stop offset="100%" style={{ stopColor: "var(--bad)" }} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {[0, .5, 1].map(t => {
+                const y = chartY(chartMax * t);
+                return <line key={t} className="pb-chart-grid" x1={PAD_X} x2={CHART_W - PAD_X} y1={y} y2={y} />;
               })}
-            </div>
+              {daily.length > 1 && (
+                <>
+                  <path className="pb-chart-area ok" d={smoothArea(passedPts)} />
+                  <path className="pb-chart-area bad" d={smoothArea(failedPts)} />
+                </>
+              )}
+              <path className="pb-chart-line bad" d={smooth(failedPts)} />
+              <path className="pb-chart-line ok" d={smooth(passedPts)} />
+              {daily.map((d, i) => (
+                <g key={d.day}>
+                  <circle className="pb-chart-dot ok" cx={passedPts[i][0]} cy={passedPts[i][1]} r="2.8" />
+                  <circle className="pb-chart-dot bad" cx={failedPts[i][0]} cy={failedPts[i][1]} r="2.8" />
+                  <circle className="pb-chart-hit" cx={chartX(i)} cy={CHART_H / 2} r="12">
+                    <title>{`${d.day}: ${d.total} run, ${d.passed} lulus, ${d.total - d.passed} gagal`}</title>
+                  </circle>
+                  {i % labelEvery === 0 && (
+                    <text className="pb-chart-label" x={chartX(i)} y={CHART_H - 2} textAnchor="middle">
+                      {d.day.slice(5)}
+                    </text>
+                  )}
+                </g>
+              ))}
+            </svg>
           )}
           <div className="pb-chart-note">
             <span>{stats?.runs ?? 0} run · {stats?.sessions ?? 0} sesi</span>
@@ -277,32 +310,6 @@ export default function OverviewPage() {
             </div>
           </section>
         ))
-      )}
-
-      {isAdmin && (
-        <section className="pb-card pb-set-summary" style={{ marginTop: 16 }}>
-          <div className="pb-card-head">
-            <div>
-              <h2>Pengaturan aktif</h2>
-              <div className="pb-card-sub">
-                Nilai yang sedang dipakai runner, dibaca dari tabel settings.
-              </div>
-            </div>
-            <Link className="pb-link-muted" href="/settings">Buka Pengaturan</Link>
-          </div>
-          {settings ? (
-            <div className="pb-kv">
-              <div className="pb-kv-row"><span>Reuse sesi</span>
-                <code className="pb-mono">{settings.session_reuse_minutes} menit</code></div>
-              <div className="pb-kv-row"><span>Antrean maksimum</span>
-                <code className="pb-mono">{settings.max_queue_length} run</code></div>
-              <div className="pb-kv-row"><span>Retensi report</span>
-                <code className="pb-mono">{settings.report_retention_days} hari</code></div>
-              <div className="pb-kv-row"><span>Range default</span>
-                <code className="pb-mono">{settings.range_default_days} hari</code></div>
-            </div>
-          ) : <p className="pb-empty sm">Memuat pengaturan…</p>}
-        </section>
       )}
 
       <section className="pb-card" style={{ marginTop: 16 }}>
