@@ -531,6 +531,11 @@ button { cursor: pointer; }
   min-height: 150px;
   margin-top: 4px;
   overflow: visible;
+  animation: pb-chart-swap .45s var(--ease-standard) both;
+}
+@keyframes pb-chart-swap {
+  from { opacity: .35; transform: translateX(10px); }
+  to { opacity: 1; transform: none; }
 }
 .pb-chart-grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 5; }
 .pb-chart-area.ok { fill: url(#pb-fill-ok); }
@@ -1414,14 +1419,15 @@ button { cursor: pointer; }
   display: flex; align-items: flex-start; gap: 10px;
   font-size: 14.5px; line-height: 1.5; color: var(--fg-2);
 }
-/* Checklist: kotak terisi lalu centang, teks dicoret seperti tugas selesai. */
+/* Checklist: kotak terisi lalu centang, teks dicoret. Siklus lambat dan
+   berulang supaya tetap hidup, bukan animasi sekali jalan. */
 .pb-task-box {
   position: relative; flex: none;
   width: 18px; height: 18px; margin-top: 1px;
   border: 1.5px solid color-mix(in oklab, var(--accent) 45%, var(--border));
   border-radius: 5px; background: var(--card);
-  animation: pb-task-box .24s var(--ease-standard) forwards;
-  animation-delay: var(--d, .45s);
+  animation: pb-task-box 8s var(--ease-standard) infinite;
+  animation-delay: var(--d, .4s);
 }
 .pb-task-box::after {
   content: "";
@@ -1429,18 +1435,30 @@ button { cursor: pointer; }
   width: 5px; height: 9px;
   border: solid #fff; border-width: 0 2px 2px 0;
   transform: rotate(45deg) scale(0);
-  animation: pb-task-tick .16s var(--ease-standard) forwards;
-  animation-delay: calc(var(--d, .45s) + .16s);
+  animation: pb-task-tick 8s var(--ease-standard) infinite;
+  animation-delay: var(--d, .4s);
 }
 .pb-task-text {
   background: linear-gradient(currentColor, currentColor) no-repeat 0 55%;
   background-size: 0 1px;
-  animation: pb-task-strike .28s ease-out forwards;
-  animation-delay: calc(var(--d, .45s) + .3s);
+  animation: pb-task-strike 8s ease-out infinite;
+  animation-delay: var(--d, .4s);
 }
-@keyframes pb-task-box { to { background: var(--ok); border-color: var(--ok); } }
-@keyframes pb-task-tick { to { transform: rotate(45deg) scale(1); } }
-@keyframes pb-task-strike { to { background-size: 100% 1px; } }
+@keyframes pb-task-box {
+  0%, 5% { background: var(--card); border-color: color-mix(in oklab, var(--accent) 45%, var(--border)); }
+  16%, 88% { background: var(--ok); border-color: var(--ok); }
+  100% { background: var(--card); border-color: color-mix(in oklab, var(--accent) 45%, var(--border)); }
+}
+@keyframes pb-task-tick {
+  0%, 16% { transform: rotate(45deg) scale(0); }
+  24%, 88% { transform: rotate(45deg) scale(1); }
+  100% { transform: rotate(45deg) scale(0); }
+}
+@keyframes pb-task-strike {
+  0%, 22% { background-size: 0 1px; }
+  30%, 88% { background-size: 100% 1px; }
+  100% { background-size: 0 1px; }
+}
 .pb-login-sub { font-size: 14px; color: var(--muted); margin: 10px 0 18px; }
 
 /* Tombol mata di dalam input password. */
@@ -1457,6 +1475,7 @@ button { cursor: pointer; }
 .pb-pass-toggle svg { width: 18px; height: 18px; }
 
 @media (prefers-reduced-motion: reduce) {
+  .pb-linechart { animation: none; }
   .pb-task-box { background: var(--ok); border-color: var(--ok); animation: none; }
   .pb-task-box::after { transform: rotate(45deg) scale(1); animation: none; }
   .pb-task-text { background-size: 100% 1px; animation: none; }

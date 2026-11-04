@@ -232,7 +232,7 @@ export default function OverviewPage() {
           {!hasDailyRuns ? (
             <p className="pb-empty">Belum ada run final dalam {range} hari terakhir.</p>
           ) : (
-            <svg className="pb-linechart" viewBox={`0 0 ${CHART_W} ${CHART_H}`} role="img"
+            <svg key={`${projectId}:${range}`} className="pb-linechart" viewBox={`0 0 ${CHART_W} ${CHART_H}`} role="img"
               aria-label={`Grafik run per hari, ${range} hari, puncak ${chartMax} run`}>
               <defs>
                 <linearGradient id="pb-fill-ok" x1="0" y1="0" x2="0" y2="1">
