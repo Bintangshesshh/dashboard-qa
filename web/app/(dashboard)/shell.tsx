@@ -49,6 +49,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, [isSession, seg[1]]);
 
   const logout = async () => {
+    if (!confirm("Keluar dari dashboard?")) return;
     await api.logout().catch(() => {});
     router.replace("/login");
   };
@@ -164,7 +165,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 // Preferensi tema: sistem / terang / gelap. Disimpan di localStorage 'pb-theme'.
 // Skrip inline di layout.tsx sudah menerapkan tema sebelum paint; ini hanya toggle.
 const PREFS = [
-  { pref: "system", label: "Ikuti OS" },
+  { pref: "system", label: "System" },
   { pref: "light", label: "Terang" },
   { pref: "dark", label: "Gelap" },
 ] as const;

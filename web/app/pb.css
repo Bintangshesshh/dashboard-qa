@@ -2,9 +2,9 @@
 :root {
   color-scheme: light;
 
-  --bg: #f8fafc;
+  --bg: #f1f5f9;
   --bg-soft: #ffffff;
-  --bg-2: #f1f5f9;
+  --bg-2: #e2e8f0;
   --card: #ffffff;
   --card-hi: #f1f5f9;
   --surface-warm: #f1f5f9;
@@ -20,18 +20,19 @@
   --border: #e2e8f0;
   --border-soft: #cbd5e1;
 
-  /* Accent - sinyal biru */
-  --accent: #2563eb;
+  /* Accent - sky/slate dari palet ticketing */
+  --accent: #0284c7;
+  --accent-strong: #0369a1;
   --accent-on: #ffffff;
-  --accent-soft: rgba(37, 99, 235, .1);
+  --accent-soft: rgba(2, 132, 199, .12);
   --panel: #f8fafc;
 
-  --ok: #15803d;
-  --warn: #b45309;
-  --bad: #be123c;
-  --ok-bg: rgba(21, 128, 61, .1);
-  --warn-bg: rgba(180, 83, 9, .12);
-  --bad-bg: rgba(190, 18, 60, .09);
+  --ok: #059669;
+  --warn: #d97706;
+  --bad: #e11d48;
+  --ok-bg: rgba(5, 150, 105, .1);
+  --warn-bg: rgba(217, 119, 6, .12);
+  --bad-bg: rgba(225, 29, 72, .09);
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -41,7 +42,7 @@
 
   --shadow: rgba(15, 23, 42, .06) 0 4px 24px;
   --elev-raised: 0 8px 28px rgba(15, 23, 42, .08);
-  --focus-ring: 0 0 0 3px #2563eb;
+  --focus-ring: 0 0 0 3px #0284c7;
 
   --font-display: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
   --font: Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
@@ -55,32 +56,33 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0b1020;
-  --bg-soft: #131b2f;
-  --bg-2: #11151f;
-  --card: #131b2f;
-  --card-hi: #182343;
-  --surface-warm: #182343;
+  --bg: #020617;
+  --bg-soft: #0f172a;
+  --bg-2: #0b1220;
+  --card: #0f172a;
+  --card-hi: #1e293b;
+  --surface-warm: #1e293b;
   --text: #f8fafc;
   --fg-2: #cbd5e1;
-  --muted: #a3b3c9;
-  --meta: #a3b3c9;
-  --line: #293653;
-  --border: #1e2a43;
-  --border-soft: #293653;
-  --accent: #60a5fa;
+  --muted: #94a3b8;
+  --meta: #94a3b8;
+  --line: #1e293b;
+  --border: #1e293b;
+  --border-soft: #334155;
+  --accent: #38bdf8;
+  --accent-strong: #38bdf8;
   --accent-on: #06111f;
-  --accent-soft: rgba(96, 165, 250, .16);
-  --panel: #0e1424;
-  --ok: #22c55e;
+  --accent-soft: rgba(56, 189, 248, .16);
+  --panel: #0b1220;
+  --ok: #34d399;
   --warn: #fbbf24;
   --bad: #fb7185;
-  --ok-bg: rgba(34, 197, 94, .12);
+  --ok-bg: rgba(52, 211, 153, .12);
   --warn-bg: rgba(251, 191, 36, .12);
   --bad-bg: rgba(251, 113, 133, .12);
-  --shadow: 0 0 0 1px #293653;
+  --shadow: 0 0 0 1px #1e293b;
   --elev-raised: 0 24px 72px rgba(0, 0, 0, .36);
-  --focus-ring: 0 0 0 3px #60a5fa;
+  --focus-ring: 0 0 0 3px #38bdf8;
 }
 
 * { box-sizing: border-box; }
@@ -489,7 +491,7 @@ button { cursor: pointer; }
 }
 
 
-/* Chart batang */
+/* Chart garis */
 .pb-card-head {
   display: flex;
   align-items: flex-start;
@@ -501,47 +503,34 @@ button { cursor: pointer; }
 .pb-card-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
 .pb-legend { display: flex; align-items: center; gap: 14px; font-size: 10.5px; color: var(--muted); flex-wrap: wrap; }
 .pb-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.pb-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--text); }
-.pb-swatch.bad { background: color-mix(in oklab, var(--bad) 70%, var(--card)); }
+.pb-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--ok); }
+.pb-swatch.bad { background: var(--bad); }
 
-/* Kartu grafik ikut setinggi kartu kanan; batang tumbuh mengisi sisa tinggi. */
+/* Kartu grafik ikut setinggi kartu kanan. */
 .pb-grid.chart-2-1 > .pb-card { display: flex; flex-direction: column; }
-.pb-bars {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
+.pb-linechart {
+  display: block;
+  width: 100%;
+  height: auto;
   flex: 1 1 auto;
   min-height: 150px;
   margin-top: 4px;
+  overflow: visible;
 }
-.pb-bar-col {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  height: 100%;
-}
-.pb-bar {
-  width: 100%;
-  max-width: 26px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  background: color-mix(in oklab, var(--bad) 45%, var(--surface-warm));
-  border-radius: 3px;
-  overflow: hidden;
-  transition: opacity var(--motion-fast);
-}
-.pb-bar:hover { opacity: .78; }
-.pb-bar-passed { display: block; background: var(--text); border-radius: 3px 3px 0 0; }
-.pb-bar-col small {
+.pb-chart-grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 5; }
+.pb-chart-area.ok { fill: url(#pb-fill-ok); }
+.pb-chart-area.bad { fill: url(#pb-fill-bad); }
+.pb-chart-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.pb-chart-line.ok { stroke: var(--ok); }
+.pb-chart-line.bad { stroke: var(--bad); }
+.pb-chart-dot { stroke: var(--card); stroke-width: 1.5; }
+.pb-chart-dot.ok { fill: var(--ok); }
+.pb-chart-dot.bad { fill: var(--bad); }
+.pb-chart-hit { fill: transparent; }
+.pb-chart-label {
+  fill: var(--meta);
   font-family: var(--mono);
   font-size: 10.5px;
-  color: var(--meta);
-  white-space: nowrap;
 }
 .pb-chart-note {
   display: flex;
@@ -679,16 +668,16 @@ button { cursor: pointer; }
 .pb-btn:hover { background: var(--surface-warm); color: var(--text); }
 .pb-btn:active { background: var(--card-hi); }
 .pb-btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
   color: var(--accent-on);
 }
 .pb-btn.primary:hover {
-  background: color-mix(in oklab, var(--accent), black 8%);
-  border-color: color-mix(in oklab, var(--accent), black 8%);
+  background: color-mix(in oklab, var(--accent-strong), black 8%);
+  border-color: color-mix(in oklab, var(--accent-strong), black 8%);
   color: var(--accent-on);
 }
-.pb-btn.primary:active { background: color-mix(in oklab, var(--accent), black 14%); }
+.pb-btn.primary:active { background: color-mix(in oklab, var(--accent-strong), black 14%); }
 .pb-btn.danger { color: var(--bad); border-color: color-mix(in oklab, var(--bad) 35%, transparent); }
 .pb-btn.danger:hover { background: var(--bad-bg); color: var(--bad); }
 .pb-btn:disabled { opacity: .6; cursor: not-allowed; }
@@ -893,7 +882,6 @@ button { cursor: pointer; }
 }
 .pb-group-label strong { font-size: 12px; font-weight: 600; letter-spacing: .06em; }
 .pb-group-label .pb-muted { text-transform: none; letter-spacing: 0; }
-.pb-set-summary .pb-kv { margin: 0; }
 .pb-kv-row {
   display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
@@ -1163,8 +1151,8 @@ button { cursor: pointer; }
 .pb-btn-group .pb-btn { border: 0; border-radius: 0; background: transparent; }
 .pb-btn-group .pb-btn + .pb-btn { border-left: 1px solid var(--line); }
 .pb-btn-group .pb-btn:hover { background: var(--surface-warm); }
-.pb-btn-group .pb-btn.primary { background: var(--accent); color: var(--accent-on); }
-.pb-btn-group .pb-btn.primary:hover { background: color-mix(in oklab, var(--accent), black 8%); }
+.pb-btn-group .pb-btn.primary { background: var(--accent-strong); color: var(--accent-on); }
+.pb-btn-group .pb-btn.primary:hover { background: color-mix(in oklab, var(--accent-strong), black 8%); }
 
 .pb-kpi-grid {
   display: grid;
@@ -1309,7 +1297,7 @@ button { cursor: pointer; }
   background: var(--card-hi); color: var(--muted); border: 1px solid var(--line); cursor: pointer;
 }
 .pb-chip-btn:hover { color: var(--text); }
-.pb-chip-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-on); font-weight: 600; }
+.pb-chip-btn.active { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--accent-on); font-weight: 600; }
 .pb-search {
   width: 220px; max-width: 42vw; height: 28px; padding: 0 9px;
   font-size: 11.5px; font-family: var(--mono);
@@ -1402,18 +1390,56 @@ button { cursor: pointer; }
   display: flex; flex-direction: column; gap: 10px;
 }
 .pb-login-points li {
-  position: relative;
-  padding-left: 26px;
+  display: flex; align-items: flex-start; gap: 10px;
   font-size: 13.5px; line-height: 1.5; color: var(--fg-2);
 }
-.pb-login-points li::before {
-  content: "";
-  position: absolute; left: 0; top: 3px;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: var(--accent-soft);
-  border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
+/* Checklist: kotak terisi lalu centang, teks dicoret seperti tugas selesai. */
+.pb-task-box {
+  position: relative; flex: none;
+  width: 18px; height: 18px; margin-top: 1px;
+  border: 1.5px solid color-mix(in oklab, var(--accent) 45%, var(--border));
+  border-radius: 5px; background: var(--card);
+  animation: pb-task-box .24s var(--ease-standard) forwards;
+  animation-delay: var(--d, .45s);
 }
+.pb-task-box::after {
+  content: "";
+  position: absolute; left: 5px; top: 1px;
+  width: 5px; height: 9px;
+  border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  animation: pb-task-tick .16s var(--ease-standard) forwards;
+  animation-delay: calc(var(--d, .45s) + .16s);
+}
+.pb-task-text {
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 55%;
+  background-size: 0 1px;
+  animation: pb-task-strike .28s ease-out forwards;
+  animation-delay: calc(var(--d, .45s) + .3s);
+}
+@keyframes pb-task-box { to { background: var(--ok); border-color: var(--ok); } }
+@keyframes pb-task-tick { to { transform: rotate(45deg) scale(1); } }
+@keyframes pb-task-strike { to { background-size: 100% 1px; } }
 .pb-login-sub { font-size: 13px; color: var(--muted); margin: 10px 0 18px; }
+
+/* Tombol mata di dalam input password. */
+.pb-pass { position: relative; display: block; }
+.pb-pass .pb-input { padding-right: 48px; }
+.pb-pass-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 34px; height: 34px; padding: 0;
+  display: grid; place-items: center;
+  border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--muted);
+}
+.pb-pass-toggle:hover { color: var(--text); background: var(--card-hi); }
+.pb-pass-toggle svg { width: 18px; height: 18px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-task-box { background: var(--ok); border-color: var(--ok); animation: none; }
+  .pb-task-box::after { transform: rotate(45deg) scale(1); animation: none; }
+  .pb-task-text { background-size: 100% 1px; animation: none; }
+}
 
 @media (max-width: 860px) {
   .pb-login-stage { grid-template-columns: minmax(0, 1fr); gap: 24px; max-width: 440px; }
