@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, type GeneratedSpec, type TestFile } from "../../lib/playbook";
+import { confirmAction } from "../../lib/alerts";
 
 type Token = { text: string; kind: "plain" | "comment" | "string" | "keyword" | "ident" };
 
@@ -90,7 +91,12 @@ export function SpecGenerator({
   const save = async () => {
     if (!result || !projectId || saving) return;
     const path = existingFile?.path ?? `tests/${projectSlug || "generated"}.spec.ts`;
-    if (existingFile && !window.confirm(`Timpa ${existingFile.path} dengan hasil generate?`)) return;
+    if (existingFile && !(await confirmAction({
+      icon: "warning",
+      title: "Timpa spec yang ada?",
+      text: `${existingFile.path} akan diganti dengan hasil generate ini.`,
+      confirmButtonText: "Ya, Timpa",
+    }))) return;
     setSaving(true);
     setError("");
     setNotice("");
