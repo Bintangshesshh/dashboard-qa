@@ -37,6 +37,7 @@ export default function ReportsPage() {
             const s = stats[p.id];
             const rate = s?.passRate == null ? null : Math.round(s.passRate * 100);
             const tone = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
+            const running = (s?.activeRuns ?? 0) > 0;
             return (
               <div className="pb-card pb-pcard" key={p.id}>
                 <div className="pb-pcard-top">
@@ -45,10 +46,10 @@ export default function ReportsPage() {
                     <div className="pb-pcard-meta">{s?.sessions ?? 0} sesi · {s?.runs ?? 0} run</div>
                   </div>
                   <span
-                    className={`pb-badge ${tone === "ok" ? "passed" : tone === "warn" ? "warn" : tone === "bad" ? "failed" : "queued"}`}
-                    title={s ? `${s.runs ?? 0} run` : "belum ada run"}
+                    className={`pb-badge ${running ? "running" : tone === "ok" ? "passed" : tone === "warn" ? "warn" : tone === "bad" ? "failed" : "queued"}`}
+                    title={running ? `${s!.activeRuns} run sedang berjalan` : s ? `${s.runs ?? 0} run` : "belum ada run"}
                   >
-                    {tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : rate == null ? "Belum ada" : "Waspada"}
+                    {running ? "Berjalan" : tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : rate == null ? "Belum ada" : "Waspada"}
                   </span>
                 </div>
                 <div className="pb-pcard-bar"><span style={{ width: `${rate ?? 0}%` }} /></div>

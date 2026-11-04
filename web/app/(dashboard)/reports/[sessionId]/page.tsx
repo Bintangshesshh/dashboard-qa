@@ -153,6 +153,7 @@ export default function SessionDetail() {
   const passed = runs.filter(r => r.status === "passed").length;
   const failed = runs.filter(r => r.status === "failed").length;
   const active = runs.filter(r => !FINAL.includes(r.status)).length;
+  const runActive = active > 0;
   const durations = runs.map(r => r.duration_ms).filter((v): v is number => v != null);
   const avgDur = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
 
@@ -170,14 +171,21 @@ export default function SessionDetail() {
         <div className="pb-sess-actions">
           <div className="pb-btn-group">
             <button className="pb-btn sm primary" onClick={() => publish(hasBoth ? "both" : hasPw ? "pw" : "lh")}
-              disabled={(!hasPw && !hasLh) || !!busy}>
+              disabled={(!hasPw && !hasLh) || !!busy || runActive}
+              title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
               {busy ? "…" : hasBoth ? "Buat laporan (Gabungan)" : hasPw ? "Buat laporan (Playwright)" : "Buat laporan (Lighthouse)"}
             </button>
             {/* Scope tunggal hanya relevan kalau dua-duanya punya run final. */}
             {hasBoth && (
               <>
-                <button className="pb-btn sm" onClick={() => publish("pw")} disabled={!!busy}><ToolMark tool="pw" inline /> saja</button>
-                <button className="pb-btn sm" onClick={() => publish("lh")} disabled={!!busy}><ToolMark tool="lh" inline /> saja</button>
+                <button className="pb-btn sm" onClick={() => publish("pw")} disabled={!!busy || runActive}
+                  title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
+                  <ToolMark tool="pw" inline /> saja
+                </button>
+                <button className="pb-btn sm" onClick={() => publish("lh")} disabled={!!busy || runActive}
+                  title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
+                  <ToolMark tool="lh" inline /> saja
+                </button>
               </>
             )}
           </div>
@@ -269,7 +277,11 @@ export default function SessionDetail() {
           </div>
 
           {(session.reports?.length ?? 0) === 0 ? (
-            <p className="pb-empty">Belum ada laporan. Terbitkan dari tombol di atas.</p>
+            <p className="pb-empty">
+              {runActive
+                ? "Run masih berjalan. Laporan bisa diterbitkan setelah semua run selesai."
+                : "Belum ada laporan. Terbitkan dari tombol di atas."}
+            </p>
           ) : (
             <div className="pb-replist">
               {session.reports!.map((rep: Report) => {
@@ -286,8 +298,12 @@ export default function SessionDetail() {
                         <div className="pb-repcard-title">{scopeLabel}</div>
                         <div className="pb-repcard-sub mono">{fmtDate(rep.built_at)}</div>
                       </div>
+                      {runActive && <span className="pb-badge running">run berjalan</span>}
                       <span className={`pb-badge ${rep.status}`}>{rep.status}</span>
                     </div>
+                    {runActive && (
+                      <div className="pb-repcard-note">Run sedang berjalan. Laporan ini snapshot run sebelumnya.</div>
+                    )}
                     {rep.status === "stale" && <div className="pb-repcard-note">ada run baru, build ulang</div>}
                     {missing.length > 0 && <div className="pb-repcard-note">run dihapus: {missing.length}</div>}
                     {rep.status === "ready" && rep.mode === "html" && (
@@ -308,7 +324,8 @@ export default function SessionDetail() {
                       {/* Teks polos siap salin; isi sama dengan tabel HTML. */}
                       {canOpen && <CopyRingkas reportId={rep.id} runIds={ids} />}
                       <button className="pb-btn sm" onClick={() => publish(rep.scope)}
-                        disabled={busy === rep.scope || !canPublish(rep)}>
+                        disabled={busy === rep.scope || !canPublish(rep) || runActive}
+                        title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
                         {busy === rep.scope ? "…" : rep.status === "ready" ? "Perbarui laporan" : rep.status === "stale" ? "Perbarui laporan" : "Terbitkan"}
                       </button>
                     </div>

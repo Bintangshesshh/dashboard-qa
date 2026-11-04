@@ -17,6 +17,17 @@ const fmtMs = value => {
   if (!Number.isFinite(n) || n < 0) return '-';
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)} s` : `${Math.round(n)} ms`;
 };
+// Timestamp DB UTC; laporan statis memakai WIB seperti dashboard.
+const TZ = 'Asia/Jakarta';
+const fmtWib = value => {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '-';
+  const opts = { timeZone: TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' };
+  if (d.toLocaleString('id-ID', { timeZone: TZ, year: 'numeric' })
+    !== new Date().toLocaleString('id-ID', { timeZone: TZ, year: 'numeric' })) opts.year = 'numeric';
+  return d.toLocaleString('id-ID', opts) + ' WIB';
+};
 const fmtBytes = value => {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return '';
@@ -255,7 +266,7 @@ export function ringkasTeks(report) {
   const out = [];
   const run = report.run;
   out.push(`Run ${run.id} | ${run.suiteName ?? '-'} | mode ${run.mode ?? '-'} | status ${run.status}`);
-  out.push(`Target ${run.targetUrl ?? '-'} | mulai ${run.startedAt ?? '-'} | selesai ${run.finishedAt ?? '-'} | exit ${run.exitCode ?? '-'}`);
+  out.push(`Target ${run.targetUrl ?? '-'} | mulai ${fmtWib(run.startedAt)} | selesai ${fmtWib(run.finishedAt)} | exit ${run.exitCode ?? '-'}`);
   if (run.error) out.push(`Error run: ${typeof run.error === 'string' ? run.error : JSON.stringify(run.error)}`);
   for (const r of report.reports) {
     if (r.kind === 'playwright') {
@@ -384,7 +395,7 @@ ${run.error ? `<div class="snapshot-banner" role="alert">${errorDetail(run.error
   const kpi = tiles([
     ['Status', statusBadge(run.status), `exit ${run.exitCode ?? '-'}`, runTone],
     ['Artifact', String(report.files.length), `${html.length} html · ${screenshots.length} gambar`],
-    ['Selesai', esc((run.finishedAt || '-').replace('T', ' ').slice(0, 19)), 'waktu server'],
+    ['Selesai', esc(fmtWib(run.finishedAt)), 'WIB'],
     ['Peringatan', String(report.warnings.length), report.warnings.length ? 'perlu dibaca' : 'tidak ada', report.warnings.length ? 'warn' : ''],
   ]);
 
@@ -428,7 +439,7 @@ export function indexHtml(runs, intro = '') {
 <td><span class="tool ${r.mode === 'lh' ? 'lh' : 'pw'}">${r.mode === 'lh' ? 'Lighthouse' : 'Playwright'}</span></td>
 <td>${statusBadge(r.status)}</td>
 <td class="mono">${esc(r.targetUrl || '-')}</td>
-<td class="mono">${esc((r.finishedAt || '-').replace('T', ' ').slice(0, 19))}</td>
+<td class="mono">${esc(fmtWib(r.finishedAt))}</td>
 <td class="signal">${esc(r.signal || '-')}</td>
 <td><a href="${esc(r.slug)}/ringkas.txt" download>teks</a></td></tr>`).join('');
   const failed = runs.filter(r => r.status !== 'passed').length;
