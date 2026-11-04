@@ -52,6 +52,15 @@ export default function ProjectReports() {
     } finally { setBusy(false); }
   };
 
+  if (projectError && !project) {
+    return (
+      <section className="pb-card">
+        <div className="pb-err" role="alert">{projectError}</div>
+        <Link className="pb-btn sm" href="/reports">Kembali ke Laporan</Link>
+      </section>
+    );
+  }
+
   return (
     <>
       {projectError && <div className="pb-err" role="alert">{projectError}</div>}

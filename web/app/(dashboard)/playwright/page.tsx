@@ -156,22 +156,29 @@ const productionOk = env !== "production"
     return () => { alive = false; };
   }, [run?.session_id]);
 
-  const save = async (force = false) => {
-    if (!selected) return;
+  // Nilai terbaru untuk mendeteksi user mengetik selama request berjalan.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+
+  const save = async (force = false): Promise<boolean> => {
+    if (!selected) return false;
+    const snapshot = draftRef.current;
     setSaving(true); setError("");
     try {
-      const updated = await api.patchTestFile(selected.id, { code: draft, ...(force ? { force: true } : {}) });
+      const updated = await api.patchTestFile(selected.id, { code: snapshot, ...(force ? { force: true } : {}) });
       setFiles([updated]);
-      // Backend men-trim teks. Tanpa sinkron balik, `dirty` tetap true dan
-      // autosave memicu simpan berulang.
-      setDraft(updated.code);
+      // Backend men-trim teks. Sync balik hanya kalau user belum mengetik lagi;
+      // kalau sudah, jangan timpa draft yang lebih baru.
+      if (draftRef.current === snapshot) setDraft(updated.code);
       setSavedCode(updated.code);
       setSavedAt(new Date().toISOString());
       setConflict(false);
+      return true;
     } catch (e) {
       const err = e as { status?: number; message: string };
       if (err.status === 409) setConflict(true);
       else setError(err.message);
+      return false;
     } finally { setSaving(false); }
   };
 
@@ -192,6 +199,7 @@ const productionOk = env !== "production"
   // Arah sebaliknya: ambil versi disk (mis. habis pull dari git).
   const reload = async () => {
     if (!selected) return;
+    if (!confirm("Muat ulang dari disk? Perubahan yang belum disimpan akan hilang.")) return;
     setSaving(true); setError("");
     try {
       const updated = await api.reloadTestFile(selected.id);
@@ -212,8 +220,13 @@ const productionOk = env !== "production"
       if (env === "production" && confirmName.trim() !== project?.name)
         throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya spec Playwright.");
-      // Flush autosave yang masih menunggu supaya run memakai kode terbaru.
-      if (pending.current) { clearTimeout(pending.current); pending.current = null; await save(); }
+      // Run harus memakai kode yang benar-benar tersimpan. Kalau simpan gagal
+      // (mis. konflik disk), jangan lanjut dengan kode lama diam-diam.
+      if (pending.current) { clearTimeout(pending.current); pending.current = null; }
+      if (dirty) {
+        const saved = await save();
+        if (!saved) throw new Error("Kode belum tersimpan. Selesaikan error simpan sebelum run.");
+      }
       // Konfirmasi production diketik user; guard yang sama ada di server.
       const created = await api.createSession(
         projectId, env, env === "production" ? confirmName : undefined, fresh,
@@ -322,7 +335,10 @@ const productionOk = env !== "production"
           <div className="pb-err" role="alert" style={{ marginBottom: 8, display: "grid", gap: 8 }}>
             <span>File spec di disk sudah berubah sejak sinkron terakhir (kemungkinan ada perubahan di git).</span>
             <span className="pb-row" style={{ gap: 8 }}>
-              <button className="pb-btn sm danger" onClick={() => save(true)} disabled={saving}>Timpa file di disk</button>
+              <button className="pb-btn sm danger" disabled={saving}
+                onClick={() => { if (confirm("Timpa file di disk dengan editor? Perubahan di luar dashboard akan hilang.")) save(true); }}>
+                Timpa file di disk
+              </button>
               <button className="pb-btn sm" onClick={reload} disabled={saving}>Muat ulang dari disk</button>
             </span>
           </div>
@@ -330,7 +346,9 @@ const productionOk = env !== "production"
         {selected ? (
           <CodeEditor value={draft} onChange={setDraft} disabled={running} />
         ) : (
-          <p className="pb-empty">Project ini belum punya spec Playwright.</p>
+          <p className="pb-empty">
+            Project ini belum punya spec Playwright. <Link href="/settings">Tambah spec di Pengaturan</Link>.
+          </p>
         )}
       </section>
 

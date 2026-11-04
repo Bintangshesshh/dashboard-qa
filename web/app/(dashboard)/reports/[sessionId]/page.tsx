@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -68,7 +69,15 @@ export default function SessionDetail() {
   }, [session, load]);
 
   const openRunDetail = async (run: Run) => {
-    try { setOpenRun(await api.run(run.id)); } catch (e) { setError((e as Error).message); }
+    try {
+      setOpenRun(await api.run(run.id));
+      // Panel muncul di bawah daftar run; tanpa scroll user mengira tombol diam.
+      setTimeout(() => {
+        const el = document.getElementById("hasil-run");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        el?.focus({ preventScroll: true });
+      }, 0);
+    } catch (e) { setError((e as Error).message); }
   };
 
   // Snapshot run terbuka ikut diperbarui selama belum final.
@@ -104,10 +113,13 @@ export default function SessionDetail() {
   };
 
   const deleteSession = async () => {
+    const activeRuns = session?.runs?.filter(r => !FINAL.includes(r.status)).length ?? 0;
+    if (activeRuns > 0) { setError("Batalkan run yang masih berjalan sebelum menghapus sesi."); return; }
     if (!confirm("Hapus sesi ini beserta semua run, artifact, dan laporannya? Tidak bisa dibatalkan.")) return;
+    setBusy("delete"); setError("");
     const back = session?.project_id ? `/reports/project/${session.project_id}` : "/reports";
     try { await api.deleteSession(sessionId); router.push(back); }
-    catch (e) { setError((e as Error).message); }
+    catch (e) { setError((e as Error).message); setBusy(""); }
   };
 
   const closeSession = async () => {
@@ -124,7 +136,14 @@ export default function SessionDetail() {
     catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   };
 
-  if (!session) return <p className="pb-empty">{error || "Memuat sesi…"}</p>;
+  if (!session) {
+    return error ? (
+      <section className="pb-card">
+        <div className="pb-err" role="alert">{error}</div>
+        <Link className="pb-btn sm" href="/reports">Kembali ke Laporan</Link>
+      </section>
+    ) : <p className="pb-empty">Memuat sesi…</p>;
+  }
 
   const runs = session.runs ?? [];
   const tools = new Set(runs.filter(r => FINAL.includes(r.status)).map(r => r.tool));
@@ -167,7 +186,10 @@ export default function SessionDetail() {
             title={active > 0 ? "Tunggu run selesai dulu." : "Run baru akan memakai sesi baru."}>
             Tutup sesi
           </button>
-          <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
+          <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy || active > 0}
+            title={active > 0 ? "Batalkan run yang berjalan dulu." : "Hapus sesi dan seluruh isinya."}>
+            {busy === "delete" ? "Menghapus…" : "Hapus sesi"}
+          </button>
         </div>
       </div>
 
@@ -309,7 +331,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
   const { html, json: report } = pickReportArtifacts(run);
 
   return (
-    <section className="pb-card pb-runpanel">
+    <section className="pb-card pb-runpanel" id="hasil-run" tabIndex={-1}>
       <div className="pb-runpanel-head">
         <ToolMark tool={run.tool} />
         <h2>Hasil run · {isPw ? "Playwright" : "Lighthouse"}</h2>

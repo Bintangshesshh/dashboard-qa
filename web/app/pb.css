@@ -1086,6 +1086,8 @@ button { cursor: pointer; }
 }
 
 @media (max-width: 860px) {
+  /* .pb-shell default row; tanpa ini sidebar full-width mendesak mainwrap ke 0px. */
+  .pb-shell { flex-direction: column; }
   .pb-side {
     position: static; width: 100%; height: auto;
     flex-direction: row; flex-wrap: wrap; align-items: center;

@@ -29,9 +29,9 @@ export default function ReportsPage() {
 
       {error && <div className="pb-err" role="alert">{error}</div>}
 
-      {projects.length === 0 ? (
+      {!error && projects.length === 0 ? (
         <p className="pb-empty">Belum ada project.</p>
-      ) : (
+      ) : !error && (
         <div className="pb-project-grid">
           {groupProjects(projects).flatMap(g => g.items).map(p => {
             const s = stats[p.id];
