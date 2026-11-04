@@ -541,6 +541,8 @@ button { cursor: pointer; }
 .pb-chart-dot { stroke: var(--card); stroke-width: 1.5; }
 .pb-chart-dot.ok { fill: var(--ok); }
 .pb-chart-dot.bad { fill: var(--bad); }
+.pb-chart-dot.zero { fill: var(--meta); }
+.pb-chart-guide { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 4; pointer-events: none; }
 .pb-chart-hit { fill: transparent; cursor: crosshair; }
 .pb-chart-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Angka di atas titik saat hover: outline warna card supaya tetap terbaca. */
@@ -556,6 +558,8 @@ button { cursor: pointer; }
 }
 .pb-chart-value.ok { fill: var(--ok); }
 .pb-chart-value.bad { fill: var(--bad); }
+.pb-chart-value.zero { fill: var(--meta); }
+.pb-chart-label.active { fill: var(--text); font-weight: 600; }
 .pb-chart-label,
 .pb-chart-y {
   fill: var(--meta);

@@ -379,6 +379,9 @@ export default function OverviewPage() {
                 const bad = d.total - d.passed;
                 const okY = chartY(seriesValue(series.passed, frac));
                 const badY = chartY(seriesValue(series.failed, frac));
+                const isHover = hoverDay === i;
+                // Hari tanpa run tidak perlu dua titik nol yang menumpuk.
+                const hasRuns = d.total > 0;
                 return (
                   <g key={d.day}>
                     <rect className="pb-chart-hit"
@@ -390,18 +393,37 @@ export default function OverviewPage() {
                       onPointerLeave={() => setHoverDay(null)}
                       onFocus={() => setHoverDay(i)}
                       onBlur={() => setHoverDay(null)} />
-                    <circle className="pb-chart-dot ok" cx={chartX(i)} cy={okY}
-                      r={hoverDay === i ? 4.2 : 2.8} />
-                    <circle className="pb-chart-dot bad" cx={chartX(i)} cy={badY}
-                      r={hoverDay === i ? 4.2 : 2.8} />
-                    {hoverDay === i && (
-                      <>
-                        <text className="pb-chart-value ok" x={chartX(i)} y={okY - 9} textAnchor="middle">{ok}</text>
-                        <text className="pb-chart-value bad" x={chartX(i)} y={badY + 15} textAnchor="middle">{bad}</text>
-                      </>
+                    {isHover && (
+                      <line className="pb-chart-guide" x1={chartX(i)} x2={chartX(i)}
+                        y1={PAD_Y} y2={CHART_H - PAD_Y} />
                     )}
-                    {labelIdx.includes(i) && (
-                      <text className="pb-chart-label" x={chartX(i)} y={CHART_H - 4} textAnchor="middle">
+                    {hasRuns ? (
+                      <>
+                        <circle className="pb-chart-dot ok" cx={chartX(i)} cy={okY}
+                          r={isHover ? 4.2 : 2.8} />
+                        {bad > 0 && (
+                          <circle className="pb-chart-dot bad" cx={chartX(i)} cy={badY}
+                            r={isHover ? 4.2 : 2.8} />
+                        )}
+                      </>
+                    ) : isHover && (
+                      <circle className="pb-chart-dot zero" cx={chartX(i)} cy={okY} r="4.2" />
+                    )}
+                    {isHover && (hasRuns ? (
+                      <>
+                        <text className="pb-chart-value ok" x={chartX(i)}
+                          y={Math.max(12, okY - 9)} textAnchor="middle">{ok}</text>
+                        {bad > 0 && (
+                          <text className="pb-chart-value bad" x={chartX(i)}
+                            y={Math.min(CHART_H - 16, badY + 15)} textAnchor="middle">{bad}</text>
+                        )}
+                      </>
+                    ) : (
+                      <text className="pb-chart-value zero" x={chartX(i)}
+                        y={okY - 9} textAnchor="middle">0</text>
+                    ))}
+                    {(labelIdx.includes(i) || isHover) && (
+                      <text className={`pb-chart-label${isHover ? " active" : ""}`} x={chartX(i)} y={CHART_H - 4} textAnchor="middle">
                         {d.day.slice(5)}
                       </text>
                     )}
