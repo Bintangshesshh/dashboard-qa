@@ -399,7 +399,11 @@ export class Store {
     this.db.prepare(`UPDATE runs SET ${set.join(', ')} WHERE id=?`).run(...vals);
     return this.getRun(id);
   }
-  deleteRun(id) { this.db.prepare('DELETE FROM runs WHERE id=?').run(id); return true; }
+  deleteRun(id) {
+    this.logBytesCache.delete(id);
+    this.db.prepare('DELETE FROM runs WHERE id=?').run(id);
+    return true;
+  }
 
   // ─── Run logs ────────────────────────────────────────────────────────────
   // PRD §7/A33: total log per run dibatasi `log_max_bytes`; bagian tengah

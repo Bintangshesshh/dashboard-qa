@@ -157,7 +157,10 @@ export class Runner extends EventEmitter {
     // Antrekan, jangan tolak: hanya satu proses tool yang boleh jalan sekaligus.
     // `this.chain` selalu di-catch supaya satu run gagal tidak mematikan antrean.
     const run = (this.chain ?? Promise.resolve()).then(() => this._start(runId, testFile, sessionId, targetUrl));
-    this.chain = run.catch(() => {});
+    const tail = run.catch(() => {});
+    this.chain = tail;
+    // Jangan biarkan rantai promise tumbuh selama proses hidup.
+    tail.finally(() => { if (this.chain === tail) this.chain = null; });
     return run;
   }
 
