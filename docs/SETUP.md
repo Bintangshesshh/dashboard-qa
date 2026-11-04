@@ -28,10 +28,11 @@ npm --version
 git clone <repo-url> dashboard
 cd dashboard
 npm install
+npm install --prefix server
 npm install --prefix web
 ```
 
-Verifikasi: `node_modules/@playwright/test` dan `node_modules/@lhci/cli` ada.
+Verifikasi: `node_modules/@playwright/test`, `node_modules/@lhci/cli`, dan `server/node_modules/express` ada.
 
 ---
 

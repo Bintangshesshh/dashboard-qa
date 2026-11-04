@@ -29,6 +29,7 @@ Kontrak produk ada di `docs/PRD.md`, cara install di `docs/SETUP.md` (keduanya i
 
 ```powershell
 npm install
+npm install --prefix server
 npm install --prefix web
 npx playwright install chromium
 copy .env.example .env      # isi DATABASE_URL, TARGET_ALLOWLIST

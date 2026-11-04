@@ -9,6 +9,10 @@ services:
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
       TARGET_ALLOWLIST: ${TARGET_ALLOWLIST:?Set TARGET_ALLOWLIST}
       RUNS_DIR: /data/runs
+      REPORTS_DIR: /data/reports
+      BACKUP_DIR: /data/backups
+      RETENTION_INTERVAL_MS: ${RETENTION_INTERVAL_MS:-0}
+      BACKUP_INTERVAL_MS: ${BACKUP_INTERVAL_MS:-0}
       HOST: 0.0.0.0
       PORT: 3001
       NODE_ENV: production
@@ -16,7 +20,14 @@ services:
     volumes:
       - database-data:/data
       - run-data:/data/runs
+      - report-data:/data/reports
+      - backup-data:/data/backups
     shm_size: 1gb
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
     stop_grace_period: 30s
   web:
@@ -37,3 +48,5 @@ services:
 volumes:
   database-data:
   run-data:
+  report-data:
+  backup-data:
