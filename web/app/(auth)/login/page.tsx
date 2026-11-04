@@ -11,6 +11,15 @@ const taskStyle = (i: number): TaskStyle => ({ "--d": `${0.4 + i * 0.9}s` });
 const EYE = "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z";
 const EYE_OFF = "M3 3l18 18M10.6 6.2A10.9 10.9 0 0 1 12 6c6.5 0 10 6 10 6a17.6 17.6 0 0 1-3.2 3.8M6.1 7.6C3.7 9.5 2 12 2 12s3.5 6 10 6a11 11 0 0 0 3.9-.7";
 
+// `next` dari query bisa berisi URL login bersarang (sisa loop lama) atau
+// alamat eksternal. Hanya terima path internal yang bukan halaman login,
+// supaya setelah berhasil masuk user tidak terlempar balik ke form.
+function safeNext(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
+  const path = raw.split(/[?#]/)[0].replace(/\/+$/, "") || "/";
+  return path === "/login" ? "/" : raw;
+}
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -25,9 +34,8 @@ function LoginForm() {
     setBusy(true); setError("");
     try {
       await api.login(username, password);
-      const next = params.get("next") ?? "";
       // Tolak redirect keluar: hanya path internal.
-      router.replace(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+      router.replace(safeNext(params.get("next")));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login gagal");
       setBusy(false);

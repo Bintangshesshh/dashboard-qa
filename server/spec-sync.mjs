@@ -9,7 +9,9 @@ export const sha = text => createHash('sha256').update(text).digest('hex');
 
 // Path spec selalu relatif ke root repo. Tolak absolut dan traversal.
 export function specPath(root, relPath) {
-  if (typeof relPath !== 'string' || !relPath || isAbsolute(relPath) || relPath.split(/[\\/]/).includes('..')) {
+  // Drive Windows tetap ditolak di host POSIX: path seperti C:\... bukan
+  // path relatif yang sah, dan guard ini harus sama di semua platform.
+  if (typeof relPath !== 'string' || !relPath || isAbsolute(relPath) || /^[A-Za-z]:[\\/]/.test(relPath) || relPath.split(/[\\/]/).includes('..')) {
     throw Object.assign(new Error('Path spec tidak valid'), { status: 400 });
   }
   const base = resolve(root);

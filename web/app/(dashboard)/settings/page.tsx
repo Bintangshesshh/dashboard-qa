@@ -960,8 +960,14 @@ function NewProjectForm({ groups, onCreate }: {
 // Template spec minimal: server menolak code kosong.
 const SPEC_TEMPLATE = `import { test, expect } from "@playwright/test";
 
+// BASE_URL diisi runner dari target sesi (local/staging/production).
+const BASE = (process.env.BASE_URL || "http://localhost:3000").replace(/\\/+$/, "");
+
 test("halaman utama terbuka", async ({ page }) => {
-  await page.goto("/");
+  const res = await page.goto(BASE + "/", { waitUntil: "domcontentloaded", timeout: 45_000 });
+  expect(res, "halaman merespons").not.toBeNull();
+  expect(res!.status(), "HTTP status halaman").toBeLessThan(400);
+  await expect(page).toHaveURL((u) => u.origin === new URL(BASE).origin);
   await expect(page.locator("body")).toBeVisible();
 });
 `;
@@ -1025,6 +1031,7 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
   const [origins, setOrigins] = useState(project.origins.join(", "));
   const [allowProd, setAllowProd] = useState(!!project.allow_production);
   const [addOpen, setAddOpen] = useState(false);
+  const [label, setLabel] = useState(`${project.name} Playwright`.slice(0, 200));
   const [path, setPath] = useState(`tests/${project.slug}.spec.ts`);
   const [code, setCode] = useState(SPEC_TEMPLATE);
   const [busy, setBusy] = useState(false);
@@ -1047,7 +1054,9 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
   const addSpec = async () => {
     setBusy(true); setErr("");
     try {
-      await onAddFile(project, { tool: "pw", path: path.trim(), code });
+      // label wajib di server; kalau user mengosongkannya, pakai nama file.
+      const specLabel = (label.trim() || path.trim().split("/").pop() || project.name).slice(0, 200);
+      await onAddFile(project, { tool: "pw", path: path.trim(), label: specLabel, code });
       setAddOpen(false);
     } catch (e) { setErr((e as Error).message); }
     finally { setBusy(false); }
@@ -1130,6 +1139,11 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
 
         {addOpen && (
           <div className="pb-lh-field pb-proj-foot">
+            <label className="pb-field">label
+              <input className="pb-input" value={label} maxLength={200}
+                onChange={e => setLabel(e.target.value)}
+                placeholder={`${project.name} Playwright`} />
+            </label>
             <label className="pb-field">path spec
               <input className="pb-input pb-mono" value={path}
                 onChange={e => setPath(e.target.value)} />
