@@ -390,6 +390,11 @@ test('CLI lokal: local → start → logs → upload artifact → finalisasi', a
   });
   assert.equal(r.status, 201);
   assert.equal(r.body.path, 'report.json');
+  // Path simpan harus sama dengan folder yang disajikan /artifacts.
+  assert.ok(existsSync(join(f.runner.runsDir, runId, 'artifacts', 'report.json')));
+  r = await f.call(`/artifacts/${runId}/report.json`, { cookie });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { a: 1 });
 
   r = await f.call(`/api/runs/${runId}/artifacts?kind=pw-json&path=..%2Fescape.json`, { method: 'PUT', cookie, body: { a: 1 } });
   assert.equal(r.status, 400);
@@ -1674,6 +1679,7 @@ test('failStaleRuns: run CLI yang tak pernah start dilepas, run aktif tidak', as
 
     assert.equal(store.failStaleRuns(30), 1, 'hanya run lama yang dilepas');
     assert.equal(store.getRun('r-menggantung').status, 'interrupted');
+    assert.ok(store.getRun('r-menggantung').finalized_at, 'run basi tetap dihitung di statistik');
     assert.equal(store.getRun('r-baru').status, 'queued');
     assert.equal(store.countRunsByStatus('s-stale', ['queued', 'running', 'uploading']), 1);
   } finally { store.close?.(); }
@@ -1697,3 +1703,65 @@ test('B04: statsByProject setara stats per project', async () => {
   } finally { store.close?.(); }
 });
 
+
+test('listSessions: filter status berlaku sebelum LIMIT', async () => {
+  const { Store } = await import('../store.mjs');
+  const store = new Store(':memory:');
+  await store.init();
+  try {
+    store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, allow_production, active, created_at)
+      VALUES ('p-f','p-f','P Filter','http://127.0.0.1:5173','["http://127.0.0.1:5173"]',0,1,?)`)
+      .run(new Date().toISOString());
+    const mk = (id, status, at) => {
+      store.createSession({ id, projectId: 'p-f', env: 'local', targetUrl: 'http://127.0.0.1:5173', label: id });
+      store.createRun({ id: 'r-' + id, sessionId: id, testFileId: null, tool: 'pw' });
+      store.patchRun('r-' + id, { status });
+      store.closeSession(id);
+      store.db.prepare('UPDATE sessions SET created_at=? WHERE id=?').run(at, id);
+    };
+    mk('s-failed', 'failed', '2026-01-01T00:00:00.000Z');
+    mk('s-new1', 'passed', '2026-01-03T00:00:00.000Z');
+    mk('s-new2', 'passed', '2026-01-04T00:00:00.000Z');
+
+    const rows = store.listSessions({ status: 'failed', limit: 1 });
+    assert.equal(rows.length, 1, 'baris cocok tidak boleh terpotong LIMIT');
+    assert.equal(rows[0].id, 's-failed');
+    assert.equal(store.listSessions({ limit: 2 }).length, 2);
+  } finally { store.close?.(); }
+});
+
+test('patchRun: status final selalu mengisi finalized_at', async () => {
+  const { Store } = await import('../store.mjs');
+  const store = new Store(':memory:');
+  await store.init();
+  try {
+    store.db.prepare(`INSERT INTO projects (id, slug, name, base_url, origins, allow_production, active, created_at)
+      VALUES ('p-z','p-z','P Final','http://127.0.0.1:5173','["http://127.0.0.1:5173"]',0,1,?)`)
+      .run(new Date().toISOString());
+    store.createSession({ id: 's-z', projectId: 'p-z', env: 'local', targetUrl: 'http://127.0.0.1:5173', label: 'z' });
+    store.createRun({ id: 'r-z', sessionId: 's-z', testFileId: null, tool: 'pw' });
+    const failed = store.patchRun('r-z', { status: 'failed', error: 'x' });
+    assert.ok(failed.finalized_at);
+    assert.ok(failed.finished_at);
+    const first = failed.finalized_at;
+    const again = store.patchRun('r-z', { status: 'failed' });
+    assert.equal(again.finalized_at, first, 'finalized_at tidak ditimpa');
+  } finally { store.close?.(); }
+});
+
+test('deleteExpiredAuthSessions: hanya baris kedaluwarsa yang dibuang', async () => {
+  const { Store } = await import('../store.mjs');
+  const store = new Store(':memory:');
+  await store.init();
+  try {
+    const user = { id: randomUUID(), username: 'u', role: 'admin' };
+    store.createUser({ ...user, passwordHash: 'x' });
+    const past = new Date(Date.now() - 1000).toISOString();
+    const future = new Date(Date.now() + 100000).toISOString();
+    store.createAuthSession({ id: 'a-old', userId: user.id, expiresAt: past });
+    store.createAuthSession({ id: 'a-new', userId: user.id, expiresAt: future });
+    store.deleteExpiredAuthSessions();
+    assert.equal(store.authSessionById('a-old'), undefined);
+    assert.ok(store.authSessionById('a-new'));
+  } finally { store.close?.(); }
+});

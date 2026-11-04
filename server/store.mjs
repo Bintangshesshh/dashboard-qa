@@ -16,6 +16,8 @@ export function databasePath(connectionString) {
   return value === ':memory:' ? value : resolve(value);
 }
 
+const FINAL_RUN_STATUS = new Set(['passed', 'failed', 'cancelled', 'interrupted']);
+
 // Derived session status per PRD §6.5.
 const SESSION_STATUS_SQL = `
   CASE
@@ -114,6 +116,8 @@ export class Store {
   authSessionById(id) { return this.db.prepare('SELECT * FROM auth_sessions WHERE id=?').get(id); }
   deleteAuthSession(id) { this.db.prepare('DELETE FROM auth_sessions WHERE id=?').run(id); }
   deleteAuthSessionsForUser(userId) { this.db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(userId); }
+  // Tanpa ini baris kedaluwarsa tumbuh selamanya; login adalah titik tulis yang murah.
+  deleteExpiredAuthSessions() { this.db.prepare('DELETE FROM auth_sessions WHERE expires_at < ?').run(new Date().toISOString()); }
 
   // ─── Auth: cli tokens ────────────────────────────────────────────────────
   createCliToken({ id, userId, tokenHash, label }) {
@@ -267,8 +271,10 @@ export class Store {
     if (projectId) { where.push('s.project_id=?'); vals.push(projectId); }
     if (from) { where.push('s.created_at>=?'); vals.push(from); }
     if (to) { where.push('s.created_at<=?'); vals.push(to); }
+    // status adalah alias hasil ekspresi, bukan kolom: saring di query luar
+    // supaya LIMIT membatasi baris yang sudah cocok.
     const rows = this.db.prepare(
-      'SELECT s.*, ' + SESSION_STATUS_SQL + ' AS status,' +
+      'SELECT * FROM (SELECT s.*, ' + SESSION_STATUS_SQL + ' AS status,' +
       ' coalesce(c.run_count, 0) AS run_count,' +
       ' coalesce(c.pw_count, 0) AS pw_count,' +
       ' coalesce(c.lh_count, 0) AS lh_count,' +
@@ -282,9 +288,10 @@ export class Store {
       "     SUM(CASE WHEN status IN ('queued','running','uploading') THEN 1 ELSE 0 END) AS active_count" +
       '   FROM runs GROUP BY session_id' +
       ') c ON c.session_id = s.id' +
-      ' WHERE ' + where.join(' AND ') +
-      ' ORDER BY s.created_at DESC LIMIT ?'
-    ).all(...vals, Math.min(Math.max(Number(limit) || 200, 1), 1000));
+      ' WHERE ' + where.join(' AND ') + ')' +
+      (status ? ' WHERE status=?' : '') +
+      ' ORDER BY created_at DESC LIMIT ?'
+    ).all(...vals, ...(status ? [status] : []), Math.min(Math.max(Number(limit) || 200, 1), 1000));
     if (!rows.length) return [];
     const reports = new Map();
     const ids = rows.map(r => r.id);
@@ -297,7 +304,6 @@ export class Store {
     }
     const out = [];
     for (const row of rows) {
-      if (status && row.status !== status) continue;
       row.reports = reports.get(row.id) ?? [];
       out.push(row);
     }
@@ -333,11 +339,11 @@ export class Store {
       WHERE status='queued' AND started_at IS NULL AND queued_at < ?`).all(cut);
     if (!rows.length) return 0;
     const upd = this.db.prepare(`UPDATE runs SET status='interrupted', finished_at=?,
-      error=? WHERE id=? AND status='queued'`);
+      finalized_at=coalesce(finalized_at, ?), error=? WHERE id=? AND status='queued'`);
     const now = new Date().toISOString();
     const msg = 'Run tidak pernah dimulai dan dilewati otomatis setelah ' + maxAgeMinutes + ' menit.';
     for (const r of rows) {
-      upd.run(now, msg, r.id);
+      upd.run(now, now, msg, r.id);
       this.markReportsStale(r.session_id);
     }
     return rows.length;
@@ -382,6 +388,13 @@ export class Store {
     const set = []; const vals = [];
     for (const k of allowed) if (k in fields) { set.push(`${k}=?`); vals.push(fields[k]); }
     if (!set.length) return this.getRun(id);
+    // Status final harus selalu punya finalized_at; jalur runner yang gagal
+    // sebelum finalisasi tidak boleh menghilang dari statistik.
+    if (FINAL_RUN_STATUS.has(fields.status)) {
+      const now = new Date().toISOString();
+      if (!('finalized_at' in fields)) { set.push('finalized_at=coalesce(finalized_at, ?)'); vals.push(now); }
+      if (!('finished_at' in fields)) { set.push('finished_at=coalesce(finished_at, ?)'); vals.push(now); }
+    }
     vals.push(id);
     this.db.prepare(`UPDATE runs SET ${set.join(', ')} WHERE id=?`).run(...vals);
     return this.getRun(id);

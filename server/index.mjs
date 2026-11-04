@@ -156,10 +156,17 @@ export function createApp({ store, runner, token, origins }) {
     return row ?? null;
   };
   const loginBlocked = req => (loginRow(req)?.count ?? 0) >= LOGIN_MAX_ATTEMPTS;
+  // Map ini hanya dibersihkan saat key yang sama dipakai lagi. Username acak
+  // akan menumpuk selamanya; sapu entri kedaluwarsa saat ukurannya membesar.
+  const pruneLoginAttempts = () => {
+    const cut = Date.now() - LOGIN_WINDOW_MS;
+    for (const [key, row] of loginAttempts) if (row.first < cut) loginAttempts.delete(key);
+  };
   const loginFailed = req => {
     const key = loginKey(req);
     const row = loginRow(req);
     if (row) row.count += 1; else loginAttempts.set(key, { count: 1, first: Date.now() });
+    if (loginAttempts.size > 1000) pruneLoginAttempts();
   };
   const loginSucceeded = req => loginAttempts.delete(loginKey(req));
 
@@ -175,6 +182,7 @@ export function createApp({ store, runner, token, origins }) {
       fail('Username atau password salah', 401);
     }
     loginSucceeded(req);
+    store.deleteExpiredAuthSessions();
     const rawToken = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(); // 8 jam
     store.createAuthSession({ id: sha256(rawToken), userId: user.id, expiresAt, ip: req.ip, userAgent: req.get('user-agent') });
@@ -743,7 +751,8 @@ export function createApp({ store, runner, token, origins }) {
   }));
 
   // Upload artifact mentah: body biner, query ?kind=&path=
-  app.put('/api/runs/:id/artifacts', express.raw({ type: () => true, limit: '100mb' }), requireAuth, requireAdmin, route(async (req, res) => {
+  // Auth duluan: tanpa ini, klien anonim bisa memaksa server menampung body 100 MB.
+  app.put('/api/runs/:id/artifacts', requireAuth, requireAdmin, express.raw({ type: () => true, limit: '100mb' }), route(async (req, res) => {
     const run = store.getRun(id(req.params.id));
     if (!run) fail('Data tidak ditemukan', 404);
     const kind = String(req.query.kind ?? 'log');
@@ -755,7 +764,8 @@ export function createApp({ store, runner, token, origins }) {
     if (!Buffer.isBuffer(body) || !body.length) fail('Body harus biner (application/octet-stream)');
     if (body.length > maxMb * 1024 * 1024) fail(`File melebihi ${maxMb} MB`, 413);
 
-    const dest = join(runsDir, run.id, rel);
+    // Sama dengan folder yang dibaca /artifacts/:runId/* dan ditulis runner.
+    const dest = join(runsDir, run.id, 'artifacts', rel);
     await mkdir(dirname(dest), { recursive: true });
     await writeFile(dest, body);
     store.addArtifact({ runId: run.id, kind, path: rel, bytes: body.length });
@@ -1076,10 +1086,12 @@ function attachWebSocket(app, { store, runner, resolveUser }) {
     // Log run memuat data pelanggan; tanpa sesi valid tidak ada yang boleh mendengar.
     // Resolver-nya sama dengan requireAuth, jadi aturan cookie/bearer tidak bercabang.
     if (!resolveUser(req)) return ws.close(1008, 'Unauthorized');
-    let subscribed = false;
-    const onLog = (msg) => { if (subscribed) ws.send(JSON.stringify(msg)); };
-    const onStatus = (msg) => { if (subscribed) ws.send(JSON.stringify(msg)); };
-    const timer = setTimeout(() => { if (!subscribed) ws.close(1008, 'No subscription'); }, 30000);
+    // Satu socket hanya boleh menerima run yang dilanggannya; runner
+    // menyiarkan log semua run ke semua listener.
+    let subscribedRun = null;
+    const onLog = (msg) => { if (subscribedRun && msg.runId === subscribedRun) ws.send(JSON.stringify(msg)); };
+    const onStatus = (msg) => { if (subscribedRun && msg.runId === subscribedRun) ws.send(JSON.stringify(msg)); };
+    const timer = setTimeout(() => { if (!subscribedRun) ws.close(1008, 'No subscription'); }, 30000);
     ws.on('message', async (data) => {
       try {
         const msg = JSON.parse(data.toString());
@@ -1089,7 +1101,7 @@ function attachWebSocket(app, { store, runner, resolveUser }) {
         const after = cursor(msg.after);
         if (!store.getRun(runId)) return ws.close(1008, 'Unknown run');
         runner.on('log', onLog); runner.on('status', onStatus);
-        subscribed = true;
+        subscribedRun = runId;
         const replay = await store.logs(runId, after, 5000);
         let last = after;
         for (const entry of replay.logs) { if (entry.seq > last) { last = entry.seq; ws.send(JSON.stringify({ type: 'log', runId, ...entry })); } }
