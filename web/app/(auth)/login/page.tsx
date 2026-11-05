@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type CSSProperties } from "react";
 import { api } from "../../../lib/playbook";
-import { confirmAction, confirmRun, showInfoToast, showSuccessToast } from "../../../lib/alerts";
+import { showSuccessToast } from "../../../lib/alerts";
 
 // --d mengatur jeda animasi checklist; pseudo-element mewarisi nilainya.
 type TaskStyle = CSSProperties & { "--d": string };
@@ -32,12 +32,6 @@ function LoginForm() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!(await confirmAction({
-      icon: "question",
-      title: "Masuk ke dashboard?",
-      text: `Login sebagai ${username || "pengguna"}.`,
-      confirmButtonText: "Ya, Masuk",
-    }))) return;
     setBusy(true); setError("");
     try {
       await api.login(username, password);
@@ -93,14 +87,7 @@ function LoginForm() {
                   <button type="button" className="pb-pass-toggle" aria-pressed={showPassword}
                     aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
                     title={showPassword ? "Sembunyikan password" : "Tampilkan password"}
-                    onClick={() => confirmRun({
-                      title: showPassword ? "Sembunyikan password?" : "Tampilkan password?",
-                      confirmButtonText: showPassword ? "Sembunyikan" : "Tampilkan",
-                    }, () => {
-                      const next = !showPassword;
-                      setShowPassword(next);
-                      showInfoToast(next ? "Password ditampilkan." : "Password disembunyikan.");
-                    })}>
+                    onClick={() => setShowPassword(v => !v)}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
                       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d={showPassword ? EYE_OFF : EYE} />
