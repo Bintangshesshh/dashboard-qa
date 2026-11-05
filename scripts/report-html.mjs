@@ -2,7 +2,7 @@
 // Aman dibuka di iframe ber-sandbox (opaque origin) karena tidak ada subrequest.
 import { reportCss } from './report-css.mjs';
 
-const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const pretty = value => (typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? '');
 const pre = value => `<pre>${esc(pretty(value))}</pre>`;
@@ -168,7 +168,7 @@ ${slowSteps.length ? `<h3>Langkah terlama</h3><ol class="slow-list">${slowSteps.
 }
 
 const score = value => (typeof value === 'number' ? Math.round(value * 100) + '/100' : 'Tidak dinilai');
-const tone = value => (typeof value !== 'number' ? 'mut2' : value >= 0.9 ? 'ok' : value >= 0.5 ? 'warn' : 'bad');
+export const tone = value => (typeof value !== 'number' ? 'mut2' : value >= 0.9 ? 'ok' : value >= 0.5 ? 'warn' : 'bad');
 
 // Skor kategori dibaca sebagai gauge, bukan teks: satu pandangan cukup.
 function scoreRing(label, value) {

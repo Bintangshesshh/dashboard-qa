@@ -12,7 +12,7 @@ const NAV = [
   { href: "/lighthouse", label: "Lighthouse" },
   { href: "/reports", label: "Laporan" },
 ];
-// Menu admin: hanya muncul untuk role admin (lihat `all` di bawah).
+// Menu admin (role admin saja).
 const ADMIN_NAV: { href: string; label: string }[] = [{ href: "/settings", label: "Pengaturan" }];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -20,9 +20,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // PRD Â§10.8: backend mati â†’ banner, halaman tetap dirender.
+  // PRD §10.8: backend mati → banner, halaman tetap dirender.
   const [down, setDown] = useState(false);
-  // Breadcrumb berlayer butuh nama project + label sesi.
+  // Breadcrumb butuh nama project + label sesi.
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessionInfo, setSessionInfo] = useState<{ label: string; projectId: string } | null>(null);
 
@@ -35,7 +35,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(ping, [ping, path]);
 
-  // all=true: breadcrumb project arsip masih perlu namanya.
+  // Project arsip tetap perlu namanya untuk breadcrumb.
   useEffect(() => { api.projects({ all: true }).then(setProjects).catch(() => {}); }, []);
 
   const seg = path.split("/").filter(Boolean);
@@ -55,14 +55,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
     router.replace("/login");
   };
 
-  const all = [...NAV, ...(user?.role === "admin" ? ADMIN_NAV : [])];
-  // Cocokkan prefix terpanjang supaya sub-halaman (/reports/<id>) tetap dapat label induk.
+  // Prefix terpanjang: sub-halaman (/reports/<id>) tetap dapat label induk.
   const isActive = (href: string) => href === "/" ? path === "/" : path === href || path.startsWith(href + "/");
-  const screen = all
+  const screen = [...NAV, ...(user?.role === "admin" ? ADMIN_NAV : [])]
     .filter(i => isActive(i.href))
     .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "Ringkasan";
+  const navItem = (item: { href: string; label: string }) => (
+    <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>
+      {item.label}
+    </Link>
+  );
 
-  // Crumb berlayer: tiap level bisa diklik, level terakhir tebal.
+  // Tiap level breadcrumb bisa diklik; level terakhir tebal.
   const crumbs: { label: string; href: string }[] = [{ label: "Playbook", href: "/" }];
   if (seg[0] === "reports") {
     crumbs.push({ label: "Laporan", href: "/reports" });
@@ -89,19 +93,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="pb-nav" aria-label="Navigasi utama">
           <div className="pb-nav-label">Ruang kerja</div>
-          {NAV.map(item => (
-            <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>
-              {item.label}
-            </Link>
-          ))}
+          {NAV.map(navItem)}
           {user?.role === "admin" && (
             <>
               <div className="pb-nav-label pb-nav-label-gap">Admin</div>
-              {ADMIN_NAV.map(item => (
-                <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>
-                  {item.label}
-                </Link>
-              ))}
+              {ADMIN_NAV.map(navItem)}
             </>
           )}
         </nav>
@@ -163,8 +159,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Preferensi tema: sistem / terang / gelap. Disimpan di localStorage 'pb-theme'.
-// Skrip inline di layout.tsx sudah menerapkan tema sebelum paint; ini hanya toggle.
+// Preferensi tema: sistem / terang / gelap. Toggle ini hanya mengubah data-theme;
+// skrip inline di layout.tsx sudah menerapkan tema sebelum paint.
 const PREFS = [
   { pref: "system", label: "System" },
   { pref: "light", label: "Terang" },
@@ -209,7 +205,7 @@ function ThemePref() {
   );
 }
 
-// Skeleton sederhana: PRD Â§10.8 minta bukan layar kosong.
+// Skeleton sederhana: PRD §10.8 minta bukan layar kosong.
 function Skeleton() {
   return (
     <div aria-busy="true" aria-live="polite">

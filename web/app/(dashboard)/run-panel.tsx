@@ -1,10 +1,8 @@
 "use client";
 
-// Panel bawah (Terminal / Console / Network) untuk semua halaman run.
-// Satu sumber data: array log. Stream `console`/`network` disimpan sebagai JSON
-// satu baris, jadi tab Terminal menyaringnya dan tab lain mem-parse-nya.
-// ponytail: turunan dari log, bukan run.console/run.network. Log bisa terpotong
-// log_max_bytes; kalau perlu lengkap walau terpotong, pakai run.console.
+// Panel bawah (Terminal/Console/Network) untuk semua halaman run. Sumber data
+// tunggal: array log; stream console/network disimpan sebagai JSON satu baris.
+// ponytail: log bisa terpotong log_max_bytes; pakai run.console kalau butuh lengkap.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RunClock } from "../_components/run-clock";
 import { fmtHms, type LogEntry, type Run } from "../../lib/playbook";
@@ -14,7 +12,6 @@ const stripAnsi = (s: string) => s.replace(/\u001b?\[[0-9;]*m/g, "");
 type ConsoleRow = { seq: number; at: string; type: string; text: string; location: string | null };
 type NetworkRow = { seq: number; at: string; url: string; status: number | null; method: string | null; failure: string | null; ms: number | null };
 
-const clockOf = (at: string) => fmtHms(at);
 const badType = (t: string) => t === "error" || t === "pageerror";
 const warnType = (t: string) => t === "warning" || t === "warn";
 
@@ -60,8 +57,7 @@ export function RunPanel({ logs, run, live, downloadHref }: {
     return { term, cons, net };
   }, [logs]);
 
-  // Auto-scroll saat live, untuk tab yang sedang dibuka: console/network ikut
-  // bergulir selama run, sama seperti terminal.
+  // Auto-scroll saat live untuk tab yang sedang dibuka.
   useEffect(() => {
     if (!live) return;
     const el = tab === "log" ? box.current : tab === "console" ? consBox.current : netBox.current;
@@ -129,7 +125,7 @@ export function RunPanel({ logs, run, live, downloadHref }: {
             : <div className="pb-console" ref={consBox}>
               {consView.map(c => (
                 <div key={c.seq} className={"pb-console-row" + (badType(c.type) ? " err" : warnType(c.type) ? " warn" : "")}>
-                  <span className="pb-log-time">{clockOf(c.at)}</span>
+                  <span className="pb-log-time">{fmtHms(c.at)}</span>
                   <span className={"pb-log-badge" + (badType(c.type) ? " bad" : warnType(c.type) ? " warn" : "")}>{c.type}</span>
                   <span className="pb-log-msg">{c.text}</span>
                   {c.location && <span className="pb-log-loc">{c.location}</span>}

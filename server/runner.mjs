@@ -9,15 +9,13 @@ import { stripAnsi } from './ansi.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(join(root, 'package.json'));
-// Resolve installed CLIs by path: `npx` resolves against cwd, and lhci runs with
-// cwd inside .runs/<id>, where npx pulled an unrelated package from the registry.
+// Resolve CLI by path: `npx` resolves against cwd, and lhci runs cwd inside .runs/<id>.
 const binDir = pkg => dirname(require.resolve(pkg + '/package.json'));
 const lhciBin = join(binDir('@lhci/cli'), 'src/cli.js');
 const pwBin = join(binDir('@playwright/test'), 'cli.js');
 const pwCapture = require.resolve('./scripts/pw-capture.cjs').replaceAll('\\', '/');
 
-// Config Playwright untuk spec yang datang dari database. testDir = folder spec
-// asli supaya import relatif (`./creds`) tetap jalan.
+// Config Playwright untuk spec dari database; testDir = folder spec asli agar import relatif (`./creds`) tetap jalan.
 const runConfig = (testDir, specFile, cfg = {}) => `import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
@@ -43,8 +41,7 @@ export const MAX_LH_RUNS = 10;
 const MIN_LH_TIMEOUT_MS = 900_000;
 const LH_TIMEOUT_CAP_MS = 120 * 60_000;
 
-// timeout = max(15 menit, 5 menit + URL x run x 90 detik), cap 120 menit.
-// Flat 900.000 ms aman untuk 1-2 URL, tapi tidak proporsional untuk 5 URL x 10 run.
+// timeout = max(15 menit, 5 menit + URL x run x 90 detik), cap 120 menit; flat 900 dtk tidak proporsional untuk 5 URL x 10 run.
 export function lhTimeout(urlCount, runsPerUrl = 1) {
   const urls = Math.max(1, Number(urlCount) || 1);
   const runs = Math.max(1, Number(runsPerUrl) || 1);
@@ -63,10 +60,8 @@ export function lhUrls(cfg, targetUrl) {
   return [...new Set([...(targetUrl ? [targetUrl] : []), ...(cfg?.urls ?? [])])];
 }
 
-// Target lokal HTTPS biasanya self-signed (vite basicSsl). Hanya loopback yang
-// dilewati cek sertifikat; staging/production tetap divalidasi penuh.
-// ignoreHTTPSErrors TIDAK dipakai: LHCI collect mengabaikannya, yang jalan hanya
-// chromeFlags (diverifikasi dengan sertifikat self-signed di localhost).
+// Hanya loopback HTTPS yang dilewati cek sertifikat; staging/production tetap divalidasi penuh.
+// ignoreHTTPSErrors TIDAK dipakai: LHCI collect mengabaikannya, yang jalan hanya chromeFlags.
 const isLoopback = h => h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost');
 const localHttps = urls => urls.some(u => { try { const x = new URL(u); return x.protocol === 'https:' && isLoopback(x.hostname); } catch { return false; } });
 
@@ -103,8 +98,7 @@ export function lhConfig(cfg, targetUrl, outDir, { allowedOrigins = [] } = {}) {
   }, null, 2)};\n`;
 }
 
-// PRD Â§8.8: runWarnings LH ikut ke run_logs (`system`). Tahan nilai yang bukan
-// JSON valid (lhci kadang menulis string mentah).
+// PRD §8.8: runWarnings LH ikut ke run_logs (`system`); tahan nilai yang bukan JSON valid.
 export function warningLines(results) {
   const out = [];
   for (const r of results ?? []) {
@@ -122,9 +116,7 @@ function parseJsonArray(raw) {
   try { const v = JSON.parse(raw); return Array.isArray(v) ? v : [v]; } catch { return []; }
 }
 
-// Ambil baris JSONL yang sudah lengkap sejak `offset`. Baris terakhir tanpa
-// newline sengaja ditinggal: appendFileSync antar worker bisa memotong satu
-// baris jadi dua write.
+// Ambil baris JSONL lengkap sejak `offset`; baris terakhir tanpa newline ditinggal agar write terpotong tidak terbaca.
 export function cutCaptureLines(raw, offset = 0) {
   if (raw.length < offset) return { lines: [], offset: 0 }; // file ditulis ulang
   const chunk = raw.slice(offset);
@@ -154,8 +146,7 @@ export class Runner extends EventEmitter {
   directory(runId) { return join(this.runsDir, runId); }
 
   async start(runId, testFile, sessionId = null, targetUrl = null) {
-    // Antrekan, jangan tolak: hanya satu proses tool yang boleh jalan sekaligus.
-    // `this.chain` selalu di-catch supaya satu run gagal tidak mematikan antrean.
+    // Antrekan, jangan tolak: hanya satu proses tool sekaligus; `this.chain` selalu di-catch agar satu run gagal tidak mematikan antrean.
     const run = (this.chain ?? Promise.resolve()).then(() => this._start(runId, testFile, sessionId, targetUrl));
     const tail = run.catch(() => {});
     this.chain = tail;
@@ -167,8 +158,7 @@ export class Runner extends EventEmitter {
   async _start(runId, testFile, sessionId, targetUrl) {
     // Run bisa dibatalkan saat masih antre; jangan dijalankan sama sekali.
     if (this.store.getRun(runId)?.status === 'cancelled') return;
-    // Baris `system` bisa sudah ditulis route sebelum runner jalan (jejak production),
-    // jadi seq dimulai dari yang sudah ada supaya tidak bentrok primary key.
+    // Baris `system` bisa sudah ditulis route sebelum runner jalan; mulai seq dari yang ada agar tidak bentrok primary key.
     const state = { runId, sessionId, testFile, targetUrl, seq: this.store.lastLogSeq(runId), chain: Promise.resolve(), child: null, cancelled: false, startTime: Date.now() };
     this.active = state;
     state.done = this.execute(state).finally(() => { this.active = null; });
@@ -180,9 +170,9 @@ export class Runner extends EventEmitter {
     this.active.cancelled = true;
     const child = this.active.child;
     if (!child) return true;
-    // shell:true â†’ child.pid adalah shell; matikan seluruh pohon proses.
+    // shell:true → child.pid adalah shell; matikan seluruh pohon proses.
     this.killTree(child);
-    // PRD Â§8.6: tunggu 10 s, lalu SIGKILL.
+    // PRD §8.6: tunggu 10 s, lalu SIGKILL.
     setTimeout(() => { if (child.exitCode === null) this.killTree(child, true); }, 10000).unref();
     return true;
   }
@@ -215,8 +205,7 @@ export class Runner extends EventEmitter {
     this.emit('status', { type: 'status', runId: this.active?.runId, run: await this.store.patchRun(this.active?.runId, patch) });
   }
 
-  // Origin yang boleh ditembak runner: allowlist server + project (origin
-  // base/staging/local + projects.origins). env local ikut dicek, termasuk di sini.
+  // Origin yang boleh ditembak runner: allowlist server + project (base/staging/local + projects.origins); env local ikut dicek.
   allowedOriginsFor(state) {
     const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
     const project = session ? this.store.getProject(session.project_id) : null;
@@ -227,8 +216,7 @@ export class Runner extends EventEmitter {
 
   async execute(state) {
     const { runId, testFile } = state;
-    // PRD Â§7/G11: runner tidak percaya pemanggil - target harus tetap di allowlist.
-    // Origin milik project (dari sesi) ikut diizinkan, sama seperti resolveTarget.
+    // PRD §7/G11: runner tidak percaya pemanggil, target harus tetap di allowlist; origin project ikut diizinkan.
     if (state.targetUrl) {
       const allowed = this.allowedOriginsFor(state);
       try { state.targetUrl = validateTarget(state.targetUrl, allowed); }
@@ -283,17 +271,13 @@ export class Runner extends EventEmitter {
     // `config` opsional: { configPath } untuk config Playwright khusus (quick check).
     const pwCfg = (() => { try { return JSON.parse(testFile.config ?? '{}') ?? {}; } catch { return {}; } })();
     let cfgPath = pwCfg.configPath ?? null;
-    // Kode dari DB (editor dashboard) menang atas file di disk. Ditulis di sebelah
-    // spec aslinya karena spec eureka mengimpor `./creds` - memindahkan file ke
-    // folder run akan memutus import relatif. Config ditaruh di root repo supaya
-    // `@playwright/test` bisa di-resolve. Keduanya dihapus setelah run.
+    // Kode dari DB menang atas file disk, ditulis di sebelah spec aslinya agar import relatif tetap jalan; config di root repo agar `@playwright/test` resolve. Keduanya dihapus setelah run.
     let generated = null;
     let generatedCfg = null;
     if (testFile.code?.trim()) {
       const original = join(root, testFile.path);
       generated = join(dirname(original), `.playbook-${runId.slice(0, 8)}.spec.ts`);
-      // Folder spec bisa belum ada (mis. project baru). Buat dulu; tanpa ini
-      // error-nya ENOENT mentah yang tidak bisa dimengerti user.
+      // Folder spec bisa belum ada; buat dulu agar error ENOENT mentah tidak muncul.
       try {
         await mkdir(dirname(generated), { recursive: true });
         await writeFile(generated, testFile.code);
@@ -306,8 +290,7 @@ export class Runner extends EventEmitter {
       specPath = basename(generated);
       await this.log(state, 'system', `[runner] Spec dari database â†’ ${basename(generated)}\n`);
     }
-    // `--output` (test-results) harus terpisah dari folder report HTML; kalau
-    // bersarang, Playwright menolak karena reporter HTML menghapus foldernya.
+    // `--output` (test-results) harus terpisah dari report HTML; bersarang membuat Playwright menolak.
     const args = [pwBin, 'test', specPath, `--output=${join(dir, 'artifacts', 'test-results')}`];
     if (cfgPath) args.push('--config=' + cfgPath);
     else args.push('--reporter=json,html');
@@ -323,7 +306,7 @@ export class Runner extends EventEmitter {
     if (generatedCfg) await rm(generatedCfg, { force: true }).catch(() => {});
     await state.chain;
 
-    // Parse hasil JSON Playwright â†’ playwright_results
+    // Parse hasil JSON Playwright → playwright_results
     const results = await this.parsePlaywright(dir);
     const status = state.cancelled ? 'cancelled'
       : state.timedOut ? 'failed'
@@ -337,8 +320,7 @@ export class Runner extends EventEmitter {
     await this.collectArtifacts(runId, dir, 'pw');
     const finishedAt = new Date().toISOString();
     await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw', finishedAt });
-    // Status final di-patch paling akhir: UI berhenti polling begitu status final,
-    // jadi artifact harus sudah masuk DB sebelum itu.
+    // Status final di-patch paling akhir: UI berhenti polling saat final, jadi artifact harus sudah masuk DB.
     await this.store.patchRun(runId, {
       status,
       error,
@@ -356,8 +338,7 @@ export class Runner extends EventEmitter {
     await this.log(state, 'system', `[runner] Menjalankan Lighthouse CI ${testFile.path}\n`);
     const outDir = join(dir, 'artifacts');
     await mkdir(outDir, { recursive: true });
-    // Config digenerate dari test_files.config (PRD Â§8.3): URL sesi + urls tambahan.
-    // Tanpa ini, memilih env local/staging tetap menembak URL produksi di file repo.
+    // Config digenerate dari test_files.config (PRD §8.3); tanpa ini env local/staging tetap menembak URL produksi di file repo.
     const cfg = (() => { try { return JSON.parse(testFile.config ?? 'null'); } catch { return null; } })();
     let configPath = isAbsolute(testFile.path) ? testFile.path : join(root, testFile.path);
     if (cfg) {
@@ -368,8 +349,7 @@ export class Runner extends EventEmitter {
       const audited = lhUrls(cfg, targetUrl);
       await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${audited.length} URL)\n`);
     }
-    // cwd = dir: lhci menulis .lighthouseci/ relatif cwd, jadi tiap run terisolasi.
-    // Console/network Lighthouse hanya ada di LHR, jadi muncul setelah selesai.
+    // cwd = dir: lhci menulis .lighthouseci/ relatif cwd, tiap run terisolasi; console/network LH muncul setelah audit selesai.
     await this.log(state, 'system', '[runner] Console & network Lighthouse diambil dari LHR dan muncul setelah audit selesai.\n');
     const child = spawn(process.execPath, [lhciBin, 'autorun', '--config=' + configPath, '--upload.target=filesystem', '--upload.outputDir=' + outDir], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
     state.child = child;
@@ -383,7 +363,7 @@ export class Runner extends EventEmitter {
     const status = state.cancelled ? 'cancelled' : state.timedOut ? 'failed' : !results.length ? 'failed' : code === 0 ? 'passed' : 'failed';
     const error = state.timedOut ? 'timeout' : !results.length && !state.cancelled ? 'JSON Lighthouse tidak ditemukan' : null;
     if (results.length) await this.store.addLighthouseResults(runId, results);
-    // PRD Â§8.8: runWarnings LH juga tampil di terminal, bukan cuma kolom warnings.
+    // PRD §8.8: runWarnings LH juga tampil di terminal, bukan cuma kolom warnings.
     for (const line of warningLines(results)) await this.log(state, 'system', line);
     await this.collectArtifacts(runId, dir, 'lh');
     const finishedAt = new Date().toISOString();
@@ -400,13 +380,10 @@ export class Runner extends EventEmitter {
     this.store.markReportsStale(state.sessionId);
   }
 
-  // PRD Â§8.8: console/network dari reporter masuk ke run_logs sebagai stream terpisah.
-  // Tail capture.jsonl selama proses jalan. Reporter menulis live; tanpa ini
-  // panel Console/Network baru terisi setelah run selesai.
+  // PRD §8.8: console/network reporter masuk run_logs sebagai stream terpisah; tail live agar panel terisi sebelum run selesai.
   async tailCapture(state, file, interval = 700) {
     let offset = 0;
-    // Dua drain bisa tumpang tindih kalau baca file lambat; tanpa penjaga,
-    // keduanya memakai offset lama dan baris sama masuk dua kali.
+    // Dua drain bisa tumpang tindih saat baca lambat; tanpa penjaga, offset lama membuat baris masuk dua kali.
     let busy = false;
     const drain = async () => {
       if (busy) return;
@@ -478,12 +455,8 @@ export class Runner extends EventEmitter {
     return out;
   }
 
-  // Console & network untuk Lighthouse: LHR sudah memuatnya
-  // (audits.network-requests / audits.errors-in-console), jadi tidak perlu hook
-  // browser seperti Playwright. Baris ditulis sebagai JSON satu baris, format
-  // sama dengan reporter Playwright.
-  // ponytail: dipotong di 500 request per halaman; naikkan kalau halaman berat
-  // butuh semua request (log_max_bytes 5 MB tetap jadi batas akhir).
+  // Console & network Lighthouse dari LHR (audits.network-requests/errors-in-console), format JSON sama dengan reporter Playwright.
+  // ponytail: dipotong 500 request/halaman; naikkan kalau perlu (log_max_bytes 5 MB tetap batas akhir).
   async captureLighthouse(state, data, pageUrl) {
     const MAX = 500;
     const reqs = data.audits?.['network-requests']?.details?.items ?? [];
@@ -512,9 +485,7 @@ export class Runner extends EventEmitter {
     }
   }
 
-  // Lighthouse writes LHRs and the HTML report to `.lighthouseci/` first and the
-  // filesystem upload copies them afterwards. Reading both keeps scores when a
-  // run is killed before upload finishes.
+  // Baca LHR/report dari `.lighthouseci/` juga: upload filesystem menyalin belakangan, jadi skor tetap ada saat run dibunuh sebelum upload.
   async parseLighthouse(dir, state = null) {
     const artifactsDir = join(dir, 'artifacts');
     const lhciDir = join(dir, '.lighthouseci');
@@ -586,8 +557,7 @@ export class Runner extends EventEmitter {
     }
     return [...out.values()];
   }
-  // Snapshot run untuk pipeline laporan HTML (scripts/build-report-docs.mjs).
-  // Hanya fakta run; kode spec sengaja tidak ikut supaya tidak bocor ke report statis.
+  // Snapshot run untuk pipeline laporan HTML; kode spec sengaja tidak ikut agar tidak bocor ke report statis.
   async writeRunJson(state, dir, { status, exitCode, error, mode, finishedAt }) {
     const run = this.store.getRun(state.runId);
     const data = {

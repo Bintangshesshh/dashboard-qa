@@ -34,10 +34,7 @@ export class Store {
     if (this.path !== ':memory:') mkdirSync(dirname(this.path), { recursive: true });
     this.db = new DatabaseSync(this.path);
     this.logBytesCache = new Map();
-    // 88 pemanggilan this.db.prepare(...) tersebar di kelas ini dan sebagian
-    // dijalankan tiap 1,5 detik. prepare() native tidak murah, jadi hasilnya
-    // di-memo per string SQL: satu titik, nol perubahan di call site.
-    // String SQL di repo ini berhingga, jadi map ini tidak tumbuh liar.
+    // prepare() native tidak murah dan sebagian query jalan tiap 1,5 detik; memo per string SQL, map berhingga.
     const prepare = this.db.prepare.bind(this.db);
     const stmts = new Map();
     this.db.prepare = sql => {
@@ -81,8 +78,7 @@ export class Store {
     }
   }
 
-  // PRD §8.6: run `uploading` tanpa finalisasi > 24 jam dibersihkan saat startup.
-  // store tidak tahu path folder, jadi id-nya dikembalikan untuk dihapus pemanggil.
+  // PRD §8.6: run `uploading` tanpa finalisasi > 24 jam dibersihkan saat startup; id dikembalikan untuk dihapus pemanggil.
   recover({ staleUploadMs = 24 * 60 * 60 * 1000 } = {}) {
     const now = new Date();
     const cutoff = new Date(now.getTime() - staleUploadMs).toISOString();
@@ -115,7 +111,6 @@ export class Store {
   }
   authSessionById(id) { return this.db.prepare('SELECT * FROM auth_sessions WHERE id=?').get(id); }
   deleteAuthSession(id) { this.db.prepare('DELETE FROM auth_sessions WHERE id=?').run(id); }
-  deleteAuthSessionsForUser(userId) { this.db.prepare('DELETE FROM auth_sessions WHERE user_id=?').run(userId); }
   // Tanpa ini baris kedaluwarsa tumbuh selamanya; login adalah titik tulis yang murah.
   deleteExpiredAuthSessions() { this.db.prepare('DELETE FROM auth_sessions WHERE expires_at < ?').run(new Date().toISOString()); }
 
@@ -194,8 +189,7 @@ export class Store {
   deleteProject(id) { return this.db.prepare('DELETE FROM projects WHERE id=?').run(id).changes > 0; }
 
   // ─── Test files ──────────────────────────────────────────────────────────
-  // includeDisabled dipakai halaman pengaturan: spec nonaktif tetap harus kelihatan
-  // supaya bisa dinyalakan lagi. Semua pemanggil run memakai default (aktif saja).
+  // includeDisabled: halaman pengaturan tetap melihat spec nonaktif; pemanggil run pakai default (aktif saja).
   listTestFiles({ projectId, tool, includeDisabled = false } = {}) {
     let sql = 'SELECT * FROM test_files WHERE ' + (includeDisabled ? '1=1' : 'enabled=1'); const vals = [];
     if (projectId) { sql += ' AND project_id=?'; vals.push(projectId); }
@@ -229,10 +223,8 @@ export class Store {
     if (withRuns) row.runs = this.listRunsBySession(id);
     return row;
   }
-  // Sesi dipakai ulang hanya bila: belum ditutup, belum punya report, tidak ada
-  // run aktif, dan run terakhirnya selesai kurang dari session_reuse_minutes.
-  // Patokannya run terakhir, bukan waktu sesi dibuat: satu sesi = satu sesi kerja,
-  // bukan satu hari. Lewat jendela, sesi ditutup dan run berikutnya mulai baru.
+  // Reuse hanya bila belum ditutup, belum punya report, tak ada run aktif, dan run terakhir < session_reuse_minutes.
+  // Patokan run terakhir, bukan waktu sesi dibuat; lewat jendela sesi ditutup dan run berikutnya mulai baru.
   findOpenSession(projectId, env, createdBy) {
     const row = this.db.prepare('SELECT id, created_at FROM sessions WHERE project_id=? AND env=? AND created_by=? AND closed_at IS NULL').get(projectId, env, createdBy);
     if (!row) return undefined;
@@ -262,17 +254,14 @@ export class Store {
       .run(id, projectId, env, targetUrl, label, createdBy ?? null, new Date().toISOString());
   }
   closeSession(id) { this.db.prepare('UPDATE sessions SET closed_at=? WHERE id=? AND closed_at IS NULL').run(new Date().toISOString(), id); }
-  // Daftar sesi satu query: hitungan run diagregasi LEFT JOIN (sebelumnya 5
-  // subquery per baris), report diambil sekali untuk semua sesi, dan filter
-  // status pindah ke SQL supaya LIMIT benar-benar membatasi baris.
+  // Satu query: hitungan run via LEFT JOIN, report diambil sekali, filter status di SQL agar LIMIT tepat.
   listSessions({ projectId, status, from, to, limit = 200 } = {}) {
     const where = ['1=1'];
     const vals = [];
     if (projectId) { where.push('s.project_id=?'); vals.push(projectId); }
     if (from) { where.push('s.created_at>=?'); vals.push(from); }
     if (to) { where.push('s.created_at<=?'); vals.push(to); }
-    // status adalah alias hasil ekspresi, bukan kolom: saring di query luar
-    // supaya LIMIT membatasi baris yang sudah cocok.
+    // status adalah alias, bukan kolom: saring di query luar agar LIMIT membatasi baris yang cocok.
     const rows = this.db.prepare(
       'SELECT * FROM (SELECT s.*, ' + SESSION_STATUS_SQL + ' AS status,' +
       ' coalesce(c.run_count, 0) AS run_count,' +
@@ -309,9 +298,7 @@ export class Store {
     }
     return out;
   }
-  // Beberapa mutasi menyentuh lebih dari satu tabel (sesi + run + audit).
-  // Bila satu langkah gagal, semuanya harus dibatalkan supaya tidak ada run
-  // tanpa sesi atau audit tanpa barisnya.
+  // Mutasi multi-tabel (sesi + run + audit) harus atomik agar tidak ada run tanpa sesi/audit.
   tx(fn) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -321,18 +308,11 @@ export class Store {
     } catch (e) { this.db.exec('ROLLBACK'); throw e; }
   }
   deleteSession(id) {
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      this.db.prepare('DELETE FROM sessions WHERE id=?').run(id);
-      this.db.exec('COMMIT');
-      return true;
-    } catch (e) { this.db.exec('ROLLBACK'); throw e; }
+    return this.tx(() => { this.db.prepare('DELETE FROM sessions WHERE id=?').run(id); return true; });
   }
 
   // ─── Runs ────────────────────────────────────────────────────────────────
-  // Run dari CLI (`POST /api/runs/local`) yang tidak pernah di-start akan
-  // menggantung "queued" selamanya dan memblokir sesinya (409). Anggap
-  // interrupted setelah batas waktu supaya sesi bisa dipakai lagi.
+  // Run CLI (`POST /api/runs/local`) yang tak pernah di-start menggantung "queued" dan memblokir sesinya; anggap interrupted setelah batas.
   failStaleRuns(maxAgeMinutes = 30) {
     const cut = new Date(Date.now() - maxAgeMinutes * 60_000).toISOString();
     const rows = this.db.prepare(`SELECT id, session_id FROM runs
@@ -361,8 +341,7 @@ export class Store {
   }
   listRunsBySession(sessionId) { return this.db.prepare('SELECT * FROM runs WHERE session_id=? ORDER BY queued_at').all(sessionId); }
   listRuns({ projectId, tool, limit = 10 } = {}) {
-    // Username pemilik sesi ikut dipilih: feed "Run terakhir" menampilkan siapa
-    // yang menjalankan, bukan cuma project dan waktu.
+    // Username pemilik sesi ikut dipilih untuk feed "Run terakhir".
     let sql = `SELECT r.*, s.label AS session_label, s.env AS env, p.name AS project_name,
       COALESCE(u.username, 'sistem') AS run_by,
       EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.kind=(CASE r.tool WHEN 'lh' THEN 'lh-html' ELSE 'pw-html' END)) AS has_html
@@ -388,8 +367,7 @@ export class Store {
     const set = []; const vals = [];
     for (const k of allowed) if (k in fields) { set.push(`${k}=?`); vals.push(fields[k]); }
     if (!set.length) return this.getRun(id);
-    // Status final harus selalu punya finalized_at; jalur runner yang gagal
-    // sebelum finalisasi tidak boleh menghilang dari statistik.
+    // Status final selalu punya finalized_at agar tidak hilang dari statistik.
     if (FINAL_RUN_STATUS.has(fields.status)) {
       const now = new Date().toISOString();
       if (!('finalized_at' in fields)) { set.push('finalized_at=coalesce(finalized_at, ?)'); vals.push(now); }
@@ -406,8 +384,7 @@ export class Store {
   }
 
   // ─── Run logs ────────────────────────────────────────────────────────────
-  // PRD §7/A33: total log per run dibatasi `log_max_bytes`; bagian tengah
-  // dipotong dan diganti penanda, head & tail dipertahankan.
+  // PRD §7/A33: total log per run dibatasi `log_max_bytes`; tengah dipotong, head & tail dipertahankan.
   logBytes(runId) {
     return this.db.prepare('SELECT coalesce(sum(length(text)),0) AS n FROM run_logs WHERE run_id=?').get(runId).n;
   }
@@ -425,9 +402,7 @@ export class Store {
   systemLog(runId, text) {
     this.log(runId, { seq: this.lastLogSeq(runId) + 1, stream: 'system', text: text.endsWith('\n') ? text : `${text}\n`, at: new Date().toISOString() });
   }
-  // Batch dari CLI: satu transaksi, trim sekali di akhir.
-  // seq dihitung server (lanjut dari baris terakhir) supaya baris `system` yang
-  // sudah ditulis saat run dibuat tidak menabrak seq kiriman klien.
+  // Batch CLI: satu transaksi, trim sekali; seq dihitung server agar tidak menabrak baris `system`.
   logsBatch(runId, entries) {
     if (!entries.length) return;
     const ins = this.db.prepare('INSERT INTO run_logs (run_id, seq, stream, text, at) VALUES (?,?,?,?,?)');
@@ -455,8 +430,7 @@ export class Store {
       if (total - after >= budget - headBudget) cutTo = i;
       cum = after;
     }
-    // ponytail: satu baris tunggal > limit tak bisa dipotong tengah.
-    // Kalau perlu, potong per karakter di sini (head/tail char).
+    // ponytail: satu baris tunggal > limit tak bisa dipotong tengah; potong per karakter di sini kalau perlu.
     if (cutTo < head) return;
     const removed = rows.slice(head, cutTo + 1);
     if (!removed.length) return;
@@ -480,8 +454,7 @@ export class Store {
     return { logs, hasMore, nextAfter };
   }
   logsRaw(runId, after = 0) { return this.db.prepare('SELECT seq, stream, text, at FROM run_logs WHERE run_id=? AND seq>? ORDER BY seq').all(runId, after); }
-  // Panel console/network: saring stream di SQL dan batasi barisnya. Tanpa ini
-  // GET /api/runs/:id memuat seluruh log run (hingga 5 MB) tiap 1,5 detik.
+  // Panel console/network: saring stream di SQL + batasi baris (tanpa ini tiap poll memuat log hingga 5 MB).
   logsByStreams(runId, streams = ['console', 'network'], limit = 2000) {
     const list = streams.filter(s => ['stdout', 'stderr', 'system', 'console', 'network'].includes(s));
     if (!list.length) return [];
@@ -619,8 +592,7 @@ export class Store {
     };
   }
 
-  // Satu putaran query untuk semua project: Overview sebelumnya memanggil
-  // /api/stats sekali per project (10 project = 55 query tiap 5 detik).
+  // Satu putaran query untuk semua project (Overview sebelumnya N+1 per project).
   statsByProject({ from } = {}) {
     const w = from ? 'WHERE r.queued_at>=?' : '';
     const vals = from ? [from] : [];

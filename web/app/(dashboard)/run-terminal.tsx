@@ -1,8 +1,7 @@
 "use client";
 
-// Panel terminal live untuk satu run (PRD §10.3): log, console, network.
-// WS /ws → subscribe {runId, after} → log | status | replay-complete.
-// Tampilan diserahkan ke RunPanel; di sini hanya pengambilan data.
+// Panel terminal live untuk satu run (PRD §10.3). WS /ws → subscribe {runId, after}
+// → log | status | replay-complete; tampilan diserahkan ke RunPanel.
 import { useEffect, useState } from "react";
 import { api, type LogEntry, type Run } from "../../lib/playbook";
 import { RunPanel } from "./run-panel";
@@ -20,9 +19,8 @@ export function RunTerminal({ runId }: { runId: string }) {
   // Snapshot run untuk stopwatch + status; diperbarui oleh WS.
   const [run, setRun] = useState<Run | null>(null);
 
-  // Log awal (paginasi) → baru WS dari seq terakhir. Urutan ini penting:
-  // WS subscribe `after: 0` akan memutar ulang semua log dan menduplikasi baris
-  // kalau dijalankan paralel dengan fetch awal.
+  // Log awal (paginasi) → WS dari seq terakhir. Urutan penting: subscribe `after: 0`
+  // memutar ulang semua log dan menduplikasi baris kalau paralel dengan fetch awal.
   useEffect(() => {
     let alive = true;
     let ws: WebSocket | null = null;

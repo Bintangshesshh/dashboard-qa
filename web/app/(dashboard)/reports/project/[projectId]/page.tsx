@@ -35,8 +35,8 @@ export default function ProjectReports() {
   const quickCheck = async () => {
     if (!project) return;
     setBusy(true); setError(""); setNotice("");
-    // Urutan env: staging, lalu production (situs asli, wajib konfirmasi user),
-    // lalu local. local_url bukan default karena biasanya menunjuk dev server dashboard.
+    // Urutan env: staging, production (wajib konfirmasi), lalu local.
+    // local_url bukan default karena biasanya menunjuk dev server dashboard.
     const env = project.staging_url ? "staging" : project.base_url ? "production" : "local";
     let confirm: string | undefined;
     if (env === "production") {
@@ -117,8 +117,7 @@ export default function ProjectReports() {
                       : s.reports!.map(rep => {
                         const canOpen = rep.status === "ready" || (rep.status === "stale" && !!rep.path);
                         const title = [rep.scope, rep.status, rep.mode ?? "-", fmtDate(rep.built_at)].join(" | ");
-                        // ArtifactLink mengecek file dulu: report yang sudah dibuang
-                        // retensi tampil sebagai teks, bukan tombol ke {"error":"Not found"}.
+                        // ArtifactLink mengecek file dulu; report yang kena retensi jadi teks, bukan 404.
                         return canOpen
                           ? <span key={rep.id} style={{ marginRight: 6 }} title={title}>
                               <ArtifactLink href={reportUrl(rep.id)} missing={`${rep.scope} report hilang`}>{rep.scope}</ArtifactLink>

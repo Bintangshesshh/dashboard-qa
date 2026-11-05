@@ -5,29 +5,14 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Store } from '../server/store.mjs';
 import { buildReportDocs } from './build-report-docs.mjs';
-import { renderReportMarkdown } from './report-md.mjs';
-import { doc, panel, tiles, statusBadge } from './report-html.mjs';
+import { renderReportMarkdown, date, dur } from './report-md.mjs';
+import { doc, panel, tiles, statusBadge, esc, tone } from './report-html.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 
-const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const n = v => (v == null ? '-' : String(v));
 const score = v => (v == null ? '-' : Math.round(v * 100));
 const ms = v => (v == null ? '-' : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`);
-const dur = v => (v == null ? '-' : v >= 60000 ? `${Math.floor(v / 60000)}m ${Math.round((v % 60000) / 1000)}s` : `${(v / 1000).toFixed(1)}s`);
-// Satu format waktu untuk web dan report, supaya angka tidak pernah beda.
-// Tahun hanya muncul kalau bukan tahun berjalan: tanggal lama tetap jelas,
-// tanggal hari ini tetap ringkas.
-const TZ = 'Asia/Jakarta';
-const ymd = v => new Date(v).toLocaleString('id-ID', { timeZone: TZ, year: 'numeric' });
-const date = v => {
-  if (!v) return '-';
-  const opts = { timeZone: TZ, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' };
-  if (ymd(v) !== ymd(Date.now())) opts.year = 'numeric';
-  return new Date(v).toLocaleString('id-ID', opts) + ' WIB';
-};
-// Same thresholds as the per-run page so numbers and rings never disagree.
-const tone = v => (typeof v !== 'number' ? 'mut2' : v >= 0.9 ? 'ok' : v >= 0.5 ? 'warn' : 'bad');
 const link = (href, label) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}</a>`;
 
 function playwrightSection(run, results, logs) {

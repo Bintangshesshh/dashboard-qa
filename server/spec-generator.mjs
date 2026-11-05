@@ -1,19 +1,13 @@
-// Generator spec Playwright dari DOM asli. Tanpa AI/API eksternal:
-// crawler BFS -> introspeksi DOM -> perakitan string.
-//
-// Output bukan sekadar deretan locator: tiap halaman menghasilkan test yang
-// benar-benar memeriksa QA (HTTP status, judul, heading, isi form, tombol, dan
-// navigasi tautan internal) supaya spec bisa langsung dijalankan.
+// Generator spec Playwright dari DOM asli tanpa AI/API eksternal: crawler BFS → introspeksi DOM → perakitan string.
+// Output berupa test nyata (status HTTP, judul, heading, form, tombol, navigasi internal) yang langsung bisa dijalankan.
 import { target } from './validation.mjs';
 
-// Batas aman: 3 halaman total (termasuk URL awal), 15 dtk per navigasi,
-// 60 dtk untuk seluruh crawl. Semua batas ini mencegah crawl tanpa ujung.
+// Batas aman: 3 halaman total, 15 dtk/navigasi, 60 dtk/crawl untuk mencegah crawl tanpa ujung.
 export const MAX_PAGES = 3;
 const NAV_TIMEOUT_MS = 15_000;
 const BUDGET_MS = 60_000;
 const MAX_LINKS_PER_PAGE = 200;
-// Batas isi spec: halaman dengan ratusan elemen tidak boleh menghasilkan file
-// yang tidak terbaca. Ringkasan tetap menghitung seluruh elemen.
+// Batas isi spec: halaman dengan ratusan elemen tidak boleh menghasilkan file tak terbaca; ringkasan tetap menghitung semua.
 const MAX_FIELDS_PER_PAGE = 8;
 const MAX_BUTTONS_PER_PAGE = 12;
 const MAX_LINK_TESTS_PER_PAGE = 3;
@@ -32,13 +26,11 @@ const safeId = value => /^[A-Za-z_][A-Za-z0-9_-]*$/.test(value);
 export const idSelector = value =>
   safeId(value) ? `#${value}` : `[id=${cssString(value)}]`;
 
-// Teks DOM dirapikan: whitespace panjang dan newline membuat judul/locator
-// sulit dibaca dan bisa memecah string hasil generate.
+// Teks DOM dirapikan: whitespace panjang/newline memecah string dan membuat locator sulit dibaca.
 const clean = (value, max = 120) =>
   String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 
-// URL hanya diterima kalau http(s), tanpa kredensial, dan masih origin target.
-// Hash dibuang: halaman yang sama tidak perlu dikunjungi dua kali.
+// URL hanya diterima kalau http(s), tanpa kredensial, dan masih origin target; hash dibuang agar halaman sama tidak dikunjungi dua kali.
 export function normalizeUrl(href, baseUrl, origin) {
   let url;
   try { url = new URL(href, baseUrl); } catch { return null; }
@@ -49,9 +41,7 @@ export function normalizeUrl(href, baseUrl, origin) {
   return url.href;
 }
 
-// Locator input: id -> name -> fallback type + :nth-match.
-// nth adalah urutan input bertipe sama di seluruh halaman, bukan urutan yang
-// punya locator saja; jadi fallback tidak salah menunjuk input ber-id.
+// Locator input: id → name → fallback type + :nth-match (urutan input bertipe sama di seluruh halaman).
 export function inputLocator(input, nth) {
   if (input.id) return idSelector(input.id);
   if (input.name) return `input[name=${cssString(input.name)}]`;
@@ -72,11 +62,9 @@ export function buttonLocator(button, nth) {
   return nth > 1 ? `:nth-match(${base}, ${nth})` : base;
 }
 
-// Locator berbasis role/label/placeholder lebih tahan perubahan markup daripada
-// :nth-match. CSS hanya dipakai kalau elemen tidak punya identitas yang jelas.
+// Locator role/label/placeholder lebih tahan perubahan markup; CSS hanya jika elemen tanpa identitas jelas.
 function fieldBase(field) {
-  // getByLabel/getByPlaceholder tidak menjangkau elemen tersembunyi, jadi
-  // input hidden/file memakai selector CSS biasa.
+  // getByLabel/getByPlaceholder tidak menjangkau elemen tersembunyi; hidden/file memakai CSS biasa.
   if (field.visible) {
     if (field.label) return `page.getByLabel(${JSON.stringify(field.label)}, { exact: true })`;
     if (field.placeholder) return `page.getByPlaceholder(${JSON.stringify(field.placeholder)}, { exact: true })`;
@@ -89,8 +77,7 @@ function fieldBase(field) {
   return `page.locator(${JSON.stringify(selector)})`;
 }
 
-// index hanya ditambahkan kalau ada lebih dari satu elemen dengan locator dasar
-// yang sama; ini menghindari strict-mode violation tanpa mengorbankan keunikan.
+// index hanya ditambahkan bila ada >1 elemen dengan locator dasar sama; menghindari strict-mode violation.
 const indexed = (base, index, total) => total > 1 ? `${base}.nth(${index})` : base;
 
 // Nilai uji mengikuti tipe input supaya browser tidak menolak isian.
@@ -111,8 +98,7 @@ function sampleValue(field) {
   }
 }
 
-// Satu input diterjemahkan menjadi satu aksi yang masuk akal untuk tipenya.
-// Input hidden/file tetap dicek keberadaannya, bukan di-fill (tidak mungkin).
+// Satu input → satu aksi sesuai tipe; hidden/file tetap dicek keberadaannya, bukan di-fill.
 function fieldAction(field, locator) {
   if (field.type === 'hidden' || field.type === 'file') return { kind: 'attached', locator };
   if (field.type === 'checkbox' || field.type === 'radio') {
@@ -132,8 +118,7 @@ function fieldAction(field, locator) {
   return { kind: 'fill', locator, value: sampleValue(field) };
 }
 
-// Ubah data DOM mentah menjadi daftar aksi unik per halaman.
-// Duplikat dibuang supaya satu elemen tidak menghasilkan dua aksi identik.
+// Ubah DOM mentah menjadi aksi unik per halaman; duplikat dibuang.
 export function buildFields(inputs = []) {
   const items = inputs.map(input => {
     const tag = input.tag === 'textarea' || input.tag === 'select' ? input.tag : 'input';
@@ -177,10 +162,8 @@ export function buildButtons(buttons = []) {
     const text = clean(button.text, 100);
     const visible = button.visible !== false;
     const role = tag === 'a' ? 'link' : 'button';
-    // Role locator mengabaikan elemen hidden; tombol di dropdown yang tertutup
-    // harus dicari lewat CSS supaya assertion "attached" tetap menemukannya.
-    // Untuk tombol tanpa teks, :visible membuat nth hanya menghitung tombol
-    // yang benar-benar tampil.
+    // Role locator mengabaikan elemen hidden; tombol dropdown tertutup dicari lewat CSS agar assertion "attached" tetap menemukannya.
+    // Untuk tombol tanpa teks, :visible membuat nth hanya menghitung tombol yang tampil.
     const suffix = visible ? ':visible' : '';
     const base = text && visible
       ? `page.getByRole(${JSON.stringify(role)}, { name: ${JSON.stringify(text)}, exact: true })`
@@ -210,8 +193,7 @@ export function buildButtons(buttons = []) {
   return out;
 }
 
-// Hanya tautan internal yang aman diuji. Tautan logout/checkout/pembayaran
-// sengaja dilewati karena mengubah state atau keluar dari alur QA.
+// Hanya tautan internal aman; logout/checkout/pembayaran dilewati karena mengubah state atau keluar alur QA.
 const UNSAFE_LINK = /(logout|signout|sign-out|delete|hapus|keluar|checkout|pembayaran|payment)/i;
 
 export function buildLinks(links = [], origin = null) {
@@ -281,8 +263,7 @@ function emitAction(lines, name, action) {
   }
 }
 
-// Path relatif ke origin: BASE_URL tetap bisa diarahkan ke local/staging,
-// persis seperti spec eureka yang memakai process.env.BASE_URL.
+// Path relatif ke origin; BASE_URL tetap bisa diarahkan ke local/staging seperti spec eureka.
 function pathOf(url) {
   try {
     const u = new URL(url);
@@ -290,8 +271,7 @@ function pathOf(url) {
   } catch { return '/'; }
 }
 
-// Rakit file .spec.ts murni dari string. JSON.stringify dipakai untuk URL,
-// locator, judul, dan nilai agar kutip/backtick tidak merusak kode.
+// Rakit .spec.ts murni dari string; JSON.stringify untuk URL/locator/judul/nilai agar kutip/backtick tidak merusak kode.
 export function buildSpec(pages = []) {
   if (!pages.length) return "import { test, expect } from '@playwright/test';\n";
 
@@ -418,8 +398,7 @@ const isHtml = response => {
   return !type || /text\/html|application\/xhtml\+xml/i.test(type);
 };
 
-// Crawl + introspeksi + rakit spec. Browser selalu ditutup di finally,
-// termasuk saat target gagal dibuka atau crawl kehabisan waktu.
+// Crawl + introspeksi + rakit spec; browser selalu ditutup di finally termasuk saat target gagal/timeout.
 export async function generateSpec({
   startUrl,
   origins,
@@ -435,8 +414,7 @@ export async function generateSpec({
   const limit = Math.max(1, Math.min(Number(maxPages) || MAX_PAGES, MAX_PAGES));
   const deadline = Date.now() + budgetMs;
 
-  // Import lazy: unit test builder tidak perlu memuat browser, dan error
-  // dependency Playwright baru muncul saat endpoint benar-benar dipakai.
+  // Import lazy: unit test builder tidak memuat browser; error dependency baru muncul saat endpoint dipakai.
   let chromium;
   try { ({ chromium } = await import('playwright')); }
   catch { throw new Error('Playwright tidak tersedia di server ini.'); }
@@ -459,8 +437,7 @@ export async function generateSpec({
       try {
         response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: navTimeoutMs });
       } catch (err) {
-        // Halaman awal wajib bisa dibuka; tautan rusak di halaman berikutnya
-        // cukup dilewati supaya satu link mati tidak menggagalkan semuanya.
+        // Halaman awal wajib terbuka; tautan rusak di halaman berikutnya dilewati agar satu link mati tidak menggagalkan semua.
         if (!pages.length) throw new Error(`Gagal membuka ${url}: ${err.message}`);
         continue;
       }
@@ -536,9 +513,7 @@ export async function generateSpec({
         continue;
       }
 
-      // Tombol yang tersembunyi di dropdown/menu tidak diuji: locator role
-      // mengabaikannya dan assertion "attached" untuk elemen tak terlihat
-      // tidak memberi nilai QA. Ringkasan tetap menghitung seluruh tombol.
+      // Tombol tersembunyi di dropdown/menu tidak diuji (role locator mengabaikannya; "attached" tak bernilai QA).
       const actions = buildActions(
         inputs,
         buttons.filter(button => button.visible),
@@ -559,9 +534,8 @@ export async function generateSpec({
 
       if (pages.length >= limit) break;
 
-      // BFS: tautan halaman ini masuk antrean di belakang tautan sebelumnya.
-      // el.href sudah absolut (ikut <base>); normalizeUrl tetap menyaring origin.
-      // Gagal baca tautan tidak membatalkan halaman yang sudah berhasil dipindai.
+      // BFS: tautan halaman ini masuk antrean belakang; el.href absolut, normalizeUrl tetap menyaring origin.
+      // Gagal baca tautan tidak membatalkan halaman yang sudah dipindai.
       const hrefs = await page.$$eval('a[href]', (els, max) =>
         els.slice(0, max).map(el => el.href).filter(Boolean), MAX_LINKS_PER_PAGE)
         .catch(() => []);

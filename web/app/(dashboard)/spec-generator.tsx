@@ -6,8 +6,7 @@ import { confirmAction } from "../../lib/alerts";
 
 type Token = { text: string; kind: "plain" | "comment" | "string" | "keyword" | "ident" };
 
-// Tokenizer sederhana tanpa dependency: komentar, string, keyword, dan nama
-// method Playwright. Cukup untuk membaca spec hasil generate.
+// Tokenizer sederhana tanpa dependency: komentar, string, keyword, dan method Playwright.
 const TOKEN_RE =
   /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`)|\b(import|from|test|expect|async|await|const|let|var|function|return|if|else|new|for|throw|type)\b|\b(page|locator|goto|fill|click|check|selectOption|getByRole|getByLabel|getByPlaceholder|toBeVisible|toBeEnabled|toBeDisabled|toBeChecked|toHaveValue|toHaveTitle|toHaveURL|toBeAttached)\b/g;
 
@@ -51,8 +50,7 @@ export function SpecGenerator({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  // Project/environment di halaman induk berubah → hasil lama tidak boleh
-  // tersimpan ke project yang baru.
+  // Project/environment berubah → hasil lama tidak boleh tersimpan ke project baru.
   useEffect(() => {
     setUrl(defaultUrl);
     setResult(null);
@@ -90,8 +88,7 @@ export function SpecGenerator({
     URL.revokeObjectURL(href);
   };
 
-  // Simpan langsung ke test file project supaya spec bisa dijalankan tanpa
-  // menyalin kode ke form "Tambah spec" lebih dulu.
+  // Simpan langsung ke test file project supaya spec bisa dijalankan tanpa salin manual.
   const save = async () => {
     if (!result || !projectId || saving) return;
     const path = existingFile?.path ?? `tests/${projectSlug || "generated"}.spec.ts`;

@@ -15,8 +15,8 @@ import { confirmAction } from "../../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
-// Backend membalas {"error":"Not found"} untuk sesi yang sudah dihapus / kena
-// retensi. Bukan pesan untuk user, jadi diterjemahkan di sini.
+// Backend membalas {"error":"Not found"} untuk sesi yang dihapus/kena retensi;
+// terjemahkan jadi pesan user.
 const friendly = (msg: string) =>
   /not ?found/i.test(msg) ? "Sesi tidak ditemukan - mungkin sudah dihapus atau kena retensi." : msg;
 
@@ -46,8 +46,8 @@ export default function SessionDetail() {
   const [notice, setNotice] = useState("");
   const [openRun, setOpenRun] = useState<Run | null>(null);
   const [busy, setBusy] = useState("");
-  // B9/A58: label tombol report memakai jendela retensi (endpoint publik, viewer boleh baca).
-  // ponytail: fallback 7 kalau request gagal - tampilkan angka default saja.
+  // B9/A58: label tombol report memakai jendela retensi (endpoint publik).
+  // ponytail: fallback 7 kalau request gagal.
   const [retention, setRetention] = useState(7);
 
   useEffect(() => {
@@ -380,7 +380,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
       </div>
 
       {results.length === 0 ? (
-        // Failed/timed-out runs leave no result rows; say so instead of an empty table.
+        // Failed/timed-out runs leave no result rows; explain instead of empty table.
         <p className="pb-empty">
           Tidak ada hasil {isPw ? "Playwright" : "Lighthouse"} pada run ini.
           {run.error ? ` Error: ${run.error}` : ""}
@@ -449,8 +449,8 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
   );
 }
 
-// Report asli Playwright/Lighthouse berat (2 MB + script sendiri). Iframe di dalam
-// panel bikin scroll bertingkat, jadi cukup dibuka di tab baru atau diunduh.
+// Report asli berat (2 MB + script sendiri); iframe bikin scroll bertingkat,
+// jadi buka di tab baru atau unduh.
 function NativeReportLink({ runId, path, label }: { runId: string; path: string; label: string }) {
   const state = useProbe(artifactUrl(runId, path));
   if (state === "checking") return <span className="pb-muted" style={{ fontSize: 12 }}>cek report…</span>;

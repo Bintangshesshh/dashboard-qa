@@ -1,8 +1,8 @@
 "use client";
 
-// /lighthouse (PRD §10.4): config (numberOfRuns, URL tambahan, budget per kategori)
-// → test_files.config. Config lhci digenerate saat run, bukan disimpan di repo.
-// Layout menumpuk: Project → Config → Terminal → Run → Hasil.
+// /lighthouse (PRD §10.4): config numberOfRuns/URL/budget → test_files.config.
+// Config lhci digenerate saat run, bukan disimpan di repo. Layout menumpuk:
+// Project → Config → Terminal → Run → Hasil.
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
 import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig } from "../../_components/lh-config-editor";
@@ -39,18 +39,17 @@ export default function LighthousePage() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  // Run + terminal, dipisah per project seperti halaman Playwright.
+  // Data run + terminal, dipisah per project seperti halaman Playwright.
   const [starting, setStarting] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [runsByProject, setRunsByProject] = useState<Record<string, string>>({});
 
   // Ganti project → pasang lagi run project itu (kalau ada), terminal direset.
   useEffect(() => {
     if (!projectId) return;
     setRun(null); setLogs([]);
-    setRunId(runsByProject[projectId] ?? sessionStorage.getItem(`lh-run:${projectId}`));
+    setRunId(sessionStorage.getItem(`lh-run:${projectId}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -59,7 +58,7 @@ export default function LighthousePage() {
   useEffect(() => {
     if (!runId || restored.current === runId) return;
     restored.current = runId;
-    api.run(runId).then(() => {}).catch(() => {
+    api.run(runId).catch(() => {
       sessionStorage.removeItem(`lh-run:${projectId}`);
       setRunId(null); setLogs([]);
     });
@@ -80,13 +79,12 @@ export default function LighthousePage() {
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
   // Server juga menolak production kalau project belum mengizinkannya; tombol
-// jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
-const productionOk = env !== "production"
-  || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
+  // jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
+  const productionOk = env !== "production"
+    || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
   const running = !!run && !FINAL.includes(run.status);
 
-  // Muat config hanya saat file berganti. Kalau bergantung pada `selected`,
-  // autosave yang menulis balik akan mereset ketikan user.
+  // Muat config hanya saat file berganti; autosave yang menulis balik tidak boleh reset ketikan.
   useEffect(() => {
     setConfig(selected?.config ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,7 +168,6 @@ const productionOk = env !== "production"
       const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`lh-run:${projectId}`, runId);
-      setRunsByProject(prev => ({ ...prev, [projectId]: runId }));
       setRunId(runId);
     } catch (e) {
       setError((e as Error).message);

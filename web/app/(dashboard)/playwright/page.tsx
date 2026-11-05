@@ -25,7 +25,7 @@ export default function PlaywrightPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<TestFile[]>([]);
   const [projectId, setProjectId] = useState("");
-  // Default local: kasus utama menguji web yang jalan di laptop sendiri.
+  // Default local: kasus utama menguji web di laptop sendiri.
   // Konfirmasi production: ketik nama project. Guard sama ada di server.
   const [confirmName, setConfirmName] = useState("");
   const [env, setEnv] = useState<Env>("local");
@@ -38,43 +38,36 @@ export default function PlaywrightPage() {
   // Jam simpan terakhir: badge "Tersimpan" tanpa waktu tidak menjawab apa pun.
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
-  // Konflik = file di disk berubah sejak sinkron terakhir; butuh keputusan user.
+  // Konflik: file di disk berubah sejak sinkron terakhir; butuh keputusan user.
   const [conflict, setConflict] = useState(false);
 
-  // Run + terminal
-  // runId di-sessionStorage per project: ganti dropdown tidak menumpuk log
-  // project lain, dan run tetap terpantau saat pindah halaman.
-  // Terminal dipisah per project: satu kunci sessionStorage per project, jadi
-  // ganti dropdown tidak menumpuk log project lain.
+  // Run + terminal. runId disimpan per project di sessionStorage: ganti
+  // dropdown tidak menumpuk log project lain, dan run tetap terpantau saat pindah halaman.
   const [starting, setStarting] = useState(false);
   // Sesi milik run terakhir + batas reuse dari DB (bukan hardcode).
   const [session, setSession] = useState<Session | null>(null);
   const [reuseMinutes, setReuseMinutes] = useState<number | null>(null);
+  // Run yang sedang dipantau ditulis langsung di start(): kalau lewat efek,
+  // runId project lama sempat tertulis ke project baru saat dropdown diganti.
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-
-  // Run yang sedang dipantau, per project. Ditulis di start(): kalau lewat efek,
-  // runId project lama sempat tertulis ke project baru saat dropdown diganti.
-  const [runsByProject, setRunsByProject] = useState<Record<string, string>>({});
 
   // Ganti project → pasang lagi run project itu (kalau ada), terminal direset.
   useEffect(() => {
     if (!projectId) return;
     setRun(null); setLogs([]);
-    setRunId(runsByProject[projectId] ?? sessionStorage.getItem(`pw-run:${projectId}`));
-    // runsByProject sengaja tidak jadi dependency: membacanya di sini tidak boleh
-    // memicu reset terminal setiap kali runId baru disimpan.
+    setRunId(sessionStorage.getItem(`pw-run:${projectId}`));
+    // sengaja tanpa dependency lain: menyimpan runId baru tidak boleh mereset terminal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // ID tersimpan bisa basi (run dihapus/cancel dari halaman lain).
-  // Validasi sekali per id: kalau 404, buang ID, biar terminal tidak polling hantu.
+  // ID tersimpan bisa basi (run dihapus/cancel dari halaman lain); validasi sekali per id.
   const restored = useRef<string | null>(null);
   useEffect(() => {
     if (!runId || restored.current === runId) return;
     restored.current = runId;
-    api.run(runId).then(() => {}).catch(() => {
+    api.run(runId).catch(() => {
       sessionStorage.removeItem(`pw-run:${projectId}`);
       setRunId(null); setLogs([]);
     });
@@ -87,15 +80,13 @@ export default function PlaywrightPage() {
     }).catch(e => setError(e.message));
   }, []);
 
-  // Nilai reuse dari tabel settings; endpoint admin-only, viewer cukup tidak
-  // melihat saran sesi.
+  // Nilai reuse dari tabel settings; viewer tidak perlu melihat saran sesi.
   useEffect(() => {
     api.settings().then(x => setReuseMinutes(Number(x.session_reuse_minutes) || null))
       .catch(() => {});
   }, []);
 
-  // Spec otomatis: project hanya punya satu spec Playwright. Dropdown Spec dihapus
-  // (belum ada API bikin file baru).
+  // Spec otomatis: project hanya punya satu spec Playwright (belum ada API bikin file baru).
   useEffect(() => {
     if (!projectId) return;
     api.testFiles({ project: projectId, tool: "pw" })
@@ -107,13 +98,12 @@ export default function PlaywrightPage() {
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
   // Server juga menolak production kalau project belum mengizinkannya; tombol
-// jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
-const productionOk = env !== "production"
-  || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
+  // jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
+  const productionOk = env !== "production"
+    || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
   const dirty = !!selected && draft !== savedCode;
   const running = !!run && !FINAL.includes(run.status);
-  // Umur sesi dihitung dari run terakhir, sama dengan aturan di server: satu sesi
-  // = satu sesi kerja, bukan satu hari. Tanpa run, pakai waktu dibuat.
+  // Umur sesi dari run terakhir, sama dengan server: satu sesi kerja, bukan satu hari.
   const sessionAnchor = session?.last_run_at ?? session?.created_at;
   const sessionAge = sessionAnchor
     ? Math.max(0, Math.round((Date.now() - Date.parse(sessionAnchor)) / 60000))
@@ -168,8 +158,7 @@ const productionOk = env !== "production"
     try {
       const updated = await api.patchTestFile(selected.id, { code: snapshot, ...(force ? { force: true } : {}) });
       setFiles([updated]);
-      // Backend men-trim teks. Sync balik hanya kalau user belum mengetik lagi;
-      // kalau sudah, jangan timpa draft yang lebih baru.
+      // Backend men-trim teks. Sync balik hanya kalau user belum mengetik lagi.
       if (draftRef.current === snapshot) setDraft(updated.code);
       setSavedCode(updated.code);
       setSavedAt(new Date().toISOString());
@@ -226,8 +215,7 @@ const productionOk = env !== "production"
       if (env === "production" && confirmName.trim() !== project?.name)
         throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya spec Playwright.");
-      // Run harus memakai kode yang benar-benar tersimpan. Kalau simpan gagal
-      // (mis. konflik disk), jangan lanjut dengan kode lama diam-diam.
+      // Run harus memakai kode tersimpan; kalau simpan gagal, jangan lanjut diam-diam.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; }
       if (dirty) {
         const saved = await save();
@@ -239,7 +227,6 @@ const productionOk = env !== "production"
       );
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`pw-run:${projectId}`, runId);
-      setRunsByProject(prev => ({ ...prev, [projectId]: runId }));
       setRunId(runId);
     } catch (e) {
       setError((e as Error).message);

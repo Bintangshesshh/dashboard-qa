@@ -24,6 +24,15 @@ const CHART_SAMPLES = 200;
 const wibDay = (back = 0) =>
   new Date(Date.now() + 7 * 3600_000 - back * 86_400_000).toISOString().slice(0, 10);
 
+// Hari tanpa run tetap tampil sebagai nol.
+const fillDaily = (daily: DayStat[], range: number) => {
+  const map = new Map(daily.map(d => [d.day, d]));
+  return Array.from({ length: range }, (_, i) => {
+    const day = wibDay(range - 1 - i);
+    return map.get(day) ?? { day, total: 0, passed: 0 };
+  });
+};
+
 // Monotone cubic: datar di puncak/lembah, lurus di tanjakan, tanpa overshoot.
 const pchipSlopes = (ys: number[], xs: number[]) => {
   const n = ys.length;
@@ -53,8 +62,7 @@ const buildCurve = (daily: DayStat[]): Curve => {
   };
 };
 
-// Evaluasi kurva pada posisi 0..1, jadi titik hari asli selalu kena persis
-// (puncak tidak bergeser atau naik melewati angka sebenarnya).
+// Evaluasi kurva pada posisi 0..1; titik hari asli selalu kena persis (tanpa overshoot).
 const evalCurve = (ys: number[], ms: number[], xs: number[], u: number) => {
   if (xs.length === 1) return ys[0];
   let i = 0;
@@ -70,18 +78,18 @@ const evalCurve = (ys: number[], ms: number[], xs: number[], u: number) => {
 
 function useChartMorph(daily: DayStat[]) {
   const key = daily.map(d => `${d.day}:${d.total}:${d.passed}`).join("|");
-  const initial = buildCurve(daily);
-  const [series, setSeries] = useState<ChartSeries>(() => ({
-    us: initial.xs, ok: initial.ok, bad: initial.bad, max: initial.max,
-  }));
+  const [series, setSeries] = useState<ChartSeries>(() => {
+    const initial = buildCurve(daily);
+    return { us: initial.xs, ok: initial.ok, bad: initial.bad, max: initial.max };
+  });
   const current = useRef(daily);
   const frame = useRef(0);
 
   useEffect(() => {
     const from = buildCurve(current.current);
     const to = buildCurve(daily);
-    // Titik sampel memuat semua tanggal kedua rentang, supaya bentuk akhir
-    // persis melewati titik data dan tidak ada puncak palsu di antaranya.
+    // Sampel memuat semua tanggal kedua rentang, supaya bentuk akhir persis
+    // melewati titik data dan tidak ada puncak palsu di antaranya.
     const us = [...new Set([
       ...Array.from({ length: CHART_SAMPLES + 1 }, (_, i) => i / CHART_SAMPLES),
       ...from.xs,
@@ -119,12 +127,11 @@ export default function OverviewPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  // Pass rate per project untuk kartu project (prototype: .project-card).
+  // Pass rate per project untuk kartu project.
   const [perProject, setPerProject] = useState<Record<string, Stats>>({});
   const [projectId, setProjectId] = useState("");
   const [range, setRange] = useState(14);
-  // Rentang yang benar-benar diwakili `stats`; dipakai agar grafik tidak
-  // sempat beranimasi ke data lama saat rentang baru belum selesai dimuat.
+  // Rentang yang benar-benar diwakili `stats`; grafik tidak beranimasi ke data lama.
   const [statsRange, setStatsRange] = useState(0);
   const [chartDaily, setChartDaily] = useState<DayStat[]>([]);
   // Feed "Run terakhir": semua status, termasuk yang sedang berjalan.
@@ -140,8 +147,7 @@ export default function OverviewPage() {
       .catch(() => {});
   }, []);
 
-  // Polling 5 dtk supaya run yang baru mulai/selesai langsung terlihat.
-  // Tab tersembunyi dilonggarkan ke 15 dtk: hemat request, tetap segar saat dibuka.
+  // Polling 5 dtk; tab tersembunyi 15 dtk supaya hemat request.
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -174,15 +180,10 @@ export default function OverviewPage() {
     return () => { alive = false; };
   }, [projects, range]);
 
-  // Data grafik baru dipasang setelah stats untuk rentang itu tiba, supaya
-  // grafik cuma bergerak sekali ke bentuk akhir.
+  // Data grafik baru dipasang setelah stats untuk rentang itu tiba.
   useEffect(() => {
     if (!stats || statsRange !== range) return;
-    const map = new Map(stats.daily.map(d => [d.day, d]));
-    setChartDaily(Array.from({ length: range }, (_, i) => {
-      const day = wibDay(range - 1 - i);
-      return map.get(day) ?? { day, total: 0, passed: 0 };
-    }));
+    setChartDaily(fillDaily(stats.daily, range));
   }, [stats, statsRange, range]);
 
   // Kartu project dipakai di dalam tiap grup; pass rate dari stats per project.
@@ -210,8 +211,7 @@ export default function OverviewPage() {
     );
   };
 
-  // Grup diturunkan dari projects (urutan server sudah nama project);
-  // project tanpa grup masuk bucket "Tanpa grup".
+  // Grup diturunkan dari projects; project tanpa grup masuk bucket "Tanpa grup".
   const grouped: { id: string; name: string; items: Project[] }[] = [];
   for (const p of projects) {
     const id = p.group_id ?? "";
@@ -224,14 +224,8 @@ export default function OverviewPage() {
   const rate = stats?.passRate == null ? null : Math.round(stats.passRate * 100);
   const rateClass = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
   const lh = stats?.lighthouse ?? null;
-  // Lengkapi hari tanpa run dengan nol supaya garis tidak melompati tanggal.
-  // Saat rentang baru masih dimuat, pakai data grafik lama dulu.
-  const dailyMap = new Map((stats?.daily ?? []).map(d => [d.day, d]));
-  const targetDaily = Array.from({ length: range }, (_, i) => {
-    const day = wibDay(range - 1 - i);
-    return dailyMap.get(day) ?? { day, total: 0, passed: 0 };
-  });
-  const daily = chartDaily.length ? chartDaily : targetDaily;
+  // Lengkapi hari tanpa run dengan nol; saat rentang baru dimuat, pakai data lama dulu.
+  const daily = chartDaily.length ? chartDaily : fillDaily(stats?.daily ?? [], range);
   const totalRuns = daily.reduce((sum, d) => sum + d.total, 0);
   const totalPassed = daily.reduce((sum, d) => sum + d.passed, 0);
   const totalFailed = totalRuns - totalPassed;
@@ -258,8 +252,7 @@ export default function OverviewPage() {
     const t = Math.min(1, Math.max(0, (u - us[i]) / span));
     return vals[i] + (vals[i + 1] - vals[i]) * t;
   };
-  // Path dirakit dari sampel rapat (bukan smoothing ulang) supaya bentuk
-  // animasi tetap sama dengan kurva data dan puncak tidak bergeser.
+  // Path dirakit dari sampel rapat supaya bentuk animasi = kurva data (puncak tidak bergeser).
   const linePath = (pts: [number, number][]) => {
     if (pts.length < 2) return "";
     return pts.map(([x, y], i) => `${i ? " L" : "M"}${x},${y}`).join("");
@@ -544,8 +537,7 @@ export default function OverviewPage() {
       {projects.length === 0 ? (
         <p className="pb-empty">Belum ada project.</p>
       ) : (
-        // Grup hanya pengelompokan tampilan; daftarnya diturunkan dari
-        // projects.group_name, jadi tidak butuh endpoint agregasi baru.
+        // Grup hanya pengelompokan tampilan dari projects.group_name.
         grouped.map(g => (
           <section className="pb-group-block" key={g.id}>
             <div className="pb-group-label">

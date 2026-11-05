@@ -9,7 +9,6 @@ import type { Project } from "../../lib/playbook";
 
 // Sama dengan batas server: target sesi memakai 1 slot dari 5 URL.
 export const MAX_EXTRA_URLS = 4;
-export const TOTAL_URL_CAP = 5;
 export const MAX_RUNS = 10;
 
 export const LH_CATEGORIES = [
@@ -54,7 +53,6 @@ export function lhConfigError(draft: {
   const { target, extra, runs, scores } = draft;
   if (!target.trim()) return "Project ini belum punya URL target. Isi URL project dulu di tab Project.";
   if (extra.length > MAX_EXTRA_URLS) return `Maksimal ${MAX_EXTRA_URLS} URL tambahan.`;
-  if (target.trim() && extra.length + 1 > TOTAL_URL_CAP) return `Total URL maksimal ${TOTAL_URL_CAP}.`;
   for (const u of extra) if (!isHttp(u)) return `URL tambahan tidak valid: ${u}`;
   if (!Number.isInteger(runs) || runs < 1 || runs > MAX_RUNS) return `Jumlah run harus 1-${MAX_RUNS}.`;
   for (const c of LH_CATEGORIES) {
