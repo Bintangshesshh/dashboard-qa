@@ -571,6 +571,17 @@ export class Store {
       JOIN runs r ON r.id = l.run_id
       JOIN sessions s ON s.id = r.session_id
       WHERE r.tool='lh' AND r.finalized_at IS NOT NULL AND ${w}`).get(...vals);
+    // Lighthouse ikut pass rate: satu run = satu nilai, TC Playwright tetap per test case.
+    const lhRuns = this.db.prepare(`
+      SELECT sum(CASE WHEN r.status='passed' THEN 1 ELSE 0 END) AS passed,
+        sum(CASE WHEN r.status='failed' THEN 1 ELSE 0 END) AS failed
+      FROM runs r JOIN sessions s ON s.id = r.session_id
+      WHERE r.tool='lh' AND r.finalized_at IS NOT NULL AND ${w}`).get(...vals);
+    const recentRuns = this.db.prepare(`
+      SELECT r.id, r.tool, r.status, r.finished_at, s.label AS session_label
+      FROM runs r JOIN sessions s ON s.id = r.session_id
+      WHERE ${w}
+      ORDER BY coalesce(r.finished_at, r.started_at, r.queued_at) DESC LIMIT 20`).all(...vals).reverse();
     // Run yang belum final tidak masuk statistik final, tapi harus terlihat.
     const active = this.db.prepare(`
       SELECT count(*) AS total FROM runs r JOIN sessions s ON s.id = r.session_id
@@ -578,13 +589,18 @@ export class Store {
     return {
       tcPassed: tc.passed ?? 0,
       tcFailed: tc.failed ?? 0,
-      passRate: (tc.passed ?? 0) + (tc.failed ?? 0) > 0 ? (tc.passed ?? 0) / ((tc.passed ?? 0) + (tc.failed ?? 0)) : null,
+      lhPassed: lhRuns.passed ?? 0,
+      lhFailed: lhRuns.failed ?? 0,
+      passRate: (tc.passed ?? 0) + (tc.failed ?? 0) + (lhRuns.passed ?? 0) + (lhRuns.failed ?? 0) > 0
+        ? ((tc.passed ?? 0) + (lhRuns.passed ?? 0)) / ((tc.passed ?? 0) + (tc.failed ?? 0) + (lhRuns.passed ?? 0) + (lhRuns.failed ?? 0))
+        : null,
       sessions: sessions.total,
       runs: runs.total,
       activeRuns: active.total,
       failedRuns: runs.failed ?? 0,
       failedSessions: runs.failed_sessions ?? 0,
       avgDurationMs: runs.avg_ms == null ? null : Math.round(runs.avg_ms),
+      recentRuns,
       lighthouse: lh.urls ? {
         urls: lh.urls,
         performance: lh.perf, accessibility: lh.a11y, bestPractices: lh.bp, seo: lh.seo,
@@ -599,7 +615,7 @@ export class Store {
     const rows = new Map();
     const row = id => {
       let r = rows.get(id);
-      if (!r) { r = { projectId: id, sessions: 0, runs: 0, failedRuns: 0, activeRuns: 0, avgDurationMs: null, tcPassed: 0, tcFailed: 0, passRate: null }; rows.set(id, r); }
+      if (!r) { r = { projectId: id, sessions: 0, runs: 0, failedRuns: 0, activeRuns: 0, avgDurationMs: null, tcPassed: 0, tcFailed: 0, lhPassed: 0, lhFailed: 0, passRate: null, recentRuns: [] }; rows.set(id, r); }
       return r;
     };
     for (const r of this.db.prepare(`SELECT s.project_id AS id, count(*) AS n FROM sessions s
@@ -620,8 +636,30 @@ export class Store {
       GROUP BY s.project_id`).all(...vals)) {
       const t = row(r.id);
       t.tcPassed = r.passed ?? 0; t.tcFailed = r.failed ?? 0;
-      const total = t.tcPassed + t.tcFailed;
-      t.passRate = total ? t.tcPassed / total : null;
+    }
+    for (const r of this.db.prepare(`SELECT s.project_id AS id,
+      sum(CASE WHEN r.status='passed' THEN 1 ELSE 0 END) AS passed,
+      sum(CASE WHEN r.status='failed' THEN 1 ELSE 0 END) AS failed
+      FROM runs r JOIN sessions s ON s.id=r.session_id
+      WHERE r.tool='lh' AND r.finalized_at IS NOT NULL ${from ? 'AND r.queued_at>=?' : ''}
+      GROUP BY s.project_id`).all(...vals)) {
+      const t = row(r.id);
+      t.lhPassed = r.passed ?? 0; t.lhFailed = r.failed ?? 0;
+    }
+    for (const r of this.db.prepare(`SELECT id, project_id, tool, status, finished_at, session_label FROM (
+      SELECT r.id, s.project_id, r.tool, r.status, r.finished_at, s.label AS session_label,
+        row_number() OVER (PARTITION BY s.project_id
+          ORDER BY coalesce(r.finished_at, r.started_at, r.queued_at) DESC) AS rn
+      FROM runs r JOIN sessions s ON s.id=r.session_id
+      ${from ? 'WHERE r.queued_at>=?' : ''}
+    ) WHERE rn<=20 ORDER BY project_id, rn DESC`).all(...vals)) {
+      const t = row(r.project_id);
+      t.recentRuns.push({ id: r.id, tool: r.tool, status: r.status, finished_at: r.finished_at, session_label: r.session_label });
+    }
+    // Lighthouse per run dicampur dengan TC Playwright; keduanya sama-sama hasil penilaian.
+    for (const t of rows.values()) {
+      const total = t.tcPassed + t.tcFailed + t.lhPassed + t.lhFailed;
+      t.passRate = total ? (t.tcPassed + t.lhPassed) / total : null;
     }
     for (const r of this.db.prepare(`SELECT s.project_id AS id, count(*) AS n FROM runs r
       JOIN sessions s ON s.id=r.session_id WHERE r.status IN ('queued','running','uploading')

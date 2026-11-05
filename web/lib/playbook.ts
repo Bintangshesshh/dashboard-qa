@@ -84,9 +84,15 @@ export type Session = {
   run_count?: number; pw_count?: number; lh_count?: number;
   failed_count?: number; active_count?: number;
 };
+export type RunMark = {
+  id: string; tool: "pw" | "lh"; status: Run["status"];
+  finished_at: string | null; session_label: string;
+};
 export type Stats = {
-  tcPassed: number; tcFailed: number; passRate: number | null;
+  tcPassed: number; tcFailed: number; lhPassed: number; lhFailed: number;
+  passRate: number | null;
   sessions: number; runs: number; activeRuns: number; failedRuns: number; failedSessions: number; avgDurationMs: number | null;
+  recentRuns: RunMark[];
   lighthouse: {
     urls: number; performance: number | null; accessibility: number | null;
     bestPractices: number | null; seo: number | null;

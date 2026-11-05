@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, fmtDate, groupProjects, type Project, type Stats } from "../../../lib/playbook";
+import { RunBar } from "../../_components/run-bar";
 
 // Satu kartu per project, selalu tampil walau belum ada sesi.
 export default function ReportsPage() {
@@ -39,7 +40,7 @@ export default function ReportsPage() {
             const tone = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
             const running = (s?.activeRuns ?? 0) > 0;
             const failedRuns = s?.failedRuns ?? 0;
-            const rateTitle = "Persentase test case Playwright lulus. Run Lighthouse dinilai terpisah.";
+            const rateTitle = "Gabungan test case Playwright dan run Lighthouse. Satu run Lighthouse = satu nilai.";
             return (
               <div className="pb-card pb-pcard" key={p.id}>
                 <div className="pb-pcard-top">
@@ -54,12 +55,12 @@ export default function ReportsPage() {
                     className={`pb-badge ${running ? "running" : tone === "ok" ? "passed" : tone === "warn" ? "warn" : tone === "bad" ? "failed" : "queued"}`}
                     title={running ? `${s!.activeRuns} run sedang berjalan` : s ? `${s.runs ?? 0} run` : "belum ada run"}
                   >
-                    {running ? "Berjalan" : tone === "ok" ? "Lulus TC" : tone === "bad" ? "Gagal TC" : rate == null ? "Belum ada" : "Waspada TC"}
+                    {running ? "Berjalan" : tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : rate == null ? "Belum ada" : "Waspada"}
                   </span>
                 </div>
-                <div className="pb-pcard-bar"><span style={{ width: `${rate ?? 0}%` }} /></div>
+                <RunBar runs={s?.recentRuns ?? []} label={`Riwayat run ${p.name}`} />
                 <div className="pb-pcard-foot">
-                  <span title={rateTitle}>TC lulus <strong>{rate == null ? "-" : `${rate}%`}</strong></span>
+                  <span title={rateTitle}>Lulus <strong>{rate == null ? "-" : `${rate}%`}</strong></span>
                   <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
                 </div>
                 <Link className="pb-btn sm primary" href={`/reports/project/${p.id}`}>Buka project</Link>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { RunBar } from "../_components/run-bar";
 import {
   api, fmtDate, fmtDur, readLastProject, rememberProject, runStatusLabel,
   type Project, type RunRow, type Session, type Stats,
@@ -197,7 +198,7 @@ export default function OverviewPage() {
     const prate = ps?.passRate == null ? null : Math.round(ps.passRate * 100);
     const tone = prate == null ? "" : prate >= 90 ? "ok" : prate >= 75 ? "warn" : "bad";
     const failedRuns = ps?.failedRuns ?? 0;
-    const rateTitle = "Persentase test case Playwright lulus. Run Lighthouse dinilai terpisah.";
+    const rateTitle = "Gabungan test case Playwright dan run Lighthouse. Satu run Lighthouse = satu nilai.";
     return (
       <Link className="pb-card pb-pcard" key={p.id} href={`/reports/project/${p.id}`}>
         <div className="pb-pcard-top">
@@ -209,12 +210,12 @@ export default function OverviewPage() {
             </div>
           </div>
           <span className={`pb-badge ${tone === "ok" ? "passed" : tone === "bad" ? "failed" : "queued"}`}>
-            {tone === "ok" ? "Lulus TC" : tone === "bad" ? "Gagal TC" : prate == null ? "Belum ada" : "Waspada TC"}
+            {tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : prate == null ? "Belum ada" : "Waspada"}
           </span>
         </div>
-        <div className="pb-pcard-bar"><span style={{ width: `${prate ?? 0}%` }} /></div>
+        <RunBar runs={ps?.recentRuns ?? []} label={`Riwayat run ${p.name}`} />
         <div className="pb-pcard-foot">
-          <span title={rateTitle}>TC lulus <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
+          <span title={rateTitle}>Lulus <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
           <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
         </div>
       </Link>
@@ -328,7 +329,7 @@ export default function OverviewPage() {
         </article>
 
         <article className="pb-card pb-kpi pb-kpi-donut">
-          <div className="pb-kpi-label">Pass rate TC</div>
+          <div className="pb-kpi-label">Pass rate</div>
           <div className="pb-donut-wrap">
             <svg className="pb-donut" viewBox="0 0 120 120" role="img"
               aria-label={rate == null ? "Pass rate belum ada data" : `Pass rate ${rate} persen`}>
@@ -476,7 +477,7 @@ export default function OverviewPage() {
             <span><strong>{totalRuns}</strong> run final</span>
             <span><i className="pb-swatch" />{totalPassed} lulus</span>
             <span><i className="pb-swatch bad" />{totalFailed} gagal</span>
-            <span>Tingkat lulus <strong>{passRate == null ? "-" : `${passRate}%`}</strong></span>
+            <span>Tingkat lulus run <strong>{passRate == null ? "-" : `${passRate}%`}</strong></span>
             {hasDailyRuns && <span>Puncak <strong>{peak.total}</strong> run · {peak.day.slice(5)}</span>}
           </div>
         </section>
