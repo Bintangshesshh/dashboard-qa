@@ -642,15 +642,14 @@ button { cursor: pointer; }
 .pb-pcard-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .pb-pcard h3 { font-size: 16px; line-height: 1.2; }
 .pb-pcard-meta { font-size: 12px; color: var(--meta); margin-top: 3px; }
-.pb-runbar { display: flex; align-items: stretch; gap: 3px; height: 7px; }
+.pb-runbar { display: flex; flex-direction: row; align-items: center; gap: 3px; height: 20px; }
 .pb-runbar-seg {
-  flex: 1 1 0;
-  min-width: 3px;
-  border-radius: 99px;
+  width: 5px;
+  height: 20px;
+  flex: 0 0 5px;
+  border-radius: 2px;
   background: var(--surface-warm);
-  transition: transform var(--motion-fast);
 }
-.pb-runbar-seg:hover { transform: scaleY(1.6); }
 .pb-runbar-seg.ok { background: var(--ok); }
 .pb-runbar-seg.bad { background: var(--bad); }
 .pb-runbar-seg.run { background: var(--accent, #3b82f6); }
