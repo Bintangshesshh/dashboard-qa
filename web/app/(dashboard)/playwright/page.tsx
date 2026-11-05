@@ -8,7 +8,7 @@ import {
   api, fmtDur, fmtTime, groupProjects, readLastEnv, readLastProject, rememberEnv, rememberProject,
   type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
-import { confirmAction, showInfoToast, showSuccessToast } from "../../../lib/alerts";
+import { confirmAction, showErrorAlert, showInfoToast, showSuccessToast } from "../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -201,6 +201,40 @@ export default function PlaywrightPage() {
     : dirty ? "Belum disimpan"
     : savedAt ? `Tersimpan ${fmtTime(savedAt)}` : "Tersimpan";
 
+  // Project tanpa spec: buat scaffold dasar langsung dari halaman run.
+  const addSpec = async () => {
+    if (!project || saving) return;
+    const path = `tests/${project.slug}.spec.ts`;
+    if (!(await confirmAction({
+      title: "Buat spec Playwright?",
+      text: `${path} untuk ${project.name}.`,
+      confirmButtonText: "Ya, Buat",
+    }))) return;
+    setSaving(true); setError("");
+    try {
+      const fallback = resolvedUrl(project, env) || project.base_url || "";
+      const code = [
+        'import { test, expect } from "@playwright/test";',
+        "",
+        'test("homepage terbuka", async ({ page }) => {',
+        `  await page.goto(process.env.BASE_URL ?? ${JSON.stringify(fallback)});`,
+        "  await expect(page).toHaveTitle(/./);",
+        "});",
+        "",
+      ].join("\n");
+      const created = await api.createTestFile({
+        projectId, tool: "pw", path, label: `${project.name} Playwright`, code,
+      });
+      setFiles(prev => [created, ...prev]);
+      setFileId(created.id);
+      setDraft(created.code);
+      setSavedCode(created.code);
+      setSavedAt(null);
+      showSuccessToast(`${created.label} dibuat.`);
+    } catch (e) { showErrorAlert("Gagal membuat spec", (e as Error).message); }
+    finally { setSaving(false); }
+  };
+
   // Pindah spec: simpan dulu perubahan spec lama supaya tidak hilang.
   const pickFile = async (id: string) => {
     const next = files.find(f => f.id === id);
@@ -385,7 +419,6 @@ export default function PlaywrightPage() {
                 </select>
               </label>
             )}
-            <Link className="pb-link-muted" href="/settings">Kelola spec di Pengaturan</Link>
           </div>
         </div>
         {conflict && (
@@ -412,9 +445,13 @@ export default function PlaywrightPage() {
         {selected ? (
           <CodeEditor value={draft} onChange={setDraft} disabled={running} />
         ) : (
-          <p className="pb-empty">
-            Project ini belum punya spec Playwright. <Link href="/settings">Tambah spec di Pengaturan</Link>.
-          </p>
+          <div className="pb-empty">
+            <p style={{ margin: 0 }}>Project ini belum punya spec Playwright.</p>
+            <button className="pb-btn sm primary" style={{ marginTop: 10 }}
+              onClick={addSpec} disabled={!project || saving}>
+              {saving ? "Membuat…" : "Buat spec"}
+            </button>
+          </div>
         )}
       </section>
 

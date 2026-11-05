@@ -209,7 +209,7 @@ export default function OverviewPage() {
               {failedRuns > 0 && ` · ${failedRuns} gagal`}
             </div>
           </div>
-          <span className={`pb-badge ${tone === "ok" ? "passed" : tone === "bad" ? "failed" : "queued"}`}>
+          <span className={`pb-badge ${tone === "ok" ? "passed" : tone === "warn" ? "warn" : tone === "bad" ? "failed" : "closed"}`}>
             {tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : prate == null ? "Belum ada" : "Waspada"}
           </span>
         </div>

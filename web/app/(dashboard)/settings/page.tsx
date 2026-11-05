@@ -352,7 +352,16 @@ export default function SettingsPage() {
       setFiles(prev => prev.filter(x => x.id !== file.id));
       setNotice(`${file.label} dihapus.`);
       showSuccessToast(`${file.label} dihapus.`);
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) { showErrorAlert("Gagal menghapus test file", (e as Error).message); }
+  };
+
+  // File yang sudah dipakai run tidak bisa dihapus; nonaktifkan saja.
+  const toggleTestFile = async (file: TestFile) => {
+    try {
+      const updated = await api.patchTestFile(file.id, { enabled: file.enabled ? 0 : 1 });
+      setFiles(prev => prev.map(x => (x.id === updated.id ? updated : x)));
+      showSuccessToast(`${updated.label} ${updated.enabled ? "diaktifkan" : "dinonaktifkan"}.`);
+    } catch (e) { showErrorAlert("Gagal mengubah status test file", (e as Error).message); }
   };
 
   // Hapus permanen: project berriwayat ikut menghapus sesi, run, dan report.
@@ -719,7 +728,7 @@ export default function SettingsPage() {
                       : own.map(p => (
                         <ProjectRow key={p.id} project={p} groups={groups} files={files}
                           onSave={saveProject} onAddFile={addTestFile}
-                          onRemoveFile={removeTestFile} onDelete={deleteProject} />
+                          onRemoveFile={removeTestFile} onToggleFile={toggleTestFile} onDelete={deleteProject} />
                       ))}
                   </div>
                 );
@@ -734,7 +743,7 @@ export default function SettingsPage() {
                   {orphans.map(p => (
                     <ProjectRow key={p.id} project={p} groups={groups} files={files}
                       onSave={saveProject} onAddFile={addTestFile}
-                      onRemoveFile={removeTestFile} onDelete={deleteProject} />
+                      onRemoveFile={removeTestFile} onToggleFile={toggleTestFile} onDelete={deleteProject} />
                   ))}
                 </div>
               )}

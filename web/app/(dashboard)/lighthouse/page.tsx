@@ -12,7 +12,7 @@ import {
   api, artifactUrl, fmtTime, groupProjects, pct, readLastEnv, readLastProject, rememberEnv, rememberProject, runStatusLabel,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
-import { confirmAction, showSuccessToast } from "../../../lib/alerts";
+import { confirmAction, showErrorAlert, showSuccessToast } from "../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -148,6 +148,35 @@ export default function LighthousePage() {
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
 
+  // Project tanpa config: buat config default langsung dari halaman run.
+  const addConfig = async () => {
+    if (!project || saving) return;
+    const path = `lighthouserc.${project.slug}.js`;
+    if (!(await confirmAction({
+      title: "Buat config Lighthouse?",
+      text: `${project.name}: target utama, 1 run, budget 60.`,
+      confirmButtonText: "Ya, Buat",
+    }))) return;
+    setSaving(true); setError("");
+    try {
+      const created = await api.createTestFile({
+        projectId,
+        tool: "lh",
+        path,
+        label: `${project.name} Lighthouse`,
+        config: {
+          urls: [],
+          numberOfRuns: 1,
+          budgets: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, { minScore: 0.6 }])),
+        },
+      });
+      setFiles([created]);
+      setConfig(created.config ?? "");
+      showSuccessToast(`${created.label} dibuat.`);
+    } catch (e) { showErrorAlert("Gagal membuat config", (e as Error).message); }
+    finally { setSaving(false); }
+  };
+
   // Autosave: berhenti mengubah form 1 dtk = tersimpan. Run tidak perlu klik Simpan.
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -278,7 +307,15 @@ export default function LighthousePage() {
         {selected && project ? (
           <LhConfigEditor project={project} value={config} target={target}
             disabled={running} onChange={setConfig} idPrefix="lh-page" />
-        ) : <p className="pb-empty">Project ini belum punya konfigurasi Lighthouse.</p>}
+        ) : (
+          <div className="pb-empty">
+            <p style={{ margin: 0 }}>Project ini belum punya konfigurasi Lighthouse.</p>
+            <button className="pb-btn sm primary" style={{ marginTop: 10 }}
+              onClick={addConfig} disabled={!project || saving}>
+              {saving ? "Membuat…" : "Buat config"}
+            </button>
+          </div>
+        )}
       </section>
 
       <RunPanel

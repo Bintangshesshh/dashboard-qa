@@ -12,6 +12,7 @@ type ProjectHandlers = {
   onSave: SaveProject;
   onAddFile: AddFile;
   onRemoveFile: (f: TestFile) => Promise<void>;
+  onToggleFile: (f: TestFile) => Promise<void>;
   onDelete: (p: Project) => Promise<void>;
 };
 
@@ -328,7 +329,7 @@ test("halaman utama terbuka", async ({ page }) => {
 `;
 
 // Satu project di pohon grup: pindah grup, arsip/pulihkan, dan detail URL.
-export function ProjectRow({ project, groups, files, onSave, onAddFile, onRemoveFile, onDelete }: {
+export function ProjectRow({ project, groups, files, onSave, onAddFile, onRemoveFile, onToggleFile, onDelete }: {
   project: Project;
   groups: ProjectGroup[];
   files: TestFile[];
@@ -366,14 +367,14 @@ export function ProjectRow({ project, groups, files, onSave, onAddFile, onRemove
       </div>
       {open && (
         <ProjectDetail project={project} files={files} onSave={onSave}
-          onAddFile={onAddFile} onRemoveFile={onRemoveFile} onDelete={onDelete} />
+          onAddFile={onAddFile} onRemoveFile={onRemoveFile} onToggleFile={onToggleFile} onDelete={onDelete} />
       )}
     </div>
   );
 }
 
 // Detail URL/origin project + test file. Slug read-only karena dipakai CLI dan URL report.
-function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDelete }: {
+function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onToggleFile, onDelete }: {
   project: Project;
   files: TestFile[];
 } & ProjectHandlers) {
@@ -441,6 +442,25 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
     finally { setBusy(false); }
   };
 
+  const fileActions = (
+    <>
+      <button className="pb-btn sm" onClick={() => confirmRun({
+        title: addOpen ? "Batal tambah spec?" : "Buka form spec Playwright?",
+        confirmButtonText: addOpen ? "Ya, Batal" : "Buka",
+      }, () => {
+        setAddOpen(o => !o);
+        showInfoToast(addOpen ? "Tambah spec dibatalkan." : "Form spec dibuka.");
+      })} disabled={busy}>
+        {addOpen ? "Batal" : "+ Spec Playwright"}
+      </button>
+      {!hasLh && (
+        <button className="pb-btn sm" onClick={addLhConfig} disabled={busy}>
+          Buat config Lighthouse
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div className="pb-proj-body">
       <div className="pb-grid two">
@@ -484,27 +504,24 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
             </span>
             <span className="pb-spec-name">{f.label}</span>
             <span className="pb-spec-path">{f.path}</span>
-            <button className="pb-btn sm danger" onClick={() => onRemoveFile(f)}>Hapus</button>
+            <span className="pb-spec-actions">
+              <button className="pb-btn sm" onClick={() => onToggleFile(f)}>
+                {f.enabled ? "Nonaktifkan" : "Aktifkan"}
+              </button>
+              <button className="pb-btn sm danger" onClick={() => onRemoveFile(f)}>Hapus</button>
+            </span>
           </div>
         ))}
-        {!own.length && <p className="pb-hint">Belum ada spec atau config untuk project ini.</p>}
-
-        <div className="pb-row pb-proj-foot" style={{ gap: 8 }}>
-          <button className="pb-btn sm" onClick={() => confirmRun({
-            title: addOpen ? "Batal tambah spec?" : "Buka form spec Playwright?",
-            confirmButtonText: addOpen ? "Ya, Batal" : "Buka",
-          }, () => {
-            setAddOpen(o => !o);
-            showInfoToast(addOpen ? "Tambah spec dibatalkan." : "Form spec dibuka.");
-          })} disabled={busy}>
-            {addOpen ? "Batal" : "+ Spec Playwright"}
-          </button>
-          {!hasLh && (
-            <button className="pb-btn sm" onClick={addLhConfig} disabled={busy}>
-              Buat config Lighthouse
-            </button>
-          )}
-        </div>
+        {own.length === 0 ? (
+          <div className="pb-file-empty">
+            <p className="pb-hint">
+              Belum ada spec atau config. Generate spec lewat form di atas, atau buat manual:
+            </p>
+            <div className="pb-row" style={{ gap: 8 }}>{fileActions}</div>
+          </div>
+        ) : (
+          <div className="pb-row pb-proj-foot" style={{ gap: 8 }}>{fileActions}</div>
+        )}
 
         {addOpen && (
           <div className="pb-lh-field pb-proj-foot">
