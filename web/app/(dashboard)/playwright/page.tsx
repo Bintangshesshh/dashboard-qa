@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArtifactLink } from "../../_components/report-link";
 import { CodeEditor } from "../code-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, fmtDur, fmtTime, groupProjects, readLastProject, rememberProject,
+  api, fmtDur, fmtTime, groupProjects, readLastProject, rememberProject,
   type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
 import { confirmAction, showInfoToast, showSuccessToast } from "../../../lib/alerts";
@@ -434,12 +433,6 @@ export default function PlaywrightPage() {
             <span className={`pb-badge ${run.status}`}>{run.status}</span>
           </div>
           <div className="pb-row">
-            {run.artifacts?.some(a => a.path === "playwright-report/index.html") ? (
-              <ArtifactLink href={artifactUrl(run.id, "playwright-report/index.html")}>Buka report (tab baru)</ArtifactLink>
-            ) : <span className="pb-muted" style={{ fontSize: 12 }}>report HTML tidak ada</span>}
-            {run.artifacts?.some(a => a.path === "report.json") && (
-              <ArtifactLink href={artifactUrl(run.id, "report.json")} missing="JSON hilang">JSON</ArtifactLink>
-            )}
             <Link className="pb-btn sm" href={`/reports/${run.session_id}`}>Detail sesi</Link>
           </div>
           {failed > 0 && (
