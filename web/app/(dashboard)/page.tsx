@@ -196,20 +196,25 @@ export default function OverviewPage() {
     const ps = perProject[p.id];
     const prate = ps?.passRate == null ? null : Math.round(ps.passRate * 100);
     const tone = prate == null ? "" : prate >= 90 ? "ok" : prate >= 75 ? "warn" : "bad";
+    const failedRuns = ps?.failedRuns ?? 0;
+    const rateTitle = "Persentase test case Playwright lulus. Run Lighthouse dinilai terpisah.";
     return (
       <Link className="pb-card pb-pcard" key={p.id} href={`/reports/project/${p.id}`}>
         <div className="pb-pcard-top">
           <div>
             <h3>{p.name}</h3>
-            <div className="pb-pcard-meta">{ps?.sessions ?? 0} sesi · {ps?.runs ?? 0} run</div>
+            <div className="pb-pcard-meta">
+              {ps?.sessions ?? 0} sesi · {ps?.runs ?? 0} run
+              {failedRuns > 0 && ` · ${failedRuns} gagal`}
+            </div>
           </div>
           <span className={`pb-badge ${tone === "ok" ? "passed" : tone === "bad" ? "failed" : "queued"}`}>
-            {tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : prate == null ? "Belum ada" : "Waspada"}
+            {tone === "ok" ? "Lulus TC" : tone === "bad" ? "Gagal TC" : prate == null ? "Belum ada" : "Waspada TC"}
           </span>
         </div>
         <div className="pb-pcard-bar"><span style={{ width: `${prate ?? 0}%` }} /></div>
         <div className="pb-pcard-foot">
-          <span>tingkat lulus <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
+          <span title={rateTitle}>TC lulus <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
           <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
         </div>
       </Link>

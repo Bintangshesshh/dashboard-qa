@@ -38,23 +38,28 @@ export default function ReportsPage() {
             const rate = s?.passRate == null ? null : Math.round(s.passRate * 100);
             const tone = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
             const running = (s?.activeRuns ?? 0) > 0;
+            const failedRuns = s?.failedRuns ?? 0;
+            const rateTitle = "Persentase test case Playwright lulus. Run Lighthouse dinilai terpisah.";
             return (
               <div className="pb-card pb-pcard" key={p.id}>
                 <div className="pb-pcard-top">
                   <div>
                     <h3>{p.name}{!p.active && <span className="pb-badge closed">Arsip</span>}</h3>
-                    <div className="pb-pcard-meta">{s?.sessions ?? 0} sesi · {s?.runs ?? 0} run</div>
+                    <div className="pb-pcard-meta">
+                      {s?.sessions ?? 0} sesi · {s?.runs ?? 0} run
+                      {failedRuns > 0 && ` · ${failedRuns} gagal`}
+                    </div>
                   </div>
                   <span
                     className={`pb-badge ${running ? "running" : tone === "ok" ? "passed" : tone === "warn" ? "warn" : tone === "bad" ? "failed" : "queued"}`}
                     title={running ? `${s!.activeRuns} run sedang berjalan` : s ? `${s.runs ?? 0} run` : "belum ada run"}
                   >
-                    {running ? "Berjalan" : tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : rate == null ? "Belum ada" : "Waspada"}
+                    {running ? "Berjalan" : tone === "ok" ? "Lulus TC" : tone === "bad" ? "Gagal TC" : rate == null ? "Belum ada" : "Waspada TC"}
                   </span>
                 </div>
                 <div className="pb-pcard-bar"><span style={{ width: `${rate ?? 0}%` }} /></div>
                 <div className="pb-pcard-foot">
-                  <span>tingkat lulus <strong>{rate == null ? "-" : `${rate}%`}</strong></span>
+                  <span title={rateTitle}>TC lulus <strong>{rate == null ? "-" : `${rate}%`}</strong></span>
                   <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
                 </div>
                 <Link className="pb-btn sm primary" href={`/reports/project/${p.id}`}>Buka project</Link>
