@@ -48,6 +48,7 @@ export function SpecGenerator({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [journey, setJourney] = useState(false);
   const [notice, setNotice] = useState("");
 
   // Project/environment berubah → hasil lama tidak boleh tersimpan ke project baru.
@@ -72,7 +73,7 @@ export function SpecGenerator({
     setError("");
     setNotice("");
     try {
-      setResult(await api.generateSpec(url.trim(), projectId));
+      setResult(await api.generateSpec(url.trim(), projectId, journey));
       showSuccessToast("Template berhasil dibuat.");
     } catch (e) {
       setError((e as Error).message);
@@ -91,7 +92,7 @@ export function SpecGenerator({
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = href;
-    anchor.download = "generated-flow.spec.ts";
+    anchor.download = journey ? "journey.spec.ts" : "generated-flow.spec.ts";
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -124,7 +125,7 @@ export function SpecGenerator({
             projectId,
             tool: "pw",
             path,
-            label: `${projectName || projectSlug || "Project"} Playwright (generated)`,
+            label: `${projectName || projectSlug || "Project"} Playwright (${journey ? "journey" : "generated"})`,
             code: result.code,
           });
       setNotice(`Tersimpan ke ${saved.path}. Spec langsung bisa dijalankan.`);
@@ -138,7 +139,7 @@ export function SpecGenerator({
   };
 
   const summary = result
-    ? `${result.pages.length} halaman · ${result.pages.reduce((n, p) => n + p.inputs, 0)} input · ${result.pages.reduce((n, p) => n + p.buttons, 0)} tombol`
+    ? `${result.pages.length} halaman · ${result.pages.reduce((n, p) => n + p.inputs, 0)} input · ${result.pages.reduce((n, p) => n + p.buttons, 0)} tombol${(result as any).journey ? " · journey mode" : ""}`
     : "";
 
   return (
@@ -147,8 +148,9 @@ export function SpecGenerator({
         <div>
           <h2>Generate spec dari halaman</h2>
           <div className="pb-card-sub">
-            Crawl maksimal 3 halaman dari origin yang sama, lalu rakit spec QA yang siap
-            dijalankan: cek halaman, isi form, tombol, dan navigasi tautan.
+            {journey
+              ? "Crawl seluruh path dan menu navigasi web, deteksi alur register/login/belanja, lalu rakit spec journey yang menjelajahi seluruh pengalaman pelanggan: daftar, masuk, cari, jelajah seluruh kategori & navigasi, beli, dan checkout."
+              : "Crawl maksimal 3 halaman dari origin yang sama, lalu rakit spec QA yang siap dijalankan: cek halaman, isi form, tombol, dan navigasi tautan."}{" "}
             URL wajib lolos allowlist target.
           </div>
         </div>
@@ -182,8 +184,12 @@ export function SpecGenerator({
             disabled={loading}
           />
         </label>
+        <label className="pb-check" title="Generate spec alur lengkap: register, login, cari produk, tambah keranjang, checkout">
+          <input type="checkbox" checked={journey} onChange={e => setJourney(e.target.checked)} disabled={loading} />
+          Journey mode
+        </label>
         <button className="pb-btn primary" type="submit" disabled={loading || !url.trim()}>
-          {loading ? "Membuat…" : "Generate Template"}
+          {loading ? "Membuat…" : journey ? "Generate Journey" : "Generate Template"}
         </button>
       </form>
 

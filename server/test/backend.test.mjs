@@ -1775,3 +1775,41 @@ test('deleteExpiredAuthSessions: hanya baris kedaluwarsa yang dibuang', async ()
     assert.ok(store.authSessionById('a-new'));
   } finally { store.close?.(); }
 });
+
+test('A16: layar live dan kontrol debug — auth, frame, guard mode debug', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const session = (await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'local' } })).body.sessionId;
+  f.store.createRun({ id: 'r-live', sessionId: session, testFileId: null, tool: 'pw' });
+  f.store.patchRun('r-live', { status: 'running' });
+
+  // Tanpa login semua endpoint visual tertutup.
+  assert.equal((await f.call('/api/runs/r-live/live')).status, 401);
+  assert.equal((await f.call('/api/runs/r-live/live/1')).status, 401);
+
+  f.runner.liveFrames = async () => [{ n: 1000, at: new Date(1000).toISOString() }];
+  f.runner.controlState = async () => ({ mode: 'run', state: null });
+  f.runner.liveFramePath = (_id, n) =>
+    Number.isSafeInteger(n) && n > 0 ? join(f.runner.runsDir, 'missing.jpg') : null;
+
+  let r = await f.call('/api/runs/r-live/live', { cookie });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.latest, 1000);
+  assert.equal(r.body.frames.length, 1);
+
+  assert.equal((await f.call('/api/runs/r-live/live/abc', { cookie })).status, 400, 'nomor frame harus integer');
+  assert.equal((await f.call('/api/runs/r-live/live/999', { cookie })).status, 404);
+  assert.equal((await f.call('/api/runs/tidak-ada/live', { cookie })).status, 404);
+
+  // Pause hanya untuk run aktif di runner + mode debug (timeout normal 2 menit).
+  f.runner.active = { runId: 'r-live', options: {} };
+  r = await f.call('/api/runs/r-live/control', { method: 'POST', cookie, body: { action: 'pause' } });
+  assert.equal(r.status, 409);
+  assert.match(r.body.error, /mode Debug/);
+
+  f.runner.active = { runId: 'r-live', options: { debug: true } };
+  f.runner.control = async (_id, action) => ({ mode: action === 'resume' ? 'run' : action });
+  r = await f.call('/api/runs/r-live/control', { method: 'POST', cookie, body: { action: 'pause' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.mode, 'pause');
+});

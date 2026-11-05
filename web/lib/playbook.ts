@@ -217,10 +217,15 @@ export const api = {
     request<User>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   me: () => request<User>("/api/me"),
-  generateSpec: (url: string, projectId?: string) =>
+  generateSpec: (url: string, projectId?: string, journey?: boolean, maxPages?: number) =>
     request<GeneratedSpec>("/api/generate-spec", {
       method: "POST",
-      body: JSON.stringify({ url, ...(projectId ? { projectId } : {}) }),
+      body: JSON.stringify({
+        url,
+        ...(projectId ? { projectId } : {}),
+        ...(journey ? { journey: true } : {}),
+        ...(maxPages ? { maxPages } : {}),
+      }),
     }),
 
   // `all` ikutkan project arsip; hanya dipakai Pengaturan dan halaman arsip (PRD FR-03).
@@ -331,9 +336,16 @@ export const api = {
       method: "POST", body: JSON.stringify({ projectId, env, confirm, files }),
     }),
 
-  createRun: (sessionId: string, testFileId: string) =>
+  createRun: (sessionId: string, testFileId: string, opts: { recordVideo?: boolean; debug?: boolean } = {}) =>
     request<{ runId: string }>(`/api/sessions/${sessionId}/runs`, {
-      method: "POST", body: JSON.stringify({ testFileId }),
+      method: "POST", body: JSON.stringify({ testFileId, ...opts }),
+    }),
+  // Layar live + kontrol debug (pause/step). Hanya run Playwright server-side.
+  live: (runId: string) =>
+    request<{ frames: LiveFrame[]; latest: number | null } & RunControl>(`/api/runs/${runId}/live`),
+  control: (runId: string, action: "pause" | "resume" | "step") =>
+    request<{ mode: string }>(`/api/runs/${runId}/control`, {
+      method: "POST", body: JSON.stringify({ action }),
     }),
   run: (id: string) => request<Run>(`/api/runs/${id}`),
   runs: (q: { project?: string; tool?: string; limit?: number } = {}) => {
@@ -364,8 +376,20 @@ export const api = {
 
 export type LogEntry = { seq: number; stream: string; text: string; at: string };
 
+// Frame layar live: nama file memuat epoch ms, jadi UI bisa menyelaraskan
+// dengan timestamp log tanpa endpoint tambahan.
+export type LiveFrame = { n: number; at: string };
+export type RunControl = {
+  mode: "run" | "pause" | "step";
+  state: { label: string; at: number } | null;
+  // Hanya true kalau run aktif memakai mode Debug (pause/step diizinkan server).
+  debug?: boolean;
+};
+
 export const artifactUrl = (runId: string, path: string) =>
   `/artifacts/${runId}/${path.split("/").map(encodeURIComponent).join("/")}`;
+
+export const liveFrameUrl = (runId: string, n: number) => `/api/runs/${runId}/live/${n}`;
 
 export const reportUrl = (reportId: string, path = "index.html") =>
   `/artifacts/reports/${reportId}/${path}`;
