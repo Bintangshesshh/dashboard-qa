@@ -642,6 +642,19 @@ test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion error', asyn
   assert.deepEqual(parsed.ci.assert.assertions['categories:performance'], ['error', { minScore: 0.8 }], 'budget error agar skor rendah = failed');
   assert.equal(parsed.ci.upload.outputDir, 'D:/runs/abc/artifacts', 'backslash dinormalisasi');
 
+  // URL config pada host project ikut origin sesi; host lain dibiarkan.
+  const rebased = JSON.parse(lhConfig(
+    { urls: ['https://prod.test/a', 'https://luar.test/b'] },
+    'http://localhost:3000/',
+    'x',
+    { projectUrls: ['https://prod.test'] },
+  ).replace(/^module\.exports = /, '').replace(/;\n$/, ''));
+  assert.deepEqual(rebased.ci.collect.url, [
+    'http://localhost:3000/',
+    'http://localhost:3000/a',
+    'https://luar.test/b',
+  ]);
+
   assert.throws(() => lhConfig({ urls: [] }, null, 'x'), /Tidak ada URL/);
   // 5 URL total (target + 4 tambahan) masih sah; 6 ditolak.
   const five = lhConfig({ urls: ['https://a.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/'] }, 'https://e.test/', 'x');

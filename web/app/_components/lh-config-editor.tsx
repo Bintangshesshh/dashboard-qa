@@ -43,6 +43,21 @@ export const extraUrlsOf = (cfg: LhConfig, project: Project) => {
   return (cfg.urls ?? []).filter(u => !known.some(k => sameUrl(u, k)));
 };
 
+// URL tambahan yang host-nya milik project ikut origin target (env terpilih).
+// Sama dengan logika server di runner.mjs: lhUrls().
+export const effectiveUrls = (target: string, extra: string[], project: Project) => {
+  const origin = (v: string) => { try { return new URL(v).origin; } catch { return null; } };
+  const known = new Set([project.base_url, project.staging_url, project.local_url].filter(Boolean).map(v => origin(v as string)).filter(Boolean));
+  const base = origin(target);
+  return extra.map(raw => {
+    if (!base) return raw;
+    try {
+      const u = new URL(raw);
+      return known.has(u.origin) ? base + u.pathname + u.search + u.hash : raw;
+    } catch { return raw; }
+  });
+};
+
 const isHttp = (u: string) => {
   try { const x = new URL(u); return x.protocol === "http:" || x.protocol === "https:"; } catch { return false; }
 };
@@ -115,9 +130,11 @@ export default function LhConfigEditor({
   const totalAudits = totalUrls * runs;
   const roughMinutes = Math.round(lhEstimateMs(totalUrls, runs) / 60000);
   const err = lhConfigError({ target, extra: clean, runs, scores });
+  // Host project pada URL tambahan ikut origin target (env yang dipilih).
+  const effective = effectiveUrls(target, clean, project);
   const preview = JSON.stringify({
     ci: {
-      collect: { url: [target, ...clean].filter(Boolean), numberOfRuns: runs },
+      collect: { url: [...new Set([target, ...effective].filter(Boolean))], numberOfRuns: runs },
       assert: { assertions: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, ["error", { minScore: (scores[c.key] ?? 60) / 100 }]])) },
     },
   }, null, 2);
@@ -201,6 +218,9 @@ export default function LhConfigEditor({
                 showInfoToast("Kolom URL ditambahkan.");
               }}>+ Tambah URL</button>
           )}
+        </span>
+        <span className="pb-set-help">
+          URL yang host-nya sama dengan project otomatis ikut Environment yang dipilih.
         </span>
       </div>
 

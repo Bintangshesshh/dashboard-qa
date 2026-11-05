@@ -916,7 +916,7 @@ button { cursor: pointer; }
   flex-direction: row; align-items: center; flex-wrap: wrap; gap: 14px;
 }
 .pb-group-block .pb-project-grid > :only-child > .pb-pcard-top { flex: 1 1 260px; }
-.pb-group-block .pb-project-grid > :only-child > .pb-pcard-bar { flex: 1 1 120px; max-width: 220px; }
+.pb-group-block .pb-project-grid > :only-child > .pb-runbar { flex: 1 1 120px; max-width: 220px; }
 .pb-group-block .pb-project-grid > :only-child > .pb-pcard-foot { flex: 1 1 200px; margin: 0; }
 .pb-group-label {
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
@@ -1136,7 +1136,7 @@ button { cursor: pointer; }
   .pb-project-grid { grid-template-columns: minmax(0, 1fr); }
   /* Mobile: kartu tunggal kembali menumpuk vertikal. */
   .pb-group-block .pb-project-grid > :only-child { flex-direction: column; align-items: stretch; }
-  .pb-group-block .pb-project-grid > :only-child > .pb-pcard-bar { max-width: none; }
+  .pb-group-block .pb-project-grid > :only-child > .pb-runbar { max-width: none; }
   .pb-audit-row { grid-template-columns: minmax(0, 1fr) auto; }
   .pb-audit-what { grid-area: 1 / 1; }
   .pb-audit-time { grid-area: 1 / 2; }

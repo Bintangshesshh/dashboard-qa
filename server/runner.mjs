@@ -56,8 +56,21 @@ export function lhAuditShape(testFile, targetUrl) {
   return [urls.length || 1, cfg?.numberOfRuns ?? 1];
 }
 
-export function lhUrls(cfg, targetUrl) {
-  return [...new Set([...(targetUrl ? [targetUrl] : []), ...(cfg?.urls ?? [])])];
+// URL config bisa ditulis pada host env mana pun (production paling umum).
+// Kalau host-nya milik project, pindahkan ke origin target sesi supaya env
+// local/staging tidak ikut menembak production.
+export function lhUrls(cfg, targetUrl, projectUrls = []) {
+  const origin = value => { try { return new URL(value).origin; } catch { return null; } };
+  const known = new Set(projectUrls.map(origin).filter(Boolean));
+  const base = targetUrl ? origin(targetUrl) : null;
+  const urls = (cfg?.urls ?? []).map(raw => {
+    if (!base) return raw;
+    try {
+      const u = new URL(raw);
+      return known.has(u.origin) ? base + u.pathname + u.search + u.hash : raw;
+    } catch { return raw; }
+  });
+  return [...new Set([...(targetUrl ? [targetUrl] : []), ...urls])];
 }
 
 // Hanya loopback HTTPS yang dilewati cek sertifikat; staging/production tetap divalidasi penuh.
@@ -65,8 +78,8 @@ export function lhUrls(cfg, targetUrl) {
 const isLoopback = h => h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost');
 const localHttps = urls => urls.some(u => { try { const x = new URL(u); return x.protocol === 'https:' && isLoopback(x.hostname); } catch { return false; } });
 
-export function lhConfig(cfg, targetUrl, outDir, { allowedOrigins = [] } = {}) {
-  const urls = lhUrls(cfg, targetUrl);
+export function lhConfig(cfg, targetUrl, outDir, { allowedOrigins = [], projectUrls = [] } = {}) {
+  const urls = lhUrls(cfg, targetUrl, projectUrls);
   if (!urls.length) throw new Error('Tidak ada URL untuk diaudit: sesi tanpa targetUrl dan config tanpa urls');
   if (urls.length > MAX_LH_URLS) throw new Error(`Maksimal ${MAX_LH_URLS} URL per run Lighthouse (diminta ${urls.length})`);
   // URL tambahan dicek sebelum spawn: bentuk URL + origin yang diizinkan project.
@@ -203,6 +216,13 @@ export class Runner extends EventEmitter {
 
   async status(patch) {
     this.emit('status', { type: 'status', runId: this.active?.runId, run: await this.store.patchRun(this.active?.runId, patch) });
+  }
+
+  // URL project per env: dipakai untuk menggeser URL config ke origin sesi.
+  projectUrlsFor(state) {
+    const session = state.sessionId ? this.store.getSession(state.sessionId) : null;
+    const project = session ? this.store.getProject(session.project_id) : null;
+    return [project?.base_url, project?.staging_url, project?.local_url].filter(Boolean);
   }
 
   // Origin yang boleh ditembak runner: allowlist server + project (base/staging/local + projects.origins); env local ikut dicek.
@@ -345,8 +365,9 @@ export class Runner extends EventEmitter {
       configPath = join(dir, 'lighthouserc.cjs');
       // Origin URL tambahan divalidasi di sini juga: config bisa ditulis CLI.
       const allowed = this.allowedOriginsFor(state);
-      await writeFile(configPath, lhConfig(cfg, targetUrl, outDir, { allowedOrigins: allowed }));
-      const audited = lhUrls(cfg, targetUrl);
+      const projectUrls = this.projectUrlsFor(state);
+      await writeFile(configPath, lhConfig(cfg, targetUrl, outDir, { allowedOrigins: allowed, projectUrls }));
+      const audited = lhUrls(cfg, targetUrl, projectUrls);
       await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${audited.length} URL)\n`);
     }
     // cwd = dir: lhci menulis .lighthouseci/ relatif cwd, tiap run terisolasi; console/network LH muncul setelah audit selesai.

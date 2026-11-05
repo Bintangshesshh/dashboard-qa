@@ -6,7 +6,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RunClock } from "../_components/run-clock";
 import { fmtHms, type LogEntry, type Run } from "../../lib/playbook";
-import { confirmRun, showInfoToast } from "../../lib/alerts";
 
 const stripAnsi = (s: string) => s.replace(/\u001b?\[[0-9;]*m/g, "");
 
@@ -79,20 +78,9 @@ export function RunPanel({ logs, run, live, downloadHref }: {
   const netView = net.filter(n => !nQuery || n.url.toLowerCase().includes(nQuery.toLowerCase()));
   const maxMs = Math.max(1, ...netView.map(n => n.ms ?? 0));
 
-  const pickTab = (next: "log" | "console" | "network") => confirmRun({
-    title: `Buka tab ${next === "log" ? "Terminal" : next === "console" ? "Console" : "Network"}?`,
-    confirmButtonText: "Buka",
-  }, () => {
-    setTab(next);
-    showInfoToast(`Tab ${next === "log" ? "Terminal" : next === "console" ? "Console" : "Network"} dibuka.`);
-  });
-  const pickChip = (next: "all" | "error" | "warn") => confirmRun({
-    title: `Pakai filter ${next === "all" ? "Semua" : next === "error" ? "Error" : "Peringatan"}?`,
-    confirmButtonText: "Pakai",
-  }, () => {
-    setChip(next);
-    showInfoToast(`Filter ${next === "all" ? "Semua" : next === "error" ? "Error" : "Peringatan"} dipakai.`);
-  });
+  // Tab & filter murni UI: langsung ganti, tanpa dialog.
+  const pickTab = (next: "log" | "console" | "network") => setTab(next);
+  const pickChip = (next: "all" | "error" | "warn") => setChip(next);
 
   return (
     <section className="pb-card" style={{ marginBottom: 14 }}>

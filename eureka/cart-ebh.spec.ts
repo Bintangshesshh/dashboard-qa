@@ -3,7 +3,7 @@ import { creds } from "./creds";
 
 // BASE bisa diarahkan ke local/staging lewat env; fallback ke production.
 const BASE = (process.env.BASE_URL ?? "https://eurekabookhouse.com").replace(/\/+$/, "");
-
+ 
 // Alur ebh sampai keranjang. Nggak ada checkout, nggak ada pembayaran.
 // Dipecah per langkah biar dashboard bisa nunjukin gagal di mana.
 test.describe.serial("ebh - sampai keranjang", () => {
