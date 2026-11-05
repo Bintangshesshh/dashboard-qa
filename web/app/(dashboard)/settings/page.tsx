@@ -364,7 +364,7 @@ export default function SettingsPage() {
     const typed = await promptText({
       icon: "warning",
       title: `Hapus permanen ${p.name}?`,
-      text: `Ketik nama project untuk konfirmasi. Semua sesi, run, laporan, dan spec project ini ikut terhapus dan tidak bisa dikembalikan.`,
+      text: `Ketik nama project untuk konfirmasi. Semua sesi, run, dan laporan project ini ikut terhapus dan tidak bisa dikembalikan.`,
       confirmButtonText: "Hapus permanen",
     });
     if (typed == null) return;
