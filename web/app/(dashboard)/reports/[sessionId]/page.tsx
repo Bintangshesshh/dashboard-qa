@@ -11,7 +11,7 @@ import { RunTerminal } from "../../run-terminal";
 import { ArtifactLink, LoginAgain, useProbe } from "../../../_components/report-link";
 import { RunClock } from "../../../_components/run-clock";
 import { ToolMark } from "../../../_components/tool-mark";
-import { confirmAction } from "../../../../lib/alerts";
+import { confirmAction, showInfoToast, showSuccessToast } from "../../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -70,6 +70,12 @@ export default function SessionDetail() {
   }, [session, load]);
 
   const openRunDetail = async (run: Run) => {
+    if (!(await confirmAction({
+      icon: "question",
+      title: "Lihat hasil run ini?",
+      text: "Data hasil run akan dimuat di panel bawah.",
+      confirmButtonText: "Ya, Lihat",
+    }))) return;
     try {
       setOpenRun(await api.run(run.id));
       // Panel muncul di bawah daftar run; tanpa scroll user mengira tombol diam.
@@ -78,7 +84,18 @@ export default function SessionDetail() {
         el?.scrollIntoView({ behavior: "smooth", block: "start" });
         el?.focus({ preventScroll: true });
       }, 0);
+      showInfoToast("Hasil run dimuat.");
     } catch (e) { setError((e as Error).message); }
+  };
+
+  const closeRunPanel = async () => {
+    if (!(await confirmAction({
+      icon: "question",
+      title: "Tutup panel hasil run?",
+      confirmButtonText: "Ya, Tutup",
+    }))) return;
+    setOpenRun(null);
+    showInfoToast("Panel hasil run ditutup.");
   };
 
   // Snapshot run terbuka ikut diperbarui selama belum final.
@@ -91,12 +108,20 @@ export default function SessionDetail() {
     return () => clearTimeout(t);
   }, [openRun]);
 
-  const publish = async (scope: "pw" | "lh" | "both") => {
+  const publish = async (scope: "pw" | "lh" | "both", verb = "Buat") => {
+    const label = scope === "both" ? "Gabungan" : scope === "pw" ? "Playwright" : "Lighthouse";
+    if (!(await confirmAction({
+      icon: "question",
+      title: `${verb} laporan ${label}?`,
+      text: "Laporan dibangun dari run yang sudah selesai.",
+      confirmButtonText: `Ya, ${verb}`,
+    }))) return;
     setError(""); setNotice("");
     setBusy(scope);
     try {
       const r = await api.createReport(sessionId, scope);
       setNotice(`Laporan ${scope} masuk antrean (${r.reportId.slice(0, 8)}).`);
+      showSuccessToast(`Laporan ${label} masuk antrean.`);
       load();
     } catch (e) {
       setError((e as Error).message);
@@ -114,6 +139,7 @@ export default function SessionDetail() {
     try {
       await api.cancelRun(run.id);
       setNotice("Run dibatalkan.");
+      showSuccessToast("Run dibatalkan.");
       load();
     } catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   };
@@ -129,7 +155,11 @@ export default function SessionDetail() {
     }))) return;
     setBusy("delete"); setError("");
     const back = session?.project_id ? `/reports/project/${session.project_id}` : "/reports";
-    try { await api.deleteSession(sessionId); router.push(back); }
+    try {
+      await api.deleteSession(sessionId);
+      showSuccessToast("Sesi dihapus.");
+      router.push(back);
+    }
     catch (e) { setError((e as Error).message); setBusy(""); }
   };
 
@@ -141,7 +171,12 @@ export default function SessionDetail() {
       confirmButtonText: "Ya, Tutup",
     }))) return;
     setBusy("close"); setError(""); setNotice("");
-    try { await api.closeSession(sessionId); setNotice("Sesi ditutup."); load(); }
+    try {
+      await api.closeSession(sessionId);
+      setNotice("Sesi ditutup.");
+      showSuccessToast("Sesi ditutup.");
+      load();
+    }
     catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   };
 
@@ -153,7 +188,12 @@ export default function SessionDetail() {
       confirmButtonText: "Ya, Hapus",
     }))) return;
     setBusy(run.id); setError(""); setNotice("");
-    try { await api.deleteRun(run.id); setNotice("Run dihapus."); load(); }
+    try {
+      await api.deleteRun(run.id);
+      setNotice("Run dihapus.");
+      showSuccessToast("Run dihapus.");
+      load();
+    }
     catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   };
 
@@ -344,7 +384,8 @@ export default function SessionDetail() {
                       )}
                       {/* Teks polos siap salin; isi sama dengan tabel HTML. */}
                       {canOpen && <CopyRingkas reportId={rep.id} runIds={ids} />}
-                      <button className="pb-btn sm" onClick={() => publish(rep.scope)}
+                      <button className="pb-btn sm"
+                        onClick={() => publish(rep.scope, rep.status === "ready" || rep.status === "stale" ? "Perbarui" : "Terbitkan")}
                         disabled={busy === rep.scope || !canPublish(rep) || runActive}
                         title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
                         {busy === rep.scope ? "…" : rep.status === "ready" ? "Perbarui laporan" : rep.status === "stale" ? "Perbarui laporan" : "Terbitkan"}
@@ -358,7 +399,7 @@ export default function SessionDetail() {
         </aside>
       </div>
 
-      {openRun && <RunPanel run={openRun} retention={retention} onClose={() => setOpenRun(null)} />}
+      {openRun && <RunPanel run={openRun} retention={retention} onClose={closeRunPanel} />}
     </>
   );
 }
@@ -469,6 +510,11 @@ function NativeReportLink({ runId, path, label }: { runId: string; path: string;
 function CopyRingkas({ reportId, runIds }: { reportId: string; runIds: string[] }) {
   const [label, setLabel] = useState("Salin markdown");
   const copy = async () => {
+    if (!(await confirmAction({
+      icon: "question",
+      title: "Salin markdown laporan?",
+      confirmButtonText: "Ya, Salin",
+    }))) return;
     try {
       // ringkas.txt ada per run; gabungkan semua run di report ini.
       const parts = await Promise.all(runIds.map(async id => {
@@ -477,6 +523,7 @@ function CopyRingkas({ reportId, runIds }: { reportId: string; runIds: string[] 
       }));
       await navigator.clipboard.writeText(parts.filter(Boolean).join("\n\n"));
       setLabel("Tersalin");
+      showSuccessToast("Markdown disalin.");
       setTimeout(() => setLabel("Salin markdown"), 2000);
     } catch {
       setLabel("Gagal salin");

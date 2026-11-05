@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Project, type User } from "../../lib/playbook";
-import { showLogoutConfirm } from "../../lib/alerts";
+import { confirmAction, confirmRun, showInfoToast, showLogoutConfirm, showSuccessToast } from "../../lib/alerts";
 
 const NAV = [
   { href: "/", label: "Ringkasan" },
@@ -26,14 +26,20 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessionInfo, setSessionInfo] = useState<{ label: string; projectId: string } | null>(null);
 
-  const ping = useCallback(() => {
-    api.me()
-      .then(u => { setUser(u); setDown(false); })
-      .catch(e => { if (!(e instanceof ApiError)) setDown(true); })
-      .finally(() => setLoading(false));
+  const ping = useCallback(async () => {
+    try {
+      const u = await api.me();
+      setUser(u); setDown(false);
+      return true;
+    } catch (e) {
+      if (!(e instanceof ApiError)) setDown(true);
+      return false;
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(ping, [ping, path]);
+  useEffect(() => { void ping(); }, [ping, path]);
 
   // Project arsip tetap perlu namanya untuk breadcrumb.
   useEffect(() => { api.projects({ all: true }).then(setProjects).catch(() => {}); }, []);
@@ -52,7 +58,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     if (!(await showLogoutConfirm())) return;
     await api.logout().catch(() => {});
+    showSuccessToast("Logout berhasil.");
     router.replace("/login");
+  };
+
+  const retryPing = async () => {
+    if (!(await confirmAction({
+      icon: "question",
+      title: "Coba lagi?",
+      text: "Periksa koneksi ke backend.",
+      confirmButtonText: "Ya, Coba",
+    }))) return;
+    if (await ping()) showSuccessToast("Backend tersambung kembali.");
   };
 
   // Prefix terpanjang: sub-halaman (/reports/<id>) tetap dapat label induk.
@@ -147,7 +164,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           {down && (
             <div className="pb-err" role="alert" style={{ marginBottom: 12 }}>
               Backend tidak tersedia.{" "}
-              <button className="pb-btn sm" onClick={ping}>Coba lagi</button>
+              <button className="pb-btn sm" onClick={retryPing}>Coba lagi</button>
             </div>
           )}
           {loading && !down ? <Skeleton /> : (
@@ -196,7 +213,13 @@ function ThemePref() {
           key={p.pref}
           type="button"
           aria-pressed={pref === p.pref}
-          onClick={() => { setPref(p.pref); applyTheme(p.pref); }}
+          onClick={() => confirmRun({
+            title: `Pakai tema ${p.label}?`,
+            confirmButtonText: "Pakai",
+          }, () => {
+            setPref(p.pref); applyTheme(p.pref);
+            showInfoToast(`Tema ${p.label} dipakai.`);
+          })}
         >
           {p.label}
         </button>

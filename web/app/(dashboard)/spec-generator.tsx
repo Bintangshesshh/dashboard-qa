@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, type GeneratedSpec, type TestFile } from "../../lib/playbook";
-import { confirmAction } from "../../lib/alerts";
+import { confirmAction, showInfoToast, showSuccessToast } from "../../lib/alerts";
 
 type Token = { text: string; kind: "plain" | "comment" | "string" | "keyword" | "ident" };
 
@@ -63,11 +63,17 @@ export function SpecGenerator({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (loading || !url.trim()) return;
+    if (!(await confirmAction({
+      title: "Generate template spec?",
+      text: `Crawl ${url.trim()} dari mesin server.`,
+      confirmButtonText: "Ya, Generate",
+    }))) return;
     setLoading(true);
     setError("");
     setNotice("");
     try {
       setResult(await api.generateSpec(url.trim(), projectId));
+      showSuccessToast("Template berhasil dibuat.");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -75,8 +81,12 @@ export function SpecGenerator({
     }
   };
 
-  const download = () => {
+  const download = async () => {
     if (!result) return;
+    if (!(await confirmAction({
+      title: "Download generated-flow.spec.ts?",
+      confirmButtonText: "Ya, Download",
+    }))) return;
     const blob = new Blob([result.code], { type: "text/typescript;charset=utf-8" });
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -86,6 +96,7 @@ export function SpecGenerator({
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(href);
+    showInfoToast("File .spec.ts diunduh.");
   };
 
   // Simpan langsung ke test file project supaya spec bisa dijalankan tanpa salin manual.
@@ -97,6 +108,11 @@ export function SpecGenerator({
       title: "Timpa spec yang ada?",
       text: `${existingFile.path} akan diganti dengan hasil generate ini.`,
       confirmButtonText: "Ya, Timpa",
+    }))) return;
+    if (!existingFile && !(await confirmAction({
+      title: "Simpan spec ke project?",
+      text: `${path} akan dibuat dari hasil generate ini.`,
+      confirmButtonText: "Ya, Simpan",
     }))) return;
     setSaving(true);
     setError("");
@@ -112,6 +128,7 @@ export function SpecGenerator({
             code: result.code,
           });
       setNotice(`Tersimpan ke ${saved.path}. Spec langsung bisa dijalankan.`);
+      showSuccessToast(`Spec tersimpan ke ${saved.path}.`);
       onSaved?.(saved);
     } catch (e) {
       setError((e as Error).message);

@@ -6,6 +6,7 @@
 // halaman menulis bentuk yang sama dan autosave tidak menimpa nilai custom.
 import { useEffect, useRef, useState } from "react";
 import type { Project } from "../../lib/playbook";
+import { confirmAction, showInfoToast } from "../../lib/alerts";
 
 // Sama dengan batas server: target sesi memakai 1 slot dari 5 URL.
 export const MAX_EXTRA_URLS = 4;
@@ -139,7 +140,16 @@ export default function LhConfigEditor({
           {[1, 2, 3, 5, 10].map(n => (
             <button key={n} type="button" className={runs === n ? "active" : ""}
               aria-pressed={runs === n} disabled={disabled}
-              onClick={() => { setRuns(n); emit({ runs: n }); }}>{n}×</button>
+              onClick={async () => {
+                if (!(await confirmAction({
+                  icon: "question",
+                  title: `Ubah jumlah run ke ${n}×?`,
+                  text: "Config Lighthouse disimpan otomatis setelah perubahan.",
+                  confirmButtonText: "Ya, Ubah",
+                }))) return;
+                setRuns(n); emit({ runs: n });
+                showInfoToast(`Jumlah run ${n}× dipilih.`);
+              }}>{n}×</button>
           ))}
           <input type="number" className="pb-input" min={1} max={MAX_RUNS}
             inputMode="numeric" aria-label="Jumlah run custom" disabled={disabled}
@@ -165,15 +175,31 @@ export default function LhConfigEditor({
                 }} />
               <button type="button" className="pb-btn sm danger" disabled={disabled}
                 aria-label={"Hapus URL " + (i + 1)}
-                onClick={() => {
+                onClick={async () => {
+                  if (!(await confirmAction({
+                    icon: "warning",
+                    title: "Hapus URL tambahan?",
+                    text: `URL ke-${i + 1} akan dihapus dari config.`,
+                    confirmButtonText: "Ya, Hapus",
+                  }))) return;
                   const next = extra.filter((_, j) => j !== i);
                   setExtra(next); emit({ extra: next });
+                  showInfoToast("URL tambahan dihapus.");
                 }}>Hapus</button>
             </span>
           ))}
           {extra.length < MAX_EXTRA_URLS && (
             <button type="button" className="pb-btn sm" disabled={disabled}
-              onClick={() => setExtra(list => [...list, ""])}>+ Tambah URL</button>
+              onClick={async () => {
+                if (!(await confirmAction({
+                  icon: "question",
+                  title: "Tambah URL baru?",
+                  text: "Kolom URL tambahan baru akan ditambahkan.",
+                  confirmButtonText: "Ya, Tambah",
+                }))) return;
+                setExtra(list => [...list, ""]);
+                showInfoToast("Kolom URL ditambahkan.");
+              }}>+ Tambah URL</button>
           )}
         </span>
       </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, type Help } from "../../../lib/playbook";
-import { confirmAction } from "../../../lib/alerts";
+import { confirmAction, confirmRun, showInfoToast, showSuccessToast } from "../../../lib/alerts";
 
 // FAQ + versi tool + perintah update manual, dijawab dari data server agar tidak bohong.
 const FAQ: { q: string; a: string }[] = [
@@ -75,7 +75,14 @@ export function Bantuan() {
             {help.update_commands.map(cmd => (
               <div className="pb-row" key={cmd}>
                 <code className="pb-mono pb-cmd">{cmd}</code>
-                <button className="pb-btn sm" onClick={() => copy(cmd)}>Salin</button>
+                <button className="pb-btn sm" onClick={() => confirmRun({
+                  title: "Salin perintah ini?",
+                  text: cmd,
+                  confirmButtonText: "Ya, Salin",
+                }, () => {
+                  copy(cmd);
+                  showInfoToast("Perintah disalin");
+                })}>Salin</button>
               </div>
             ))}
           </div>
@@ -131,7 +138,10 @@ function UpdateTools() {
       confirmButtonText: "Ya, Perbarui",
     }))) return;
     setBusy(true); setOut("");
-    try { await api.updateTools(t => setOut(prev => prev + t)); }
+    try {
+      await api.updateTools(t => setOut(prev => prev + t));
+      showSuccessToast("Tools selesai diperbarui.");
+    }
     catch (e) { setOut(prev => prev + "\n" + (e as Error).message); }
     finally { setBusy(false); }
   };

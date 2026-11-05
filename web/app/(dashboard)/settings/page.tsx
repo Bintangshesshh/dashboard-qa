@@ -8,7 +8,7 @@ import {
   api, fmtDate, fmtTime,
   type CliToken, type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
-import { confirmAction } from "../../../lib/alerts";
+import { confirmAction, confirmRun, showInfoToast, showSuccessToast } from "../../../lib/alerts";
 import { SpecGenerator } from "../spec-generator";
 import { LhciCard, NewGroupForm, NewProjectForm, ProjectRow, PwCard } from "./project-panels";
 import { Bantuan } from "./bantuan";
@@ -219,6 +219,11 @@ export default function SettingsPage() {
       }
     }
     if (!Object.keys(body).length) { setNotice("Tidak ada perubahan di bagian ini."); return; }
+    if (!(await confirmAction({
+      title: `Simpan ${section.title}?`,
+      text: "Nilai baru berlaku untuk run berikutnya.",
+      confirmButtonText: "Ya, Simpan",
+    }))) return;
     setBusy(true); setError(""); setNotice("");
     try {
       setSettings(await api.patchSettings(body));
@@ -228,10 +233,17 @@ export default function SettingsPage() {
         return next;
       });
       setSavedAt(current => ({ ...current, [section.id]: new Date().toISOString() }));
+      showSuccessToast(`${section.title} tersimpan.`);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
 
-  const resetSection = (section: SettingSection) => {
+  const resetSection = async (section: SettingSection) => {
+    if (!(await confirmAction({
+      icon: "question",
+      title: `Reset ${section.title}?`,
+      text: "Perubahan yang belum disimpan akan dibuang.",
+      confirmButtonText: "Ya, Reset",
+    }))) return;
     setDraft(current => {
       const next = { ...current };
       for (const field of section.fields) delete next[field.key];
@@ -243,6 +255,7 @@ export default function SettingsPage() {
       delete next[section.id];
       return next;
     });
+    showInfoToast(`${section.title} direset.`);
   };
 
   // Error diteruskan ke form: isian tidak boleh hilang saat gagal.
@@ -252,6 +265,7 @@ export default function SettingsPage() {
     setProjects(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
     reloadGroups();
     setNotice(`${created.name} ditambahkan.`);
+    showSuccessToast(`${created.name} ditambahkan.`);
   };
 
   const reloadGroups = () => api.projectGroups().then(setGroups).catch(e => setError(e.message));
@@ -261,15 +275,21 @@ export default function SettingsPage() {
     try {
       const g = await api.createProjectGroup(name);
       setGroups(prev => [...prev, g].sort((a, b) => a.name.localeCompare(b.name)));
+      showSuccessToast(`Grup ${g.name} ditambahkan.`);
     } catch (e) { setError((e as Error).message); throw e; }
   };
 
   const renameGroup = async (id: string, name: string) => {
+    if (!(await confirmAction({
+      title: `Simpan nama grup "${name.trim()}"?`,
+      confirmButtonText: "Ya, Simpan",
+    }))) return;
     setError(""); setNotice("");
     try {
       const g = await api.patchProjectGroup(id, name);
       setGroups(prev => prev.map(x => (x.id === id ? g : x)));
       setEditingGroup(null);
+      showSuccessToast(`Grup ${g.name} disimpan.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -284,6 +304,7 @@ export default function SettingsPage() {
     try {
       await api.deleteProjectGroup(g.id);
       setGroups(prev => prev.filter(x => x.id !== g.id));
+      showSuccessToast(`Grup ${g.name} dihapus.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -294,6 +315,7 @@ export default function SettingsPage() {
       setProjects(prev => prev.map(x => (x.id === p.id ? updated : x)));
       reloadGroups();
       setNotice(`${updated.name} disimpan.`);
+      showSuccessToast(`${updated.name} disimpan.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -303,6 +325,7 @@ export default function SettingsPage() {
       const updated = await api.patchTestFile(file.id, patch);
       setFiles(prev => prev.map(x => (x.id === file.id ? updated : x)));
       setNotice(`${file.label} disimpan.`);
+      showSuccessToast(`${file.label} disimpan.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -315,6 +338,7 @@ export default function SettingsPage() {
     const created = await api.createTestFile({ projectId: p.id, ...body });
     setFiles(prev => [...prev, created]);
     setNotice(`${created.label} ditambahkan.`);
+    showSuccessToast(`${created.label} ditambahkan.`);
   };
 
   const removeTestFile = async (file: TestFile) => {
@@ -329,6 +353,7 @@ export default function SettingsPage() {
       await api.deleteTestFile(file.id);
       setFiles(prev => prev.filter(x => x.id !== file.id));
       setNotice(`${file.label} dihapus.`);
+      showSuccessToast(`${file.label} dihapus.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -346,6 +371,7 @@ export default function SettingsPage() {
       setProjects(prev => prev.filter(x => x.id !== p.id));
       reloadGroups();
       setNotice(`${p.name} dihapus.`);
+      showSuccessToast(`${p.name} dihapus.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -356,7 +382,7 @@ export default function SettingsPage() {
       text: "CLI yang memakainya langsung gagal.",
       confirmButtonText: "Ya, Cabut",
     }))) return;
-    try { await api.revokeCliToken(id); api.cliTokens().then(setTokens).catch(() => {}); }
+    try { await api.revokeCliToken(id); api.cliTokens().then(setTokens).catch(() => {}); showSuccessToast("Token dicabut."); }
     catch (e) { setError((e as Error).message); }
   };
 
@@ -449,7 +475,13 @@ export default function SettingsPage() {
         {TABS.map(t => (
           <button key={t.id} role="tab" aria-selected={tab === t.id}
             className={`pb-tab ${tab === t.id ? "active" : ""}`}
-            onClick={() => { setTab(t.id); setNotice(""); }}>
+            onClick={() => confirmRun({
+              title: `Buka tab ${t.label}?`,
+              confirmButtonText: "Buka",
+            }, () => {
+              setTab(t.id); setNotice("");
+              showInfoToast(`Tab ${t.label} dibuka.`);
+            })}>
             {t.label}
           </button>
         ))}
@@ -608,12 +640,24 @@ export default function SettingsPage() {
               <div className="pb-set-toolbar">
                 <button className={`pb-btn sm ${addPanel === "group" ? "primary" : ""}`}
                   aria-expanded={addPanel === "group"}
-                  onClick={() => setAddPanel(p => (p === "group" ? null : "group"))}>
+                  onClick={() => confirmRun({
+                    title: addPanel === "group" ? "Tutup form grup?" : "Buka form grup?",
+                    confirmButtonText: addPanel === "group" ? "Tutup" : "Buka",
+                  }, () => {
+                    setAddPanel(addPanel === "group" ? null : "group");
+                    showInfoToast(addPanel === "group" ? "Form grup ditutup." : "Form grup dibuka.");
+                  })}>
                   + Grup
                 </button>
                 <button className={`pb-btn sm ${addPanel === "project" ? "primary" : ""}`}
                   aria-expanded={addPanel === "project"}
-                  onClick={() => setAddPanel(p => (p === "project" ? null : "project"))}>
+                  onClick={() => confirmRun({
+                    title: addPanel === "project" ? "Tutup form project?" : "Buka form project?",
+                    confirmButtonText: addPanel === "project" ? "Tutup" : "Buka",
+                  }, () => {
+                    setAddPanel(addPanel === "project" ? null : "project");
+                    showInfoToast(addPanel === "project" ? "Form project ditutup." : "Form project dibuka.");
+                  })}>
                   + Project
                 </button>
                 <span className="pb-spacer" />
@@ -665,7 +709,14 @@ export default function SettingsPage() {
                             onClick={() => renameGroup(g.id, groupName)}
                             disabled={!groupName.trim()}>Simpan</button>
                           <button className="pb-btn sm"
-                            onClick={() => setEditingGroup(null)}>Batal</button>
+                            onClick={() => confirmRun({
+                              title: "Batalkan ganti nama grup?",
+                              text: "Perubahan nama yang belum disimpan akan dibuang.",
+                              confirmButtonText: "Ya, Batal",
+                            }, () => {
+                              setEditingGroup(null);
+                              showInfoToast("Ganti nama grup dibatalkan.");
+                            })}>Batal</button>
                         </>
                       ) : (
                         <>
@@ -673,7 +724,13 @@ export default function SettingsPage() {
                           <span className="pb-muted pb-mono">{own.length} project</span>
                           <span className="pb-spacer" />
                           <button className="pb-btn sm"
-                            onClick={() => { setEditingGroup(g.id); setGroupName(g.name); }}>
+                            onClick={() => confirmRun({
+                              title: `Ganti nama grup "${g.name}"?`,
+                              confirmButtonText: "Ganti",
+                            }, () => {
+                              setEditingGroup(g.id); setGroupName(g.name);
+                              showInfoToast("Mode ganti nama grup aktif.");
+                            })}>
                             Ganti nama
                           </button>
                           <button className="pb-btn sm danger" disabled={own.length > 0}

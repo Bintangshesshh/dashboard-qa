@@ -72,6 +72,14 @@ export const confirmAction = (opts: ConfirmOptions) =>
     reverseButtons: true,
   }).then(r => r.isConfirmed);
 
+// Gerbang konfirmasi untuk satu aksi. Toast sukses dipanggil di titik yang
+// benar-benar tahu hasilnya, supaya aksi gagal tidak ikut bilang "tersimpan".
+export const confirmRun = async (opts: ConfirmOptions, action: () => unknown) => {
+  if (!(await confirmAction(opts))) return false;
+  await action();
+  return true;
+};
+
 export const promptText = (opts: ConfirmOptions & { inputValue?: string }) =>
   Swal.fire({
     ...base(),

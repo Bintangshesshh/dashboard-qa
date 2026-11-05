@@ -9,7 +9,7 @@ import {
   api, artifactUrl, fmtDur, fmtTime, groupProjects,
   type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
-import { confirmAction } from "../../../lib/alerts";
+import { confirmAction, showSuccessToast } from "../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -203,6 +203,7 @@ export default function PlaywrightPage() {
       setSavedCode(updated.code);
       setSavedAt(new Date().toISOString());
       setConflict(false);
+      showSuccessToast("Spec dimuat ulang dari disk.");
     } catch (e) { setError((e as Error).message); } finally { setSaving(false); }
   };
 
@@ -228,17 +229,41 @@ export default function PlaywrightPage() {
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`pw-run:${projectId}`, runId);
       setRunId(runId);
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setStarting(false);
     }
   };
 
   const stop = async () => {
-    if (!runId) return;
-    try { setRun(await api.cancelRun(runId)); }
-    catch (e) { setError((e as Error).message); }
+    if (!runId) return false;
+    try { setRun(await api.cancelRun(runId)); return true; }
+    catch (e) { setError((e as Error).message); return false; }
+  };
+
+  const runWithConfirm = async (fresh = false) => {
+    if (!(await confirmAction({
+      icon: "question",
+      title: fresh ? "Mulai sesi baru?" : "Jalankan test suite?",
+      text: fresh
+        ? "Sesi terbuka yang idle akan ditutup lalu run baru dimulai."
+        : `Run memakai spec tersimpan di env ${env}.`,
+      confirmButtonText: fresh ? "Ya, Sesi Baru" : "Ya, Jalankan",
+    }))) return;
+    if (await start(fresh)) showSuccessToast(fresh ? "Sesi baru dimulai." : "Run dimulai.");
+  };
+
+  const stopWithConfirm = async () => {
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Hentikan run?",
+      text: "Run yang berjalan akan dibatalkan.",
+      confirmButtonText: "Ya, Stop",
+    }))) return;
+    if (await stop()) showSuccessToast("Run dihentikan.");
   };
 
   const results = (run?.results ?? []) as PlaywrightResult[];
@@ -256,16 +281,16 @@ export default function PlaywrightPage() {
           <span className={`pb-save-state${conflict ? " bad" : dirty ? " dirty" : ""}`} aria-live="polite">
             {conflict ? "Konflik disk" : saveState}
           </span>
-          <button className="pb-btn primary" onClick={() => start()}
+          <button className="pb-btn primary" onClick={() => runWithConfirm()}
             disabled={starting || running || !selected || !target || !productionOk}>
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
           </button>
-          <button className="pb-btn" onClick={() => start(true)}
+          <button className="pb-btn" onClick={() => runWithConfirm(true)}
             disabled={starting || running || !selected || !target || !productionOk}
             title="Tutup sesi terbuka yang idle lalu mulai sesi baru">
             Sesi baru
           </button>
-          {running && <button className="pb-btn" onClick={stop}>Stop</button>}
+          {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
         </div>
       </div>
       {error && <div className="pb-err" role="alert">{error}</div>}
@@ -329,7 +354,9 @@ export default function PlaywrightPage() {
                     title: "Timpa file di disk?",
                     text: "Perubahan di luar dashboard akan hilang.",
                     confirmButtonText: "Ya, Timpa",
-                  })) save(true);
+                  })) {
+                    if (await save(true)) showSuccessToast("File di disk ditimpa.");
+                  }
                 }}>
                 Timpa file di disk
               </button>

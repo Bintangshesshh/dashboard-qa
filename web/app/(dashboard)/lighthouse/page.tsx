@@ -12,6 +12,7 @@ import {
   api, artifactUrl, fmtTime, groupProjects, pct, runStatusLabel,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
+import { confirmAction, showSuccessToast } from "../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -169,17 +170,39 @@ export default function LighthousePage() {
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`lh-run:${projectId}`, runId);
       setRunId(runId);
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setStarting(false);
     }
   };
 
   const stop = async () => {
-    if (!runId) return;
-    try { setRun(await api.cancelRun(runId)); }
-    catch (e) { setError((e as Error).message); }
+    if (!runId) return false;
+    try { setRun(await api.cancelRun(runId)); return true; }
+    catch (e) { setError((e as Error).message); return false; }
+  };
+
+  const runWithConfirm = async () => {
+    if (!(await confirmAction({
+      icon: "question",
+      title: "Jalankan audit Lighthouse?",
+      text: `Audit memakai config tersimpan di env ${env}.`,
+      confirmButtonText: "Ya, Jalankan",
+    }))) return;
+    if (await start()) showSuccessToast("Audit Lighthouse dimulai.");
+  };
+
+  const stopWithConfirm = async () => {
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Hentikan audit?",
+      text: "Audit yang berjalan akan dibatalkan.",
+      confirmButtonText: "Ya, Stop",
+    }))) return;
+    if (await stop()) showSuccessToast("Audit dihentikan.");
   };
 
   const results = (run?.results ?? []) as LighthouseResult[];
@@ -193,11 +216,11 @@ export default function LighthousePage() {
         </div>
         <div className="pb-filters">
           <span className="pb-save-state" aria-live="polite">{saveState}</span>
-          <button className="pb-btn primary" onClick={start}
+          <button className="pb-btn primary" onClick={runWithConfirm}
             disabled={starting || running || !selected || !target || !productionOk}>
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
           </button>
-          {running && <button className="pb-btn" onClick={stop}>Stop</button>}
+          {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
         </div>
       </div>
       {error && <div className="pb-err" role="alert">{error}</div>}

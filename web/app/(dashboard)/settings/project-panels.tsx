@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api, type Project, type ProjectGroup, type TestFile } from "../../../lib/playbook";
+import { confirmAction, confirmRun, showInfoToast } from "../../../lib/alerts";
 import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig } from "../../_components/lh-config-editor";
 
 type SaveProject = (p: Project, patch: Parameters<typeof api.patchProject>[1]) => Promise<void>;
@@ -48,6 +49,11 @@ export function LhciCard({ project, file, onSave, onAddFile }: {
       ])),
     });
     if (msg) { setError(msg); return; }
+    if (!(await confirmAction({
+      title: "Simpan config Lighthouse?",
+      text: `${project.name}: config baru dipakai saat lhci digenerate.`,
+      confirmButtonText: "Ya, Simpan",
+    }))) return;
     setSaving(true); setError("");
     try { await onSave(file, { config }); }
     catch (e) { setError((e as Error).message); }
@@ -56,6 +62,11 @@ export function LhciCard({ project, file, onSave, onAddFile }: {
 
   // Config default dari URL project.
   const create = async () => {
+    if (!(await confirmAction({
+      title: "Buat config Lighthouse default?",
+      text: `${project.name}: target utama, 1 run, budget 60.`,
+      confirmButtonText: "Ya, Buat",
+    }))) return;
     setSaving(true); setError("");
     try {
       await onAddFile(project, lhDefaultBody(project));
@@ -131,6 +142,11 @@ export function PwCard({ project, file, onSave }: {
 
   const save = async () => {
     if (!file) return;
+    if (!(await confirmAction({
+      title: "Simpan setelan Playwright?",
+      text: `${project.name}: timeout, worker, retry, dan env.`,
+      confirmButtonText: "Ya, Simpan",
+    }))) return;
     setSaving(true); setError("");
     try { await onSave(file, { config: JSON.stringify({ ...parsed, ...pw }) }); }
     catch (e) { setError((e as Error).message); }
@@ -205,6 +221,10 @@ export function NewGroupForm({ onCreate }: { onCreate: (name: string) => Promise
 
   const submit = async () => {
     if (!name.trim()) return;
+    if (!(await confirmAction({
+      title: `Tambah grup "${name.trim()}"?`,
+      confirmButtonText: "Ya, Tambah",
+    }))) return;
     setBusy(true);
     try { await onCreate(name.trim()); setName(""); }
     catch { /* pesan sudah tampil di halaman; isian dibiarkan */ }
@@ -237,6 +257,12 @@ export function NewProjectForm({ groups, onCreate }: {
   const [error, setError] = useState("");
 
   const submit = async () => {
+    if (busy || !name.trim() || !base.trim()) return;
+    if (!(await confirmAction({
+      title: `Tambah project "${name.trim()}"?`,
+      text: base.trim(),
+      confirmButtonText: "Ya, Tambah",
+    }))) return;
     setBusy(true); setError("");
     try {
       await onCreate({
@@ -313,7 +339,13 @@ export function ProjectRow({ project, groups, files, onSave, onAddFile, onRemove
   return (
     <div className={`pb-proj-row ${archived ? "archived" : ""}`}>
       <div className="pb-proj-row-head">
-        <button className="pb-proj-toggle" onClick={() => setOpen(o => !o)}
+        <button className="pb-proj-toggle" onClick={() => confirmRun({
+          title: open ? `Tutup detail ${project.name}?` : `Buka detail ${project.name}?`,
+          confirmButtonText: open ? "Tutup" : "Buka",
+        }, () => {
+          setOpen(o => !o);
+          showInfoToast(open ? `Detail ${project.name} ditutup.` : `Detail ${project.name} dibuka.`);
+        })}
           aria-expanded={open}>
           <span className="pb-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
           <strong>{project.name}</strong>
@@ -327,7 +359,14 @@ export function ProjectRow({ project, groups, files, onSave, onAddFile, onRemove
           <option value="">tanpa grup</option>
           {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-        <button className="pb-btn sm" onClick={() => onSave(project, { active: archived ? 1 : 0 })}>
+        <button className="pb-btn sm" onClick={() => confirmRun({
+          title: archived ? `Pulihkan ${project.name}?` : `Arsipkan ${project.name}?`,
+          text: archived
+            ? "Project aktif lagi dan bisa dijalankan."
+            : "Riwayat tetap tersimpan, tapi project tidak bisa dijalankan.",
+          icon: "warning",
+          confirmButtonText: archived ? "Ya, Pulihkan" : "Ya, Arsipkan",
+        }, () => onSave(project, { active: archived ? 1 : 0 }))}>
           {archived ? "Pulihkan" : "Arsipkan"}
         </button>
       </div>
@@ -362,16 +401,28 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
   // Petunjuk untuk UI saja; server tetap penjaga terakhir lewat 409.
   const deletable = !own.length && !project.lastRunAt;
 
-  const save = () => onSave(project, {
-    name: name.trim(),
-    base_url: base.trim(),
-    staging_url: staging.trim() || null,
-    local_url: local.trim() || null,
-    origins: origins.split(",").map(s => s.trim()).filter(Boolean),
-    allow_production: allowProd ? 1 : 0,
-  });
+  const save = async () => {
+    if (!(await confirmAction({
+      title: `Simpan ${project.name}?`,
+      text: "Nama, URL, origin, dan izin production diperbarui.",
+      confirmButtonText: "Ya, Simpan",
+    }))) return;
+    await onSave(project, {
+      name: name.trim(),
+      base_url: base.trim(),
+      staging_url: staging.trim() || null,
+      local_url: local.trim() || null,
+      origins: origins.split(",").map(s => s.trim()).filter(Boolean),
+      allow_production: allowProd ? 1 : 0,
+    });
+  };
 
   const addSpec = async () => {
+    if (!(await confirmAction({
+      title: "Tambah spec Playwright?",
+      text: `${path.trim()} untuk ${project.name}.`,
+      confirmButtonText: "Ya, Tambah",
+    }))) return;
     setBusy(true); setErr("");
     try {
       // label wajib di server; kalau user mengosongkannya, pakai nama file.
@@ -384,6 +435,11 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
 
   // Config default dari URL project.
   const addLhConfig = async () => {
+    if (!(await confirmAction({
+      title: "Buat config Lighthouse?",
+      text: `${project.name}: target utama, 1 run, budget 60.`,
+      confirmButtonText: "Ya, Buat",
+    }))) return;
     setBusy(true); setErr("");
     try {
       await onAddFile(project, lhDefaultBody(project));
@@ -440,7 +496,13 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
         {!own.length && <p className="pb-hint">Belum ada spec atau config untuk project ini.</p>}
 
         <div className="pb-row pb-proj-foot" style={{ gap: 8 }}>
-          <button className="pb-btn sm" onClick={() => setAddOpen(o => !o)} disabled={busy}>
+          <button className="pb-btn sm" onClick={() => confirmRun({
+            title: addOpen ? "Batal tambah spec?" : "Buka form spec Playwright?",
+            confirmButtonText: addOpen ? "Ya, Batal" : "Buka",
+          }, () => {
+            setAddOpen(o => !o);
+            showInfoToast(addOpen ? "Tambah spec dibatalkan." : "Form spec dibuka.");
+          })} disabled={busy}>
             {addOpen ? "Batal" : "+ Spec Playwright"}
           </button>
           {!hasLh && (

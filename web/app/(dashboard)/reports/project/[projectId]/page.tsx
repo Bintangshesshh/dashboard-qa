@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, fmtDate, reportUrl, runStatusLabel, type Project, type Session } from "../../../../../lib/playbook";
 import { ArtifactLink } from "../../../../_components/report-link";
-import { promptText } from "../../../../../lib/alerts";
+import { confirmAction, promptText, showSuccessToast } from "../../../../../lib/alerts";
 
 export default function ProjectReports() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -34,6 +34,12 @@ export default function ProjectReports() {
 
   const quickCheck = async () => {
     if (!project) return;
+    if (!(await confirmAction({
+      icon: "question",
+      title: "Jalankan quick check?",
+      text: `Quick check akan dijalankan untuk ${project.name}.`,
+      confirmButtonText: "Ya, Jalankan",
+    }))) return;
     setBusy(true); setError(""); setNotice("");
     // Urutan env: staging, production (wajib konfirmasi), lalu local.
     // local_url bukan default karena biasanya menunjuk dev server dashboard.
@@ -56,6 +62,7 @@ export default function ProjectReports() {
     try {
       const r = await api.quickCheck(projectId, env, confirm, "project");
       setNotice(`Quick check jalan (${r.runIds.length} run).`);
+      showSuccessToast(`Quick check jalan (${r.runIds.length} run).`);
       load();
     } catch (e) {
       setError((e as Error).message);
