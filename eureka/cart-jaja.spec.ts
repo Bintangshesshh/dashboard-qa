@@ -54,7 +54,10 @@ test.describe.serial("jaja - sampai keranjang", () => {
 
   test("TC-JA-C2 login", async () => {
     await buka(BASE + "/main/auth/login");
-    const form = page.locator("form").filter({ hasText: "EmailPasswordIngat sayaLupa" });
+    // Form login dikenali dari tombol Masuk, bukan teks yang gampang berubah.
+    const form = page.locator("form").filter({
+      has: page.getByRole("button", { name: "Masuk", exact: true }),
+    }).first();
     await page.waitForTimeout(5000);
 
     await form.getByPlaceholder("Masukkan email Anda").fill(creds("JAJA_EMAIL"));
