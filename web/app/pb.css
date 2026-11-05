@@ -935,7 +935,9 @@ button { cursor: pointer; }
   overflow: auto;
   padding: 10px 12px;
   border-radius: 8px;
-  background: var(--surface-sunken, #f4f4f5);
+  background: #0d1117;
+  border: 1px solid var(--border-soft);
+  color: #cbd5e1;
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
