@@ -475,13 +475,7 @@ export default function SettingsPage() {
         {TABS.map(t => (
           <button key={t.id} role="tab" aria-selected={tab === t.id}
             className={`pb-tab ${tab === t.id ? "active" : ""}`}
-            onClick={() => confirmRun({
-              title: `Buka tab ${t.label}?`,
-              confirmButtonText: "Buka",
-            }, () => {
-              setTab(t.id); setNotice("");
-              showInfoToast(`Tab ${t.label} dibuka.`);
-            })}>
+            onClick={() => { setTab(t.id); setNotice(""); }}>
             {t.label}
           </button>
         ))}

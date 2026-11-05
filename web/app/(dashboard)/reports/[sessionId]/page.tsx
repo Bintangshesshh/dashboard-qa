@@ -70,12 +70,6 @@ export default function SessionDetail() {
   }, [session, load]);
 
   const openRunDetail = async (run: Run) => {
-    if (!(await confirmAction({
-      icon: "question",
-      title: "Lihat hasil run ini?",
-      text: "Data hasil run akan dimuat di panel bawah.",
-      confirmButtonText: "Ya, Lihat",
-    }))) return;
     try {
       setOpenRun(await api.run(run.id));
       // Panel muncul di bawah daftar run; tanpa scroll user mengira tombol diam.
@@ -84,7 +78,6 @@ export default function SessionDetail() {
         el?.scrollIntoView({ behavior: "smooth", block: "start" });
         el?.focus({ preventScroll: true });
       }, 0);
-      showInfoToast("Hasil run dimuat.");
     } catch (e) { setError((e as Error).message); }
   };
 
