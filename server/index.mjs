@@ -361,17 +361,36 @@ export function createApp({ store, runner, origins }) {
     res.json(store.getProject(projectId));
   }));
 
-  // Hapus permanen hanya untuk project tanpa riwayat; selain itu arahkan ke arsip.
+  // Hapus permanen: tanpa riwayat langsung; dengan riwayat wajib `force=1`.
   app.delete('/api/projects/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const projectId = id(req.params.id);
     const p = store.getProject(projectId);
     if (!p) fail('Data tidak ditemukan', 404);
-    const history = store.projectHistory(projectId);
-    if (history.testFiles || history.sessions || history.runs) {
-      fail('Project ini sudah punya riwayat, jadi tidak bisa dihapus. Pakai tombol Arsipkan di kolom aksi.', 409);
+    const force = req.query.force === '1';
+    if (!force) {
+      const history = store.projectHistory(projectId);
+      if (history.testFiles || history.sessions || history.runs) {
+        fail('Project ini sudah punya riwayat. Pakai tombol Arsipkan, atau Hapus permanen untuk menghapus semuanya.', 409);
+      }
+    } else {
+      const active = store.db.prepare(`SELECT COUNT(*) AS n FROM runs r
+        JOIN sessions s ON s.id=r.session_id
+        WHERE s.project_id=? AND r.status IN ('queued','running','uploading')`).get(projectId).n;
+      if (active) fail('Masih ada run berjalan di project ini. Batalkan dulu.', 409);
     }
+    const runIds = store.db.prepare(`SELECT r.id FROM runs r
+      JOIN sessions s ON s.id=r.session_id WHERE s.project_id=?`).all(projectId).map(r => r.id);
+    const reportIds = store.db.prepare(`SELECT rp.id FROM reports rp
+      JOIN sessions s ON s.id=rp.session_id WHERE s.project_id=?`).all(projectId).map(r => r.id);
     store.deleteProject(projectId);
-    store.audit({ userId: req.user.id, action: 'delete_project', entity: 'projects', entityId: projectId });
+    await dropDirs(
+      ...runIds.map(r => join(runsDir, r)),
+      ...reportIds.map(r => join(reportsDir, r)),
+    );
+    store.audit({
+      userId: req.user.id, action: 'delete_project', entity: 'projects', entityId: projectId,
+      detail: force ? JSON.stringify({ force: true, runs: runIds.length, reports: reportIds.length }) : undefined,
+    });
     res.sendStatus(204);
   }));
 

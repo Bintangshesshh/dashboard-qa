@@ -1593,6 +1593,12 @@ test('T03: hapus project berriwayat 409, project kosong boleh 204', async t => {
   let r = await call('/api/projects/p1', { method: 'DELETE', cookie });
   assert.equal(r.status, 409);
 
+  // force=1 tetap menghapus kalau user sudah konfirmasi; semua riwayat ikut hilang.
+  r = await call('/api/projects/p1?force=1', { method: 'DELETE', cookie });
+  assert.equal(r.status, 204, r.body?.error);
+  assert.equal(store.getProject('p1'), undefined);
+  assert.equal(store.listSessions({ projectId: 'p1' }).length, 0);
+
   r = await call('/api/projects', { method: 'POST', cookie, body: { name: 'Kosong', base_url: 'https://kosong.test' } });
   assert.equal(r.status, 201);
   const kosong = r.body.id;

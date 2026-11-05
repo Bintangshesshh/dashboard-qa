@@ -531,16 +531,14 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onDele
 
         {!deletable && (
           <p className="pb-hint">
-            Project ini sudah punya riwayat. Pakai Arsipkan supaya report tetap bisa dibuka.
+            Project ini punya riwayat. Hapus permanen akan ikut menghapus semua sesi, run, dan laporan. Pakai Arsipkan kalau report masih mau dibuka.
           </p>
         )}
-        {deletable && (
-          <div className="pb-row pb-proj-foot">
-            <button className="pb-btn sm danger" onClick={() => onDelete(project)}>
-              Hapus permanen
-            </button>
-          </div>
-        )}
+        <div className="pb-row pb-proj-foot">
+          <button className="pb-btn sm danger" onClick={() => onDelete(project)}>
+            Hapus permanen
+          </button>
+        </div>
         {err && <div className="pb-err" role="alert">{err}</div>}
       </div>
     </div>

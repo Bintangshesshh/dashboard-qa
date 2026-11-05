@@ -227,7 +227,8 @@ export const api = {
   }) => request<Project>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
   patchProject: (id: string, body: Partial<Pick<Project, "name" | "base_url" | "staging_url" | "local_url" | "origins" | "allow_production" | "active">> & { groupId?: string | null }) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-  deleteProject: (id: string) => request<null>(`/api/projects/${id}`, { method: "DELETE" }),
+  deleteProject: (id: string, force = false) =>
+    request<null>(`/api/projects/${id}${force ? "?force=1" : ""}`, { method: "DELETE" }),
 
   projectGroups: () => request<ProjectGroup[]>("/api/project-groups"),
   createProjectGroup: (name: string) =>

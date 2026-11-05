@@ -8,7 +8,7 @@ import {
   api, fmtDate, fmtTime, readLastProject, rememberProject,
   type CliToken, type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
-import { confirmAction, confirmRun, showInfoToast, showSuccessToast } from "../../../lib/alerts";
+import { confirmAction, confirmRun, promptText, showErrorAlert, showInfoToast, showSuccessToast } from "../../../lib/alerts";
 import { SpecGenerator } from "../spec-generator";
 import { LhciCard, NewGroupForm, NewProjectForm, ProjectRow, PwCard } from "./project-panels";
 import { Bantuan } from "./bantuan";
@@ -359,18 +359,24 @@ export default function SettingsPage() {
     } catch (e) { setError((e as Error).message); }
   };
 
-  // Hapus permanen hanya untuk project tanpa riwayat; server menolak dengan 409.
+  // Hapus permanen: project berriwayat ikut menghapus sesi, run, dan report.
   const deleteProject = async (p: Project) => {
-    if (!(await confirmAction({
+    const typed = await promptText({
       icon: "warning",
       title: `Hapus permanen ${p.name}?`,
-      text: "Tidak bisa dibatalkan. Hanya project tanpa riwayat yang bisa dihapus.",
-      confirmButtonText: "Ya, Hapus",
-    }))) return;
+      text: `Ketik nama project untuk konfirmasi. Semua sesi, run, laporan, dan spec project ini ikut terhapus dan tidak bisa dikembalikan.`,
+      confirmButtonText: "Hapus permanen",
+    });
+    if (typed == null) return;
+    if (typed.trim() !== p.name) {
+      showErrorAlert("Nama tidak cocok", `Ketik persis "${p.name}" untuk menghapus.`);
+      return;
+    }
     setError(""); setNotice("");
     try {
-      await api.deleteProject(p.id);
+      await api.deleteProject(p.id, true);
       setProjects(prev => prev.filter(x => x.id !== p.id));
+      setFiles(prev => prev.filter(f => f.project_id !== p.id));
       reloadGroups();
       setNotice(`${p.name} dihapus.`);
       showSuccessToast(`${p.name} dihapus.`);
