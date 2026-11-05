@@ -37,6 +37,8 @@ export default function PlaywrightPage() {
   // Baseline autosave: Run memakai kode tersimpan, bukan yang sedang diketik.
   const [savedCode, setSavedCode] = useState("");
   const [saving, setSaving] = useState(false);
+  // Generate spec membuka Chromium di server; bisa lama, jadi statusnya terpisah.
+  const [generating, setGenerating] = useState(false);
   // Jam simpan terakhir: badge "Tersimpan" tanpa waktu tidak menjawab apa pun.
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -205,6 +207,15 @@ export default function PlaywrightPage() {
     : dirty ? "Belum disimpan"
     : savedAt ? `Tersimpan ${fmtTime(savedAt)}` : "Tersimpan";
 
+  const openCreated = (created: TestFile) => {
+    setFiles(prev => [created, ...prev]);
+    setFileId(created.id);
+    setDraft(created.code);
+    setSavedCode(created.code);
+    setSavedAt(null);
+    showSuccessToast(`${created.label} dibuat.`);
+  };
+
   // Project tanpa spec: buat scaffold dasar langsung dari halaman run.
   const addSpec = async () => {
     if (!project || saving) return;
@@ -229,14 +240,29 @@ export default function PlaywrightPage() {
       const created = await api.createTestFile({
         projectId, tool: "pw", path, label: `${project.name} Playwright`, code,
       });
-      setFiles(prev => [created, ...prev]);
-      setFileId(created.id);
-      setDraft(created.code);
-      setSavedCode(created.code);
-      setSavedAt(null);
-      showSuccessToast(`${created.label} dibuat.`);
+      openCreated(created);
     } catch (e) { showErrorAlert("Gagal membuat spec", (e as Error).message); }
     finally { setSaving(false); }
+  };
+
+  // Generate template dari target env terpilih, lalu simpan sebagai spec project.
+  const generateSpecFile = async () => {
+    if (!project || !target || generating || saving) return;
+    if (!(await confirmAction({
+      title: "Generate spec Playwright?",
+      text: `Crawl ${target} dari mesin server.`,
+      confirmButtonText: "Ya, Generate",
+    }))) return;
+    setGenerating(true); setError("");
+    try {
+      const result = await api.generateSpec(target, projectId);
+      const created = await api.createTestFile({
+        projectId, tool: "pw", path: `tests/${project.slug}.spec.ts`,
+        label: `${project.name} Playwright (generated)`, code: result.code,
+      });
+      openCreated(created);
+    } catch (e) { showErrorAlert("Gagal generate spec", (e as Error).message); }
+    finally { setGenerating(false); }
   };
 
   // Pindah spec: simpan dulu perubahan spec lama supaya tidak hilang.
@@ -463,10 +489,16 @@ export default function PlaywrightPage() {
         ) : (
           <div className="pb-empty">
             <p style={{ margin: 0 }}>Project ini belum punya spec Playwright.</p>
-            <button className="pb-btn sm primary" style={{ marginTop: 10 }}
-              onClick={addSpec} disabled={!project || saving}>
-              {saving ? "Membuat…" : "Buat spec"}
-            </button>
+            <div className="pb-row" style={{ justifyContent: "center", gap: 8, marginTop: 10 }}>
+              <button className="pb-btn sm" onClick={addSpec} disabled={!project || saving || generating}>
+                {saving ? "Membuat…" : "Buat spec"}
+              </button>
+              <button className="pb-btn sm primary" onClick={generateSpecFile}
+                disabled={!project || !target || saving || generating}
+                title={target ? `Crawl ${target}` : "Project belum punya URL untuk env ini"}>
+                {generating ? "Generate…" : "Generate spec"}
+              </button>
+            </div>
           </div>
         )}
       </section>
