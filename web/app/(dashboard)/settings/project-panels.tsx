@@ -339,13 +339,7 @@ export function ProjectRow({ project, groups, files, onSave, onAddFile, onRemove
   return (
     <div className={`pb-proj-row ${archived ? "archived" : ""}`}>
       <div className="pb-proj-row-head">
-        <button className="pb-proj-toggle" onClick={() => confirmRun({
-          title: open ? `Tutup detail ${project.name}?` : `Buka detail ${project.name}?`,
-          confirmButtonText: open ? "Tutup" : "Buka",
-        }, () => {
-          setOpen(o => !o);
-          showInfoToast(open ? `Detail ${project.name} ditutup.` : `Detail ${project.name} dibuka.`);
-        })}
+        <button className="pb-proj-toggle" onClick={() => setOpen(o => !o)}
           aria-expanded={open}>
           <span className="pb-caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
           <strong>{project.name}</strong>
