@@ -44,9 +44,12 @@ test.describe.serial("jaja - sampai keranjang", () => {
   const dismissOk = () =>
     page.getByRole("button", { name: "OK" }).first().click({ timeout: 5000 }).catch(() => {});
 
+  // Bandingkan host tanpa `www.`: production kadang redirect apex ↔ www.
+  const hostOf = (value: string) => new URL(value).host.replace(/^www\./, "");
+
   test("TC-JA-C1 homepage terbuka", async () => {
     await buka(BASE + "/");
-    await expect(page).toHaveURL(u => u.host === new URL(BASE).host);
+    await expect.poll(() => hostOf(page.url()), { timeout: 15000 }).toBe(hostOf(BASE));
   });
 
   test("TC-JA-C2 login", async () => {
