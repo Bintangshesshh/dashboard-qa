@@ -404,6 +404,11 @@ export default function OverviewPage() {
                 const isHover = hoverDay === i;
                 // Hari tanpa run tidak perlu dua titik nol yang menumpuk.
                 const hasRuns = d.total > 0;
+                // Angka selalu di atas titik; kalau dua nilai hampir sejajar,
+                // geser kiri/kanan supaya tidak saling menimpa.
+                const okLabelY = Math.max(12, okY - 9);
+                const badLabelY = Math.max(12, badY - 9);
+                const labelDx = Math.abs(okLabelY - badLabelY) < 16 ? 11 : 0;
                 return (
                   <g key={d.day}>
                     <rect className="pb-chart-hit"
@@ -433,11 +438,11 @@ export default function OverviewPage() {
                     )}
                     {isHover && (hasRuns ? (
                       <>
-                        <text className="pb-chart-value ok" x={chartX(i)}
-                          y={Math.max(12, okY - 9)} textAnchor="middle">{ok}</text>
+                        <text className="pb-chart-value ok" x={chartX(i) - labelDx}
+                          y={okLabelY} textAnchor="middle">{ok}</text>
                         {bad > 0 && (
-                          <text className="pb-chart-value bad" x={chartX(i)}
-                            y={Math.min(CHART_H - 16, badY + 15)} textAnchor="middle">{bad}</text>
+                          <text className="pb-chart-value bad" x={chartX(i) + labelDx}
+                            y={badLabelY} textAnchor="middle">{bad}</text>
                         )}
                       </>
                     ) : (
