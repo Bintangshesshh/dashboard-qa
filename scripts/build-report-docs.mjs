@@ -85,8 +85,6 @@ export async function buildReportDocs(runDirs, outDir, baseUrl, intro = '') {
     }
     const name = slug(entry.run.id) || 'run-' + i;
     const pageDir = join(outDir, name);
-    // Buang output lama supaya artifact basi tidak tertinggal.
-    await rm(pageDir, { recursive: true, force: true });
     const staging = join(pageDir, 'artifacts');
     await mkdir(staging, { recursive: true });
     for (const path of entry.files) {

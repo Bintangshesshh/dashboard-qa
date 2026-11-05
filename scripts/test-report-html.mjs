@@ -16,7 +16,7 @@ async function put(path, data) {
 }
 
 try {
-  await put('run.json', { id: 'synthetic', suiteName: 'Suite', status: 'failed', durationMs: 23000, error: hostile, cases: [{ code: 'SECRET_SOURCE_SENTINEL' }] });
+  await put('run.json', { id: 'synthetic', suiteName: 'Suite', status: 'failed', durationMs: 23000, startedAt: '2026-10-30T01:04:37.000Z', finishedAt: '2026-10-30T01:05:00.000Z', error: hostile, cases: [{ code: 'SECRET_SOURCE_SENTINEL' }] });
   await put('logs.txt', 'Runner error: ' + hostile);
   const reporter = new Reporter({ outputFile: join(runDir, 'artifacts/pw/langkah.json') });
   assert.equal(new Reporter().outputFile, join('pw-out', 'langkah.json'));
@@ -78,6 +78,9 @@ try {
   // Satu stylesheet dipakai semua halaman report; tema ikut OS.
   assert(html.includes('prefers-color-scheme:dark'));
   assert(html.includes('<meta name="color-scheme" content="light dark">'));
+  // Timestamp laporan memakai WIB, bukan UTC mentah berlabel "waktu server".
+  assert(html.includes('30 Okt, 08.05 WIB'), 'finishedAt tampil WIB');
+  assert(!html.includes('waktu server'));
   assert(html.includes('class="tbl"') || html.includes('class="scores"'));
   // Layout: KPI tiles + one panel per block, not a bare document.
   assert(html.includes('class="tile"') && html.includes('class="panel"'));
@@ -102,6 +105,8 @@ try {
   assert(!/href="synthetic\/"/.test(page));
   // Kolom teks: jalur cepat ambil ringkas.txt dari index.
   assert(page.includes('synthetic/ringkas.txt'));
+  assert(page.includes('30 Okt, 08.05 WIB'), 'tabel index memakai WIB');
+  assert(!page.includes('waktu server'));
   // Report asli harus bisa dibuka di tab baru, bukan hanya diunduh.
   assert(/target="_blank" rel="noopener">buka</.test(html));
   // ringkas.txt untuk disalin, satu sumber dengan tabel.

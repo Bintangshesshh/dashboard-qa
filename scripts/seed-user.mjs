@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { randomUUID, scrypt, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomUUID, scrypt, randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -78,22 +78,12 @@ async function hash(password) {
   return `scrypt$${N}$${R}$${P}$${salt.toString('base64')}$${key.toString('base64')}`;
 }
 
-async function verify(stored, password) {
-  const [scheme, n, r, p, saltB64, keyB64] = String(stored).split('$');
-  if (scheme !== 'scrypt') throw new Error('format password_hash tidak dikenal');
-  const salt = Buffer.from(saltB64, 'base64');
-  const expected = Buffer.from(keyB64, 'base64');
-  const got = await scryptAsync(password, salt, expected.length, { N: Number(n), r: Number(r), p: Number(p) });
-  return timingSafeEqual(got, expected);
-}
-
 const existing = db.prepare('SELECT id, role FROM users WHERE username = ?').get(username);
 const action = existing ? (reset ? 'reset-password' : 'skip') : 'create';
 
 if (action === 'skip') {
   console.log(`${username} sudah ada (role=${existing.role}). Tanpa --reset-password tidak ada yang berubah.`);
 } else {
-  if (action === 'reset-password' && !reset) { /* unreachable */ }
   const password = await askPassword();
   const passwordHash = await hash(password);
 

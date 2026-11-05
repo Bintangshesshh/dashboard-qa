@@ -5,13 +5,15 @@
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile, rm, chmod } from 'node:fs/promises';
 import { homedir, hostname } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { Runner, lhConfig, filesBelow } from '../server/runner.mjs';
 
 const CRED_DIR = join(homedir(), '.playbook');
 const CRED_FILE = join(CRED_DIR, 'credentials.json');
 const OUT_ROOT = '.playbook-runs';
+const RUN_USAGE = 'playbook run <spec|config> [--env local|staging|production] [--confirm <nama project>] [--project slug] [--session id]';
+const UPLOAD_USAGE = 'playbook upload <runId> [--dir folder]';
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -201,17 +203,17 @@ async function finalize(cred, runId, { outDir, tool, exitCode, durationMs, error
 
 async function run() {
   const specArg = argv[1];
-  if (!specArg || specArg.startsWith('--')) die('Usage: playbook run <spec|config> [--env local|staging|production] [--confirm <nama project>] [--project slug] [--session id]');
+  if (!specArg || specArg.startsWith('--')) die(`Usage: ${RUN_USAGE}`);
   const cred = await credentials();
   const env = String(flag('env', 'local'));
   const tool = /lighthouserc|lhci/i.test(specArg) ? 'lh' : 'pw';
   const testFile = await findTestFile(cred, specArg, tool);
   // PRD §8.5: production harus diketik ulang nama project-nya.
-  const confirm = flag('confirm', undefined) ?? undefined;
+  const confirm = flag('confirm');
 
   const created = (await api('/api/runs/local', {
     method: 'POST', token: cred.token, baseUrl: cred.baseUrl,
-    body: { testFileId: testFile.id, env, confirm, sessionId: flag('session', undefined) ?? undefined },
+    body: { testFileId: testFile.id, env, confirm, sessionId: flag('session') },
   })).json;
   const { runId, targetUrl, code, config } = created;
   console.log(`run ${runId} · ${tool} · ${env} · ${targetUrl ?? '(tanpa URL)'}`);
@@ -303,7 +305,7 @@ export default defineConfig({
 // A16: hasil lokal tersimpan walau jaringan putus saat run.
 async function upload() {
   const runId = argv[1];
-  if (!runId) die('Usage: playbook upload <runId> [--dir folder]');
+  if (!runId) die(`Usage: ${UPLOAD_USAGE}`);
   const cred = await credentials();
   const outDir = resolve(String(flag('dir', join(OUT_ROOT, runId))));
   const runInfo = (await api(`/api/runs/${runId}`, { token: cred.token, baseUrl: cred.baseUrl })).json;
@@ -332,8 +334,8 @@ if (!commands[cmd]) {
   playbook login [--server URL]        simpan token di ~/.playbook/credentials.json
   playbook logout
   playbook whoami
-  playbook run <spec|config> [--env local|staging|production] [--confirm <nama project>] [--project slug] [--session id]
-  playbook upload <runId> [--dir folder]   unggah hasil lokal (A16)
+  ${RUN_USAGE}
+  ${UPLOAD_USAGE}   unggah hasil lokal (A16)
   playbook status [runId]
 `);
   process.exit(cmd ? 1 : 0);

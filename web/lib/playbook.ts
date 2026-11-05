@@ -78,7 +78,7 @@ export type Session = {
 };
 export type Stats = {
   tcPassed: number; tcFailed: number; passRate: number | null;
-  sessions: number; runs: number; activeRuns: number; failedRuns: number; avgDurationMs: number | null;
+  sessions: number; runs: number; activeRuns: number; failedRuns: number; failedSessions: number; avgDurationMs: number | null;
   lighthouse: {
     urls: number; performance: number | null; accessibility: number | null;
     bestPractices: number | null; seo: number | null;

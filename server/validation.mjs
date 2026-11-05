@@ -14,10 +14,6 @@ export function text(value, name, max = 200) {
     fail(`${name} harus 1-${max} karakter`);
   return value.trim();
 }
-export function optionalText(value, name, max = 200) {
-  if (value === undefined || value === null) return null;
-  return text(value, name, max);
-}
 // Kode sumber disimpan apa adanya: trim akan membuat DB beda dari file di disk
 // dan memicu status "belum disimpan" palsu di editor.
 export function code(value, max = 200000) {

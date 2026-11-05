@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api, type GeneratedSpec, type TestFile } from "../../lib/playbook";
+import { confirmAction } from "../../lib/alerts";
 
 type Token = { text: string; kind: "plain" | "comment" | "string" | "keyword" | "ident" };
 
-// Tokenizer sederhana tanpa dependency: komentar, string, keyword, dan nama
-// method Playwright. Cukup untuk membaca spec hasil generate.
+// Tokenizer sederhana tanpa dependency: komentar, string, keyword, dan method Playwright.
 const TOKEN_RE =
   /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`)|\b(import|from|test|expect|async|await|const|let|var|function|return|if|else|new|for|throw|type)\b|\b(page|locator|goto|fill|click|check|selectOption|getByRole|getByLabel|getByPlaceholder|toBeVisible|toBeEnabled|toBeDisabled|toBeChecked|toHaveValue|toHaveTitle|toHaveURL|toBeAttached)\b/g;
 
@@ -30,6 +30,8 @@ export function SpecGenerator({
   projectSlug,
   projectName,
   existingFile,
+  projectOptions,
+  onProjectChange,
   onSaved,
 }: {
   defaultUrl: string;
@@ -37,6 +39,8 @@ export function SpecGenerator({
   projectSlug?: string;
   projectName?: string;
   existingFile?: TestFile | null;
+  projectOptions?: { id: string; name: string }[];
+  onProjectChange?: (id: string) => void;
   onSaved?: (file: TestFile) => void;
 }) {
   const [url, setUrl] = useState(defaultUrl);
@@ -46,8 +50,7 @@ export function SpecGenerator({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  // Project/environment di halaman induk berubah → hasil lama tidak boleh
-  // tersimpan ke project yang baru.
+  // Project/environment berubah → hasil lama tidak boleh tersimpan ke project baru.
   useEffect(() => {
     setUrl(defaultUrl);
     setResult(null);
@@ -85,12 +88,16 @@ export function SpecGenerator({
     URL.revokeObjectURL(href);
   };
 
-  // Simpan langsung ke test file project supaya spec bisa dijalankan tanpa
-  // menyalin kode ke form "Tambah spec" lebih dulu.
+  // Simpan langsung ke test file project supaya spec bisa dijalankan tanpa salin manual.
   const save = async () => {
     if (!result || !projectId || saving) return;
     const path = existingFile?.path ?? `tests/${projectSlug || "generated"}.spec.ts`;
-    if (existingFile && !window.confirm(`Timpa ${existingFile.path} dengan hasil generate?`)) return;
+    if (existingFile && !(await confirmAction({
+      icon: "warning",
+      title: "Timpa spec yang ada?",
+      text: `${existingFile.path} akan diganti dengan hasil generate ini.`,
+      confirmButtonText: "Ya, Timpa",
+    }))) return;
     setSaving(true);
     setError("");
     setNotice("");
@@ -131,6 +138,21 @@ export function SpecGenerator({
       </div>
 
       <form className="pb-gen-form" onSubmit={submit}>
+        {projectOptions && (
+          <label className="pb-field pb-gen-project">
+            Project
+            <select
+              className="pb-select"
+              value={projectId ?? ""}
+              onChange={e => onProjectChange?.(e.target.value)}
+              disabled={loading || projectOptions.length === 0}
+            >
+              {projectOptions.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="pb-field">
           URL target
           <input
@@ -147,6 +169,11 @@ export function SpecGenerator({
           {loading ? "Membuat…" : "Generate Template"}
         </button>
       </form>
+
+      <p className="pb-hint" style={{ marginTop: 8 }}>
+        Crawler berjalan di mesin server dashboard. <code className="pb-mono">localhost</code> berarti
+        server itu, bukan laptop yang membuka browser. URL harus lolos allowlist project.
+      </p>
 
       {error && <div className="pb-err" role="alert" style={{ marginTop: 12 }}>{error}</div>}
       {notice && <div className="pb-ok" role="status" style={{ marginTop: 12 }}>{notice}</div>}

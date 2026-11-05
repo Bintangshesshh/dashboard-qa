@@ -4,12 +4,12 @@ import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
 import { CodeEditor } from "../code-editor";
 import { RunPanel } from "../run-panel";
-import { SpecGenerator } from "../spec-generator";
 import { useEffect, useRef, useState } from "react";
 import {
   api, artifactUrl, fmtDur, fmtTime, groupProjects,
   type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
+import { confirmAction } from "../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -25,9 +25,7 @@ export default function PlaywrightPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<TestFile[]>([]);
   const [projectId, setProjectId] = useState("");
-  // Generator membuka Chromium di server → hanya admin yang boleh melihatnya.
-  const [isAdmin, setIsAdmin] = useState(false);
-  // Default local: kasus utama menguji web yang jalan di laptop sendiri.
+  // Default local: kasus utama menguji web di laptop sendiri.
   // Konfirmasi production: ketik nama project. Guard sama ada di server.
   const [confirmName, setConfirmName] = useState("");
   const [env, setEnv] = useState<Env>("local");
@@ -40,43 +38,36 @@ export default function PlaywrightPage() {
   // Jam simpan terakhir: badge "Tersimpan" tanpa waktu tidak menjawab apa pun.
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState("");
-  // Konflik = file di disk berubah sejak sinkron terakhir; butuh keputusan user.
+  // Konflik: file di disk berubah sejak sinkron terakhir; butuh keputusan user.
   const [conflict, setConflict] = useState(false);
 
-  // Run + terminal
-  // runId di-sessionStorage per project: ganti dropdown tidak menumpuk log
-  // project lain, dan run tetap terpantau saat pindah halaman.
-  // Terminal dipisah per project: satu kunci sessionStorage per project, jadi
-  // ganti dropdown tidak menumpuk log project lain.
+  // Run + terminal. runId disimpan per project di sessionStorage: ganti
+  // dropdown tidak menumpuk log project lain, dan run tetap terpantau saat pindah halaman.
   const [starting, setStarting] = useState(false);
   // Sesi milik run terakhir + batas reuse dari DB (bukan hardcode).
   const [session, setSession] = useState<Session | null>(null);
   const [reuseMinutes, setReuseMinutes] = useState<number | null>(null);
+  // Run yang sedang dipantau ditulis langsung di start(): kalau lewat efek,
+  // runId project lama sempat tertulis ke project baru saat dropdown diganti.
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-
-  // Run yang sedang dipantau, per project. Ditulis di start(): kalau lewat efek,
-  // runId project lama sempat tertulis ke project baru saat dropdown diganti.
-  const [runsByProject, setRunsByProject] = useState<Record<string, string>>({});
 
   // Ganti project → pasang lagi run project itu (kalau ada), terminal direset.
   useEffect(() => {
     if (!projectId) return;
     setRun(null); setLogs([]);
-    setRunId(runsByProject[projectId] ?? sessionStorage.getItem(`pw-run:${projectId}`));
-    // runsByProject sengaja tidak jadi dependency: membacanya di sini tidak boleh
-    // memicu reset terminal setiap kali runId baru disimpan.
+    setRunId(sessionStorage.getItem(`pw-run:${projectId}`));
+    // sengaja tanpa dependency lain: menyimpan runId baru tidak boleh mereset terminal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  // ID tersimpan bisa basi (run dihapus/cancel dari halaman lain).
-  // Validasi sekali per id: kalau 404, buang ID, biar terminal tidak polling hantu.
+  // ID tersimpan bisa basi (run dihapus/cancel dari halaman lain); validasi sekali per id.
   const restored = useRef<string | null>(null);
   useEffect(() => {
     if (!runId || restored.current === runId) return;
     restored.current = runId;
-    api.run(runId).then(() => {}).catch(() => {
+    api.run(runId).catch(() => {
       sessionStorage.removeItem(`pw-run:${projectId}`);
       setRunId(null); setLogs([]);
     });
@@ -87,18 +78,15 @@ export default function PlaywrightPage() {
       setProjects(p);
       if (p[0]) setProjectId(p[0].id);
     }).catch(e => setError(e.message));
-    api.me().then(u => setIsAdmin(u.role === "admin")).catch(() => {});
   }, []);
 
-  // Nilai reuse dari tabel settings; endpoint admin-only, viewer cukup tidak
-  // melihat saran sesi.
+  // Nilai reuse dari tabel settings; viewer tidak perlu melihat saran sesi.
   useEffect(() => {
     api.settings().then(x => setReuseMinutes(Number(x.session_reuse_minutes) || null))
       .catch(() => {});
   }, []);
 
-  // Spec otomatis: project hanya punya satu spec Playwright. Dropdown Spec dihapus
-  // (belum ada API bikin file baru).
+  // Spec otomatis: project hanya punya satu spec Playwright (belum ada API bikin file baru).
   useEffect(() => {
     if (!projectId) return;
     api.testFiles({ project: projectId, tool: "pw" })
@@ -110,13 +98,12 @@ export default function PlaywrightPage() {
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
   // Server juga menolak production kalau project belum mengizinkannya; tombol
-// jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
-const productionOk = env !== "production"
-  || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
+  // jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
+  const productionOk = env !== "production"
+    || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
   const dirty = !!selected && draft !== savedCode;
   const running = !!run && !FINAL.includes(run.status);
-  // Umur sesi dihitung dari run terakhir, sama dengan aturan di server: satu sesi
-  // = satu sesi kerja, bukan satu hari. Tanpa run, pakai waktu dibuat.
+  // Umur sesi dari run terakhir, sama dengan server: satu sesi kerja, bukan satu hari.
   const sessionAnchor = session?.last_run_at ?? session?.created_at;
   const sessionAge = sessionAnchor
     ? Math.max(0, Math.round((Date.now() - Date.parse(sessionAnchor)) / 60000))
@@ -160,22 +147,28 @@ const productionOk = env !== "production"
     return () => { alive = false; };
   }, [run?.session_id]);
 
-  const save = async (force = false) => {
-    if (!selected) return;
+  // Nilai terbaru untuk mendeteksi user mengetik selama request berjalan.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+
+  const save = async (force = false): Promise<boolean> => {
+    if (!selected) return false;
+    const snapshot = draftRef.current;
     setSaving(true); setError("");
     try {
-      const updated = await api.patchTestFile(selected.id, { code: draft, ...(force ? { force: true } : {}) });
+      const updated = await api.patchTestFile(selected.id, { code: snapshot, ...(force ? { force: true } : {}) });
       setFiles([updated]);
-      // Backend men-trim teks. Tanpa sinkron balik, `dirty` tetap true dan
-      // autosave memicu simpan berulang.
-      setDraft(updated.code);
+      // Backend men-trim teks. Sync balik hanya kalau user belum mengetik lagi.
+      if (draftRef.current === snapshot) setDraft(updated.code);
       setSavedCode(updated.code);
       setSavedAt(new Date().toISOString());
       setConflict(false);
+      return true;
     } catch (e) {
       const err = e as { status?: number; message: string };
       if (err.status === 409) setConflict(true);
       else setError(err.message);
+      return false;
     } finally { setSaving(false); }
   };
 
@@ -196,6 +189,12 @@ const productionOk = env !== "production"
   // Arah sebaliknya: ambil versi disk (mis. habis pull dari git).
   const reload = async () => {
     if (!selected) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Muat ulang dari disk?",
+      text: "Perubahan yang belum disimpan akan hilang.",
+      confirmButtonText: "Ya, Muat Ulang",
+    }))) return;
     setSaving(true); setError("");
     try {
       const updated = await api.reloadTestFile(selected.id);
@@ -216,15 +215,18 @@ const productionOk = env !== "production"
       if (env === "production" && confirmName.trim() !== project?.name)
         throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya spec Playwright.");
-      // Flush autosave yang masih menunggu supaya run memakai kode terbaru.
-      if (pending.current) { clearTimeout(pending.current); pending.current = null; await save(); }
+      // Run harus memakai kode tersimpan; kalau simpan gagal, jangan lanjut diam-diam.
+      if (pending.current) { clearTimeout(pending.current); pending.current = null; }
+      if (dirty) {
+        const saved = await save();
+        if (!saved) throw new Error("Kode belum tersimpan. Selesaikan error simpan sebelum run.");
+      }
       // Konfirmasi production diketik user; guard yang sama ada di server.
       const created = await api.createSession(
         projectId, env, env === "production" ? confirmName : undefined, fresh,
       );
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`pw-run:${projectId}`, runId);
-      setRunsByProject(prev => ({ ...prev, [projectId]: runId }));
       setRunId(runId);
     } catch (e) {
       setError((e as Error).message);
@@ -291,13 +293,6 @@ const productionOk = env !== "production"
           <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
             Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
           </p>
-          {env === "local" && (
-          <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-            Env local dijalankan dari mesin server dashboard. Kalau dashboard dihosting,
-            isi local_url dengan URL tunnel (cloudflared/ngrok) ke web lokal, bukan 127.0.0.1.
-            Origin-nya wajib terdaftar di origins project atau TARGET_ALLOWLIST.
-          </p>
-          )}
           {session && (
             <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
               {session.closed_at ? "Sesi terakhir sudah ditutup" : "Sesi terbuka"}
@@ -315,36 +310,29 @@ const productionOk = env !== "production"
         )}
       </section>
 
-      {isAdmin && (
-        <SpecGenerator
-          defaultUrl={target}
-          projectId={projectId || undefined}
-          projectSlug={project?.slug}
-          projectName={project?.name}
-          existingFile={selected}
-          onSaved={file => {
-            // Hasil generate langsung jadi spec aktif, jadi Run memakai kode ini.
-            setFiles([file]);
-            setDraft(file.code);
-            setSavedCode(file.code);
-            setSavedAt(new Date().toISOString());
-            setConflict(false);
-          }}
-        />
-      )}
-
       <section className="pb-card" style={{ marginBottom: 16 }}>
         <div className="pb-row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 15 }}>Spec</h2>
             <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada spec"}</div>
           </div>
+          <Link className="pb-link-muted" href="/settings">Kelola spec di Pengaturan</Link>
         </div>
         {conflict && (
           <div className="pb-err" role="alert" style={{ marginBottom: 8, display: "grid", gap: 8 }}>
             <span>File spec di disk sudah berubah sejak sinkron terakhir (kemungkinan ada perubahan di git).</span>
             <span className="pb-row" style={{ gap: 8 }}>
-              <button className="pb-btn sm danger" onClick={() => save(true)} disabled={saving}>Timpa file di disk</button>
+              <button className="pb-btn sm danger" disabled={saving}
+                onClick={async () => {
+                  if (await confirmAction({
+                    icon: "warning",
+                    title: "Timpa file di disk?",
+                    text: "Perubahan di luar dashboard akan hilang.",
+                    confirmButtonText: "Ya, Timpa",
+                  })) save(true);
+                }}>
+                Timpa file di disk
+              </button>
               <button className="pb-btn sm" onClick={reload} disabled={saving}>Muat ulang dari disk</button>
             </span>
           </div>
@@ -352,7 +340,9 @@ const productionOk = env !== "production"
         {selected ? (
           <CodeEditor value={draft} onChange={setDraft} disabled={running} />
         ) : (
-          <p className="pb-empty">Project ini belum punya spec Playwright.</p>
+          <p className="pb-empty">
+            Project ini belum punya spec Playwright. <Link href="/settings">Tambah spec di Pengaturan</Link>.
+          </p>
         )}
       </section>
 

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, fmtDate, reportUrl, runStatusLabel, type Project, type Session } from "../../../../../lib/playbook";
 import { ArtifactLink } from "../../../../_components/report-link";
+import { promptText } from "../../../../../lib/alerts";
 
 export default function ProjectReports() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -34,13 +35,22 @@ export default function ProjectReports() {
   const quickCheck = async () => {
     if (!project) return;
     setBusy(true); setError(""); setNotice("");
-    // Urutan env: staging, lalu production (situs asli, wajib konfirmasi user),
-    // lalu local. local_url bukan default karena biasanya menunjuk dev server dashboard.
+    // Urutan env: staging, production (wajib konfirmasi), lalu local.
+    // local_url bukan default karena biasanya menunjuk dev server dashboard.
     const env = project.staging_url ? "staging" : project.base_url ? "production" : "local";
     let confirm: string | undefined;
     if (env === "production") {
-      const typed = window.prompt(`Ketik nama project (${project.name}) untuk konfirmasi production:`);
-      if (typed !== project.name) { setBusy(false); setNotice("Quick check production dibatalkan."); return; }
+      const typed = await promptText({
+        icon: "warning",
+        title: "Konfirmasi production",
+        text: `Ketik nama project (${project.name}) untuk menjalankan quick check di situs production.`,
+      });
+      if (typed !== project.name) {
+        setBusy(false);
+        if (typed !== null) setNotice("Nama project tidak cocok. Quick check production dibatalkan.");
+        else setNotice("Quick check production dibatalkan.");
+        return;
+      }
       confirm = typed;
     }
     try {
@@ -51,6 +61,15 @@ export default function ProjectReports() {
       setError((e as Error).message);
     } finally { setBusy(false); }
   };
+
+  if (projectError && !project) {
+    return (
+      <section className="pb-card">
+        <div className="pb-err" role="alert">{projectError}</div>
+        <Link className="pb-btn sm" href="/reports">Kembali ke Laporan</Link>
+      </section>
+    );
+  }
 
   return (
     <>
@@ -98,8 +117,7 @@ export default function ProjectReports() {
                       : s.reports!.map(rep => {
                         const canOpen = rep.status === "ready" || (rep.status === "stale" && !!rep.path);
                         const title = [rep.scope, rep.status, rep.mode ?? "-", fmtDate(rep.built_at)].join(" | ");
-                        // ArtifactLink mengecek file dulu: report yang sudah dibuang
-                        // retensi tampil sebagai teks, bukan tombol ke {"error":"Not found"}.
+                        // ArtifactLink mengecek file dulu; report yang kena retensi jadi teks, bukan 404.
                         return canOpen
                           ? <span key={rep.id} style={{ marginRight: 6 }} title={title}>
                               <ArtifactLink href={reportUrl(rep.id)} missing={`${rep.scope} report hilang`}>{rep.scope}</ArtifactLink>

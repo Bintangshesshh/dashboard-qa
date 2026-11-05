@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -10,11 +11,12 @@ import { RunTerminal } from "../../run-terminal";
 import { ArtifactLink, LoginAgain, useProbe } from "../../../_components/report-link";
 import { RunClock } from "../../../_components/run-clock";
 import { ToolMark } from "../../../_components/tool-mark";
+import { confirmAction } from "../../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
-// Backend membalas {"error":"Not found"} untuk sesi yang sudah dihapus / kena
-// retensi. Bukan pesan untuk user, jadi diterjemahkan di sini.
+// Backend membalas {"error":"Not found"} untuk sesi yang dihapus/kena retensi;
+// terjemahkan jadi pesan user.
 const friendly = (msg: string) =>
   /not ?found/i.test(msg) ? "Sesi tidak ditemukan - mungkin sudah dihapus atau kena retensi." : msg;
 
@@ -44,8 +46,8 @@ export default function SessionDetail() {
   const [notice, setNotice] = useState("");
   const [openRun, setOpenRun] = useState<Run | null>(null);
   const [busy, setBusy] = useState("");
-  // B9/A58: label tombol report memakai jendela retensi (endpoint publik, viewer boleh baca).
-  // ponytail: fallback 7 kalau request gagal - tampilkan angka default saja.
+  // B9/A58: label tombol report memakai jendela retensi (endpoint publik).
+  // ponytail: fallback 7 kalau request gagal.
   const [retention, setRetention] = useState(7);
 
   useEffect(() => {
@@ -68,7 +70,15 @@ export default function SessionDetail() {
   }, [session, load]);
 
   const openRunDetail = async (run: Run) => {
-    try { setOpenRun(await api.run(run.id)); } catch (e) { setError((e as Error).message); }
+    try {
+      setOpenRun(await api.run(run.id));
+      // Panel muncul di bawah daftar run; tanpa scroll user mengira tombol diam.
+      setTimeout(() => {
+        const el = document.getElementById("hasil-run");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+        el?.focus({ preventScroll: true });
+      }, 0);
+    } catch (e) { setError((e as Error).message); }
   };
 
   // Snapshot run terbuka ikut diperbarui selama belum final.
@@ -94,7 +104,12 @@ export default function SessionDetail() {
   };
 
   const cancelRun = async (run: Run) => {
-    if (!confirm("Batalkan run ini? Proses tool akan dimatikan.")) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Batalkan run ini?",
+      text: "Proses tool akan dimatikan.",
+      confirmButtonText: "Ya, Batalkan",
+    }))) return;
     setBusy(run.id); setError(""); setNotice("");
     try {
       await api.cancelRun(run.id);
@@ -104,27 +119,52 @@ export default function SessionDetail() {
   };
 
   const deleteSession = async () => {
-    if (!confirm("Hapus sesi ini beserta semua run, artifact, dan laporannya? Tidak bisa dibatalkan.")) return;
+    const activeRuns = session?.runs?.filter(r => !FINAL.includes(r.status)).length ?? 0;
+    if (activeRuns > 0) { setError("Batalkan run yang masih berjalan sebelum menghapus sesi."); return; }
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Hapus sesi ini?",
+      text: "Semua run, artifact, dan laporannya ikut terhapus. Tidak bisa dibatalkan.",
+      confirmButtonText: "Ya, Hapus",
+    }))) return;
+    setBusy("delete"); setError("");
     const back = session?.project_id ? `/reports/project/${session.project_id}` : "/reports";
     try { await api.deleteSession(sessionId); router.push(back); }
-    catch (e) { setError((e as Error).message); }
+    catch (e) { setError((e as Error).message); setBusy(""); }
   };
 
   const closeSession = async () => {
-    if (!confirm("Tutup sesi ini? Run baru akan membuat sesi terpisah.")) return;
+    if (!(await confirmAction({
+      icon: "question",
+      title: "Tutup sesi ini?",
+      text: "Run baru akan membuat sesi terpisah.",
+      confirmButtonText: "Ya, Tutup",
+    }))) return;
     setBusy("close"); setError(""); setNotice("");
     try { await api.closeSession(sessionId); setNotice("Sesi ditutup."); load(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   };
 
   const deleteRun = async (run: Run) => {
-    if (!confirm("Hapus run ini beserta artifact-nya?")) return;
+    if (!(await confirmAction({
+      icon: "warning",
+      title: "Hapus run ini?",
+      text: "Artifact run ikut terhapus.",
+      confirmButtonText: "Ya, Hapus",
+    }))) return;
     setBusy(run.id); setError(""); setNotice("");
     try { await api.deleteRun(run.id); setNotice("Run dihapus."); load(); }
     catch (e) { setError((e as Error).message); } finally { setBusy(""); }
   };
 
-  if (!session) return <p className="pb-empty">{error || "Memuat sesi…"}</p>;
+  if (!session) {
+    return error ? (
+      <section className="pb-card">
+        <div className="pb-err" role="alert">{error}</div>
+        <Link className="pb-btn sm" href="/reports">Kembali ke Laporan</Link>
+      </section>
+    ) : <p className="pb-empty">Memuat sesi…</p>;
+  }
 
   const runs = session.runs ?? [];
   const tools = new Set(runs.filter(r => FINAL.includes(r.status)).map(r => r.tool));
@@ -134,6 +174,7 @@ export default function SessionDetail() {
   const passed = runs.filter(r => r.status === "passed").length;
   const failed = runs.filter(r => r.status === "failed").length;
   const active = runs.filter(r => !FINAL.includes(r.status)).length;
+  const runActive = active > 0;
   const durations = runs.map(r => r.duration_ms).filter((v): v is number => v != null);
   const avgDur = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
 
@@ -151,14 +192,21 @@ export default function SessionDetail() {
         <div className="pb-sess-actions">
           <div className="pb-btn-group">
             <button className="pb-btn sm primary" onClick={() => publish(hasBoth ? "both" : hasPw ? "pw" : "lh")}
-              disabled={(!hasPw && !hasLh) || !!busy}>
+              disabled={(!hasPw && !hasLh) || !!busy || runActive}
+              title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
               {busy ? "…" : hasBoth ? "Buat laporan (Gabungan)" : hasPw ? "Buat laporan (Playwright)" : "Buat laporan (Lighthouse)"}
             </button>
             {/* Scope tunggal hanya relevan kalau dua-duanya punya run final. */}
             {hasBoth && (
               <>
-                <button className="pb-btn sm" onClick={() => publish("pw")} disabled={!!busy}><ToolMark tool="pw" inline /> saja</button>
-                <button className="pb-btn sm" onClick={() => publish("lh")} disabled={!!busy}><ToolMark tool="lh" inline /> saja</button>
+                <button className="pb-btn sm" onClick={() => publish("pw")} disabled={!!busy || runActive}
+                  title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
+                  <ToolMark tool="pw" inline /> saja
+                </button>
+                <button className="pb-btn sm" onClick={() => publish("lh")} disabled={!!busy || runActive}
+                  title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
+                  <ToolMark tool="lh" inline /> saja
+                </button>
               </>
             )}
           </div>
@@ -167,7 +215,10 @@ export default function SessionDetail() {
             title={active > 0 ? "Tunggu run selesai dulu." : "Run baru akan memakai sesi baru."}>
             Tutup sesi
           </button>
-          <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy}>Hapus sesi</button>
+          <button className="pb-btn sm danger" onClick={deleteSession} disabled={!!busy || active > 0}
+            title={active > 0 ? "Batalkan run yang berjalan dulu." : "Hapus sesi dan seluruh isinya."}>
+            {busy === "delete" ? "Menghapus…" : "Hapus sesi"}
+          </button>
         </div>
       </div>
 
@@ -247,7 +298,11 @@ export default function SessionDetail() {
           </div>
 
           {(session.reports?.length ?? 0) === 0 ? (
-            <p className="pb-empty">Belum ada laporan. Terbitkan dari tombol di atas.</p>
+            <p className="pb-empty">
+              {runActive
+                ? "Run masih berjalan. Laporan bisa diterbitkan setelah semua run selesai."
+                : "Belum ada laporan. Terbitkan dari tombol di atas."}
+            </p>
           ) : (
             <div className="pb-replist">
               {session.reports!.map((rep: Report) => {
@@ -264,8 +319,12 @@ export default function SessionDetail() {
                         <div className="pb-repcard-title">{scopeLabel}</div>
                         <div className="pb-repcard-sub mono">{fmtDate(rep.built_at)}</div>
                       </div>
+                      {runActive && <span className="pb-badge running">run berjalan</span>}
                       <span className={`pb-badge ${rep.status}`}>{rep.status}</span>
                     </div>
+                    {runActive && (
+                      <div className="pb-repcard-note">Run sedang berjalan. Laporan ini snapshot run sebelumnya.</div>
+                    )}
                     {rep.status === "stale" && <div className="pb-repcard-note">ada run baru, build ulang</div>}
                     {missing.length > 0 && <div className="pb-repcard-note">run dihapus: {missing.length}</div>}
                     {rep.status === "ready" && rep.mode === "html" && (
@@ -286,7 +345,8 @@ export default function SessionDetail() {
                       {/* Teks polos siap salin; isi sama dengan tabel HTML. */}
                       {canOpen && <CopyRingkas reportId={rep.id} runIds={ids} />}
                       <button className="pb-btn sm" onClick={() => publish(rep.scope)}
-                        disabled={busy === rep.scope || !canPublish(rep)}>
+                        disabled={busy === rep.scope || !canPublish(rep) || runActive}
+                        title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
                         {busy === rep.scope ? "…" : rep.status === "ready" ? "Perbarui laporan" : rep.status === "stale" ? "Perbarui laporan" : "Terbitkan"}
                       </button>
                     </div>
@@ -309,7 +369,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
   const { html, json: report } = pickReportArtifacts(run);
 
   return (
-    <section className="pb-card pb-runpanel">
+    <section className="pb-card pb-runpanel" id="hasil-run" tabIndex={-1}>
       <div className="pb-runpanel-head">
         <ToolMark tool={run.tool} />
         <h2>Hasil run · {isPw ? "Playwright" : "Lighthouse"}</h2>
@@ -320,7 +380,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
       </div>
 
       {results.length === 0 ? (
-        // Failed/timed-out runs leave no result rows; say so instead of an empty table.
+        // Failed/timed-out runs leave no result rows; explain instead of empty table.
         <p className="pb-empty">
           Tidak ada hasil {isPw ? "Playwright" : "Lighthouse"} pada run ini.
           {run.error ? ` Error: ${run.error}` : ""}
@@ -389,8 +449,8 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
   );
 }
 
-// Report asli Playwright/Lighthouse berat (2 MB + script sendiri). Iframe di dalam
-// panel bikin scroll bertingkat, jadi cukup dibuka di tab baru atau diunduh.
+// Report asli berat (2 MB + script sendiri); iframe bikin scroll bertingkat,
+// jadi buka di tab baru atau unduh.
 function NativeReportLink({ runId, path, label }: { runId: string; path: string; label: string }) {
   const state = useProbe(artifactUrl(runId, path));
   if (state === "checking") return <span className="pb-muted" style={{ fontSize: 12 }}>cek report…</span>;

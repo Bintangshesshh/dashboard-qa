@@ -28,10 +28,11 @@ npm --version
 git clone <repo-url> dashboard
 cd dashboard
 npm install
+npm install --prefix server
 npm install --prefix web
 ```
 
-Verifikasi: `node_modules/@playwright/test` dan `node_modules/@lhci/cli` ada.
+Verifikasi: `node_modules/@playwright/test`, `node_modules/@lhci/cli`, dan `server/node_modules/express` ada.
 
 ---
 
@@ -86,7 +87,7 @@ Catatan: `OPERATOR_TOKEN` **tidak dipakai lagi**. Autentikasi memakai tabel `use
 ## 5. Siapkan database
 
 ```bash
-node --experimental-sqlite scripts/migrate.mjs       # buat 15 tabel, set user_version=5
+node --experimental-sqlite scripts/migrate.mjs       # buat 15 tabel, set user_version=7
 node --experimental-sqlite scripts/seed-projects.mjs # isi 3 grup + 3 project
 ```
 
@@ -96,7 +97,7 @@ Verifikasi:
 node --experimental-sqlite -e "const{DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('data/playbook.db');console.log(db.prepare('PRAGMA user_version').get(), db.prepare('select count(*) c from project_groups').get(), db.prepare('select count(*) c from projects').get())"
 ```
 
-Harapan: `user_version=5` (migrasi `0001_schema_v5.sql` s.d. `0005_project_groups.sql`), `project_groups=3`, `projects=3`.
+Harapan: `user_version=7` (migrasi `0001_schema_v5.sql` s.d. `0007_run_indexes.sql`), `project_groups=3`, `projects=3`.
 
 Database lama ikut termigrasi: setiap project yang belum punya grup mendapat grup `g_<slug>` hasil backfill, jadi tidak ada project yatim. Isi `projects` dan seluruh riwayat run tetap utuh. Rollback: lihat §14.
 
@@ -159,7 +160,16 @@ Buka `http://127.0.0.1:3100` → diarahkan ke `/login`.
 
 ## 10. Run dari CLI
 
-**Belum tersedia.** Paket `playbook` (login/run/record) belum ada di repo ini; run dijalankan oleh worker di server saat tombol **Run** ditekan. Kalau CLI dibutuhkan, itu pekerjaan terpisah (lihat `docs/RENCANA-3-HARI.md` bagian 4).
+CLI ada di `bin/playbook.mjs` dan dijalankan lewat `npm run playbook -- <perintah>`. Login sekali, token disimpan di `~/.playbook/credentials.json`:
+
+```bash
+npm run playbook -- login --server http://127.0.0.1:3001
+npm run playbook -- run eureka/cart-ebh.spec.ts --env local --project eureka-bookhouse
+npm run playbook -- status <runId>
+npm run playbook -- upload <runId> --dir .playbook-runs/<runId>
+```
+
+Hasil run lokal ditulis ke `.playbook-runs/<runId>/` lalu diunggah ke server. Spec harus sudah terdaftar di project; `--confirm <nama project>` wajib untuk `env=production`.
 
 ---
 
@@ -184,7 +194,7 @@ Halaman **Seting** hanya untuk role admin. Isinya lima tab: Project, Playwright,
    - Project arsip tetap bisa dibaca di Reports dan diberi label `Arsip`, tetapi tidak muncul di dropdown run.
 2. **Playwright** - daftar spec per project, aktif/nonaktif, tambah spec baru.
 3. **Lighthouse** - editor config per project: URL (maks 5, termasuk base), jumlah run (maks 10), dan budget per kategori. Config tidak valid ditolak 400 dengan pesan alasannya.
-4. **Report** - `session_reuse_minutes` (default 60), retensi report, batas upload.
+4. **Report** - `session_reuse_minutes` (default 20), retensi report, batas upload.
 5. **Bantuan** - versi terpasang, perintah update, FAQ, tautan feedback (dari `FEEDBACK_URL`).
 
 Token CLI **tidak** dibuat dari dashboard. Buat lewat `npm run playbook -- login --server <url>`; daftar dan pencabutan ada di tab Bantuan.
@@ -255,7 +265,7 @@ Sertakan folder `.runs/` dan `.reports/` saat backup penuh; tanpa keduanya histo
 
 ## 16. Sebelum menyerahkan hasil
 
-- [ ] `data/playbook.db` ada, `user_version=5`, 3 grup, 3 project.
+- [ ] `data/playbook.db` ada, `user_version=7`, 3 grup, 3 project.
 - [ ] Project lama punya `group_id` (backfill), tidak ada project tanpa grup.
 - [ ] Bisa login, sidebar 4 menu + Logout.
 - [ ] Satu run Playwright selesai dan report mentahnya tampil di iframe.

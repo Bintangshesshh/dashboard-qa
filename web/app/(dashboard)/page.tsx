@@ -1,37 +1,143 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api, fmtDate, fmtDur, runStatusLabel,
-  type Project, type RunRow, type Session, type Settings, type Stats, type User,
+  type Project, type RunRow, type Session, type Stats,
 } from "../../lib/playbook";
 
 const RANGES = [7, 14, 30];
+
+type DayStat = Stats["daily"][number];
+type Curve = {
+  xs: number[]; ok: number[]; bad: number[];
+  mOk: number[]; mBad: number[]; max: number;
+};
+type ChartSeries = { us: number[]; ok: number[]; bad: number[]; max: number };
+
+const CHART_MORPH_MS = 600;
+// Jumlah sampel garis; cukup rapat supaya kurva halus tanpa smoothing ulang.
+const CHART_SAMPLES = 200;
+
+// Tanggal WIB (UTC+7), sama dengan pengelompokan grafik di server.
+const wibDay = (back = 0) =>
+  new Date(Date.now() + 7 * 3600_000 - back * 86_400_000).toISOString().slice(0, 10);
+
+// Hari tanpa run tetap tampil sebagai nol.
+const fillDaily = (daily: DayStat[], range: number) => {
+  const map = new Map(daily.map(d => [d.day, d]));
+  return Array.from({ length: range }, (_, i) => {
+    const day = wibDay(range - 1 - i);
+    return map.get(day) ?? { day, total: 0, passed: 0 };
+  });
+};
+
+// Monotone cubic: datar di puncak/lembah, lurus di tanjakan, tanpa overshoot.
+const pchipSlopes = (ys: number[], xs: number[]) => {
+  const n = ys.length;
+  const m = new Array<number>(n).fill(0);
+  if (n < 2) return m;
+  const h = xs[1] - xs[0] || 1;
+  const delta = ys.slice(1).map((y, i) => (y - ys[i]) / h);
+  m[0] = delta[0];
+  m[n - 1] = delta[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    const a = delta[i - 1], b = delta[i];
+    m[i] = a * b <= 0 ? 0 : (2 * a * b) / (a + b);
+  }
+  return m;
+};
+
+const buildCurve = (daily: DayStat[]): Curve => {
+  const n = daily.length;
+  const xs = n ? daily.map((_, i) => (n > 1 ? i / (n - 1) : 0)) : [0];
+  const ok = n ? daily.map(d => d.passed) : [0];
+  const bad = n ? daily.map(d => d.total - d.passed) : [0];
+  return {
+    xs, ok, bad,
+    mOk: pchipSlopes(ok, xs),
+    mBad: pchipSlopes(bad, xs),
+    max: n ? Math.max(1, ...daily.map(d => d.total)) : 1,
+  };
+};
+
+// Evaluasi kurva pada posisi 0..1; titik hari asli selalu kena persis (tanpa overshoot).
+const evalCurve = (ys: number[], ms: number[], xs: number[], u: number) => {
+  if (xs.length === 1) return ys[0];
+  let i = 0;
+  while (i < xs.length - 2 && u > xs[i + 1]) i++;
+  const h = xs[i + 1] - xs[i] || 1;
+  const t = Math.min(1, Math.max(0, (u - xs[i]) / h));
+  const t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * ys[i]
+    + (t3 - 2 * t2 + t) * h * ms[i]
+    + (-2 * t3 + 3 * t2) * ys[i + 1]
+    + (t3 - t2) * h * ms[i + 1];
+};
+
+function useChartMorph(daily: DayStat[]) {
+  const key = daily.map(d => `${d.day}:${d.total}:${d.passed}`).join("|");
+  const [series, setSeries] = useState<ChartSeries>(() => {
+    const initial = buildCurve(daily);
+    return { us: initial.xs, ok: initial.ok, bad: initial.bad, max: initial.max };
+  });
+  const current = useRef(daily);
+  const frame = useRef(0);
+
+  useEffect(() => {
+    const from = buildCurve(current.current);
+    const to = buildCurve(daily);
+    // Sampel memuat semua tanggal kedua rentang, supaya bentuk akhir persis
+    // melewati titik data dan tidak ada puncak palsu di antaranya.
+    const us = [...new Set([
+      ...Array.from({ length: CHART_SAMPLES + 1 }, (_, i) => i / CHART_SAMPLES),
+      ...from.xs,
+      ...to.xs,
+    ].map(u => u.toFixed(6)))].map(Number).sort((a, b) => a - b);
+    const blend = (e: number): ChartSeries => ({
+      us,
+      ok: us.map(u => evalCurve(from.ok, from.mOk, from.xs, u) * (1 - e)
+        + evalCurve(to.ok, to.mOk, to.xs, u) * e),
+      bad: us.map(u => evalCurve(from.bad, from.mBad, from.xs, u) * (1 - e)
+        + evalCurve(to.bad, to.mBad, to.xs, u) * e),
+      max: from.max + (to.max - from.max) * e,
+    });
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      current.current = daily;
+      setSeries({ us: to.xs, ok: to.ok, bad: to.bad, max: to.max });
+      return;
+    }
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / CHART_MORPH_MS);
+      const e = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      setSeries(blend(e));
+      if (t < 1) frame.current = requestAnimationFrame(tick);
+      else current.current = daily;
+    };
+    frame.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame.current);
+  }, [key]); // key sudah mewakili isi daily; array baru dari polling tidak memicu animasi ulang
+
+  return series;
+}
 
 export default function OverviewPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  // Pass rate per project untuk kartu project (prototype: .project-card).
+  // Pass rate per project untuk kartu project.
   const [perProject, setPerProject] = useState<Record<string, Stats>>({});
   const [projectId, setProjectId] = useState("");
   const [range, setRange] = useState(14);
+  // Rentang yang benar-benar diwakili `stats`; grafik tidak beranimasi ke data lama.
+  const [statsRange, setStatsRange] = useState(0);
+  const [chartDaily, setChartDaily] = useState<DayStat[]>([]);
   // Feed "Run terakhir": semua status, termasuk yang sedang berjalan.
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
-  // Kartu "Pengaturan aktif" hanya untuk admin; viewer tidak boleh lihat nilainya.
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-
-  useEffect(() => {
-    api.me().then(u => {
-      if (u.role !== "admin") return;
-      setIsAdmin(true);
-      // Nilai dari DB, bukan konstanta UI.
-      api.settings().then(setSettings).catch(() => {});
-    }).catch(() => {});
-  }, []);
+  const [hoverDay, setHoverDay] = useState<number | null>(null);
 
   useEffect(() => {
     api.projects().then(setProjects).catch(e => setError(e.message));
@@ -41,8 +147,7 @@ export default function OverviewPage() {
       .catch(() => {});
   }, []);
 
-  // Polling 5 dtk supaya run yang baru mulai/selesai langsung terlihat.
-  // Tab tersembunyi dilonggarkan ke 15 dtk: hemat request, tetap segar saat dibuka.
+  // Polling 5 dtk; tab tersembunyi 15 dtk supaya hemat request.
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -55,7 +160,7 @@ export default function OverviewPage() {
           api.runs({ project: projectId || undefined, limit: 8 }),
         ]);
         if (!alive) return;
-        setSessions(s); setStats(st); setRuns(rs);
+        setSessions(s); setStats(st); setStatsRange(range); setRuns(rs);
       } catch (e) {
         if (alive) setError((e as Error).message);
       }
@@ -74,6 +179,12 @@ export default function OverviewPage() {
       .catch(() => {});
     return () => { alive = false; };
   }, [projects, range]);
+
+  // Data grafik baru dipasang setelah stats untuk rentang itu tiba.
+  useEffect(() => {
+    if (!stats || statsRange !== range) return;
+    setChartDaily(fillDaily(stats.daily, range));
+  }, [stats, statsRange, range]);
 
   // Kartu project dipakai di dalam tiap grup; pass rate dari stats per project.
   const projectCard = (p: Project) => {
@@ -100,8 +211,7 @@ export default function OverviewPage() {
     );
   };
 
-  // Grup diturunkan dari projects (urutan server sudah nama project);
-  // project tanpa grup masuk bucket "Tanpa grup".
+  // Grup diturunkan dari projects; project tanpa grup masuk bucket "Tanpa grup".
   const grouped: { id: string; name: string; items: Project[] }[] = [];
   for (const p of projects) {
     const id = p.group_id ?? "";
@@ -114,9 +224,55 @@ export default function OverviewPage() {
   const rate = stats?.passRate == null ? null : Math.round(stats.passRate * 100);
   const rateClass = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
   const lh = stats?.lighthouse ?? null;
-  const daily = stats?.daily ?? [];
-  const maxDay = Math.max(1, ...daily.map(d => d.total));
-  const lastSession = sessions[0] ?? null;
+  // Lengkapi hari tanpa run dengan nol; saat rentang baru dimuat, pakai data lama dulu.
+  const daily = chartDaily.length ? chartDaily : fillDaily(stats?.daily ?? [], range);
+  const totalRuns = daily.reduce((sum, d) => sum + d.total, 0);
+  const totalPassed = daily.reduce((sum, d) => sum + d.passed, 0);
+  const totalFailed = totalRuns - totalPassed;
+  const passRate = totalRuns ? Math.round((totalPassed / totalRuns) * 100) : null;
+  const peak = daily.reduce((best, d) => (d.total > best.total ? d : best), daily[0]);
+  // Grafik garis mengikuti referensi rw-1058: dua area (lulus/gagal), bukan batang.
+  const CHART_W = 640, CHART_H = 230, PAD_X = 44, PAD_Y = 20;
+  // Nilai grafik dianimasikan antar-data, bukan diganti mentah-mentah.
+  const series = useChartMorph(daily);
+  const chartMax = series.max;
+  const chartX = (i: number) => daily.length <= 1
+    ? CHART_W / 2
+    : PAD_X + (i * (CHART_W - PAD_X * 2)) / (daily.length - 1);
+  const chartY = (v: number) => CHART_H - PAD_Y - (v / chartMax) * (CHART_H - PAD_Y * 2);
+  const seriesX = (u: number) => PAD_X + u * (CHART_W - PAD_X * 2);
+  const seriesPoints = (vals: number[]): [number, number][] =>
+    vals.map((v, i) => [seriesX(series.us[i]), chartY(v)]);
+  const seriesValue = (vals: number[], u: number) => {
+    const us = series.us;
+    if (us.length === 1) return vals[0];
+    let i = 0;
+    while (i < us.length - 2 && u > us[i + 1]) i++;
+    const span = us[i + 1] - us[i] || 1;
+    const t = Math.min(1, Math.max(0, (u - us[i]) / span));
+    return vals[i] + (vals[i + 1] - vals[i]) * t;
+  };
+  // Path dirakit dari sampel rapat supaya bentuk animasi = kurva data (puncak tidak bergeser).
+  const linePath = (pts: [number, number][]) => {
+    if (pts.length < 2) return "";
+    return pts.map(([x, y], i) => `${i ? " L" : "M"}${x},${y}`).join("");
+  };
+  const areaPath = (pts: [number, number][]) => pts.length < 2
+    ? ""
+    : `${linePath(pts)} L${pts[pts.length - 1][0]},${CHART_H - PAD_Y} L${pts[0][0]},${CHART_H - PAD_Y} Z`;
+  const passedPts = seriesPoints(series.ok);
+  const failedPts = seriesPoints(series.bad);
+  const labelEvery = Math.max(1, Math.ceil(daily.length / 7));
+  const slotW = daily.length > 1 ? (CHART_W - PAD_X * 2) / (daily.length - 1) : CHART_W - PAD_X * 2;
+  // Jaga label terakhir tidak menabrak label periodik sebelumnya.
+  const labelIdx = daily.map((_, i) => i)
+    .filter(i => i % labelEvery === 0 || i === daily.length - 1);
+  while (labelIdx.length > 1 && chartX(daily.length - 1) - chartX(labelIdx[labelIdx.length - 2]) < slotW * 1.8) {
+    labelIdx.splice(labelIdx.length - 2, 1);
+  }
+  const hasDailyRuns = totalRuns > 0;
+  // Sesi dengan aktivitas terakhir, bukan sesi kosong yang baru dibuat.
+  const lastSessionId = runs[0]?.session_id ?? sessions[0]?.id ?? null;
 
   return (
     <>
@@ -132,13 +288,17 @@ export default function OverviewPage() {
         <div className="pb-filters">
           <select className="pb-select" value={projectId} onChange={e => setProjectId(e.target.value)} aria-label="Project">
             <option value="">Semua project</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {grouped.map(g => (
+              <optgroup key={g.id} label={g.name}>
+                {g.items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </optgroup>
+            ))}
           </select>
           <select className="pb-select" value={String(range)} onChange={e => setRange(Number(e.target.value))} aria-label="Rentang">
             {RANGES.map(d => <option key={d} value={d}>{d} hari</option>)}
           </select>
-          {lastSession && (
-            <Link className="pb-btn" href={`/reports/${lastSession.id}`}>Buka sesi terakhir</Link>
+          {lastSessionId && (
+            <Link className="pb-btn" href={`/reports/${lastSessionId}`}>Buka sesi terakhir</Link>
           )}
         </div>
       </div>
@@ -180,7 +340,7 @@ export default function OverviewPage() {
           <div>
             <div className="pb-kpi-val">{stats?.failedRuns ?? "-"}</div>
             <div className="pb-kpi-foot">
-              <span className="dot bad" />{stats?.failures?.length ?? 0} sesi terdampak
+              <span className="dot bad" />{stats?.failedSessions ?? 0} sesi terdampak
               {!!stats?.activeRuns && <> · <strong>{stats.activeRuns} berjalan</strong></>}
             </div>
           </div>
@@ -192,33 +352,114 @@ export default function OverviewPage() {
           <div className="pb-card-head">
             <div>
               <h2>Run per hari</h2>
-              <div className="pb-card-sub">Playwright dan Lighthouse, {range} hari terakhir.</div>
+              <div className="pb-card-sub">
+                Jumlah run final per tanggal WIB, {range} hari terakhir. Hari tanpa run tetap ditampilkan sebagai nol.
+              </div>
             </div>
             <div className="pb-legend">
               <span><i className="pb-swatch" />Lulus</span>
               <span><i className="pb-swatch bad" />Gagal</span>
             </div>
           </div>
-          {daily.length === 0 ? (
-            <p className="pb-empty">Belum ada run final dalam rentang ini.</p>
+          {!hasDailyRuns ? (
+            <p className="pb-empty">Belum ada run final dalam {range} hari terakhir.</p>
           ) : (
-            <div className="pb-bars" role="img" aria-label="Grafik jumlah run per hari">
-              {daily.map(d => {
-                const h = Math.max(3, (d.total / maxDay) * 100);
-                const hp = d.total ? (d.passed / d.total) * 100 : 0;
+            <svg className="pb-linechart" viewBox={`0 0 ${CHART_W} ${CHART_H}`} role="img"
+              aria-label={`Grafik run per hari, ${range} hari, puncak ${Math.round(chartMax)} run`}>
+              <defs>
+                <linearGradient id="pb-fill-ok" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" style={{ stopColor: "var(--ok)" }} stopOpacity=".28" />
+                  <stop offset="100%" style={{ stopColor: "var(--ok)" }} stopOpacity="0" />
+                </linearGradient>
+                <linearGradient id="pb-fill-bad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" style={{ stopColor: "var(--bad)" }} stopOpacity=".22" />
+                  <stop offset="100%" style={{ stopColor: "var(--bad)" }} stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {[0, .5, 1].map(t => {
+                const y = chartY(chartMax * t);
                 return (
-                  <div className="pb-bar-col" key={d.day} title={`${d.day}: ${d.total} run, ${d.passed} lulus`}>
-                    <span className="pb-bar" style={{ height: `${h}%` }}>
-                      <span className="pb-bar-passed" style={{ height: `${hp}%` }} />
-                    </span>
-                    <small>{d.day.slice(5)}</small>
-                  </div>
+                  <g key={t}>
+                    <line className="pb-chart-grid" x1={PAD_X} x2={CHART_W - PAD_X} y1={y} y2={y} />
+                    <text className="pb-chart-y" x={PAD_X - 8} y={y + 3.5} textAnchor="end">
+                      {Math.round(chartMax * t)}
+                    </text>
+                  </g>
                 );
               })}
-            </div>
+              {daily.length > 1 && (
+                <>
+                  <path className="pb-chart-area ok" d={areaPath(passedPts)} />
+                  <path className="pb-chart-area bad" d={areaPath(failedPts)} />
+                </>
+              )}
+              <path className="pb-chart-line bad" d={linePath(failedPts)} />
+              <path className="pb-chart-line ok" d={linePath(passedPts)} />
+              {daily.map((d, i) => {
+                const frac = daily.length > 1 ? i / (daily.length - 1) : 0;
+                const ok = d.passed;
+                const bad = d.total - d.passed;
+                const okY = chartY(seriesValue(series.ok, frac));
+                const badY = chartY(seriesValue(series.bad, frac));
+                const isHover = hoverDay === i;
+                // Hari tanpa run tidak perlu dua titik nol yang menumpuk.
+                const hasRuns = d.total > 0;
+                return (
+                  <g key={d.day}>
+                    <rect className="pb-chart-hit"
+                      x={Math.max(0, chartX(i) - slotW / 2)} y={PAD_Y}
+                      width={slotW} height={CHART_H - PAD_Y * 2}
+                      tabIndex={0} role="img"
+                      aria-label={`${d.day}: ${ok} lulus, ${bad} gagal`}
+                      onPointerEnter={() => setHoverDay(i)}
+                      onPointerLeave={() => setHoverDay(null)}
+                      onFocus={() => setHoverDay(i)}
+                      onBlur={() => setHoverDay(null)} />
+                    {isHover && (
+                      <line className="pb-chart-guide" x1={chartX(i)} x2={chartX(i)}
+                        y1={PAD_Y} y2={CHART_H - PAD_Y} />
+                    )}
+                    {hasRuns ? (
+                      <>
+                        <circle className="pb-chart-dot ok" cx={chartX(i)} cy={okY}
+                          r={isHover ? 4.2 : 2.8} />
+                        {bad > 0 && (
+                          <circle className="pb-chart-dot bad" cx={chartX(i)} cy={badY}
+                            r={isHover ? 4.2 : 2.8} />
+                        )}
+                      </>
+                    ) : isHover && (
+                      <circle className="pb-chart-dot zero" cx={chartX(i)} cy={okY} r="4.2" />
+                    )}
+                    {isHover && (hasRuns ? (
+                      <>
+                        <text className="pb-chart-value ok" x={chartX(i)}
+                          y={Math.max(12, okY - 9)} textAnchor="middle">{ok}</text>
+                        {bad > 0 && (
+                          <text className="pb-chart-value bad" x={chartX(i)}
+                            y={Math.min(CHART_H - 16, badY + 15)} textAnchor="middle">{bad}</text>
+                        )}
+                      </>
+                    ) : (
+                      <text className="pb-chart-value zero" x={chartX(i)}
+                        y={okY - 9} textAnchor="middle">0</text>
+                    ))}
+                    {(labelIdx.includes(i) || isHover) && (
+                      <text className={`pb-chart-label${isHover ? " active" : ""}`} x={chartX(i)} y={CHART_H - 4} textAnchor="middle">
+                        {d.day.slice(5)}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
           )}
           <div className="pb-chart-note">
-            <span>{stats?.runs ?? 0} run · {stats?.sessions ?? 0} sesi</span>
+            <span><strong>{totalRuns}</strong> run final</span>
+            <span><i className="pb-swatch" />{totalPassed} lulus</span>
+            <span><i className="pb-swatch bad" />{totalFailed} gagal</span>
+            <span>Tingkat lulus <strong>{passRate == null ? "-" : `${passRate}%`}</strong></span>
+            {hasDailyRuns && <span>Puncak <strong>{peak.total}</strong> run · {peak.day.slice(5)}</span>}
           </div>
         </section>
 
@@ -252,55 +493,7 @@ export default function OverviewPage() {
         </section>
       </div>
 
-      <div className="pb-section-title">
-        <h2>Project</h2>
-        <span className="eyebrow">{projectId ? 1 : projects.length} aktif</span>
-      </div>
-      {projects.length === 0 ? (
-        <p className="pb-empty">Belum ada project.</p>
-      ) : (
-        // Grup hanya pengelompokan tampilan; daftarnya diturunkan dari
-        // projects.group_name, jadi tidak butuh endpoint agregasi baru.
-        grouped.map(g => (
-          <section className="pb-group-block" key={g.id}>
-            <div className="pb-group-label">
-              <strong>{g.name}</strong>
-              <span className="pb-muted pb-mono">{g.items.length} project</span>
-            </div>
-            <div className="pb-project-grid">
-              {g.items.map(p => projectCard(p))}
-            </div>
-          </section>
-        ))
-      )}
-
-      {isAdmin && (
-        <section className="pb-card pb-set-summary" style={{ marginTop: 16 }}>
-          <div className="pb-card-head">
-            <div>
-              <h2>Pengaturan aktif</h2>
-              <div className="pb-card-sub">
-                Nilai yang sedang dipakai runner, dibaca dari tabel settings.
-              </div>
-            </div>
-            <Link className="pb-link-muted" href="/settings">Buka Pengaturan</Link>
-          </div>
-          {settings ? (
-            <div className="pb-kv">
-              <div className="pb-kv-row"><span>Reuse sesi</span>
-                <code className="pb-mono">{settings.session_reuse_minutes} menit</code></div>
-              <div className="pb-kv-row"><span>Antrean maksimum</span>
-                <code className="pb-mono">{settings.max_queue_length} run</code></div>
-              <div className="pb-kv-row"><span>Retensi report</span>
-                <code className="pb-mono">{settings.report_retention_days} hari</code></div>
-              <div className="pb-kv-row"><span>Range default</span>
-                <code className="pb-mono">{settings.range_default_days} hari</code></div>
-            </div>
-          ) : <p className="pb-empty sm">Memuat pengaturan…</p>}
-        </section>
-      )}
-
-      <section className="pb-card" style={{ marginTop: 16 }}>
+      <section className="pb-card" style={{ marginBottom: 20 }}>
         <div className="pb-card-head">
           <div>
             <h2>Run terakhir</h2>
@@ -336,6 +529,27 @@ export default function OverviewPage() {
           </div>
         )}
       </section>
+
+      <div className="pb-section-title">
+        <h2>Project</h2>
+        <span className="eyebrow">{projectId ? 1 : projects.length} aktif</span>
+      </div>
+      {projects.length === 0 ? (
+        <p className="pb-empty">Belum ada project.</p>
+      ) : (
+        // Grup hanya pengelompokan tampilan dari projects.group_name.
+        grouped.map(g => (
+          <section className="pb-group-block" key={g.id}>
+            <div className="pb-group-label">
+              <strong>{g.name}</strong>
+              <span className="pb-muted pb-mono">{g.items.length} project</span>
+            </div>
+            <div className="pb-project-grid">
+              {g.items.map(p => projectCard(p))}
+            </div>
+          </section>
+        ))
+      )}
 
       <section className="pb-card pb-lh" style={{ marginTop: 16 }}>
         <div className="pb-card-head">

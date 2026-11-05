@@ -26,10 +26,10 @@ COPY scripts/ ./scripts/
 COPY server/ ./server/
 
 FROM mcr.microsoft.com/playwright:v1.63.0-noble AS runner
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3001 RUNS_DIR=/data/runs
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3001 RUNS_DIR=/data/runs REPORTS_DIR=/data/reports
 WORKDIR /app
 COPY --from=runner-build --chown=pwuser:pwuser /app ./
-RUN mkdir -p /data/runs && chown -R pwuser:pwuser /data
+RUN mkdir -p /data/runs /data/reports /data/backups && chown -R pwuser:pwuser /data
 USER pwuser
 EXPOSE 3001
 CMD ["node", "--experimental-sqlite", "server/index.mjs"]
