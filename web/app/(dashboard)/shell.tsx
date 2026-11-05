@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, type Project, type User } from "../../lib/playbook";
-import { confirmAction, confirmRun, showInfoToast, showLogoutConfirm, showSuccessToast } from "../../lib/alerts";
+import { confirmAction, showLogoutConfirm, showSuccessToast } from "../../lib/alerts";
 
 const NAV = [
   { href: "/", label: "Ringkasan" },
@@ -213,13 +213,7 @@ function ThemePref() {
           key={p.pref}
           type="button"
           aria-pressed={pref === p.pref}
-          onClick={() => confirmRun({
-            title: `Pakai tema ${p.label}?`,
-            confirmButtonText: "Pakai",
-          }, () => {
-            setPref(p.pref); applyTheme(p.pref);
-            showInfoToast(`Tema ${p.label} dipakai.`);
-          })}
+          onClick={() => { setPref(p.pref); applyTheme(p.pref); }}
         >
           {p.label}
         </button>
