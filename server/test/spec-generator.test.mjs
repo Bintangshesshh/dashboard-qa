@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   buildActions, buildButtons, buildFields, buildLinks, buildSpec, buttonLocator,
   generateSpec, idSelector, inputLocator, normalizeUrl,
+  classifyPage, findJourneyLinks, buildJourneySpec, generateJourneySpec,
 } from '../spec-generator.mjs';
 
 const ORIGIN = 'http://127.0.0.1:4173';
@@ -12,6 +13,7 @@ const ORIGIN = 'http://127.0.0.1:4173';
 test('normalizeUrl: origin sama, hash dibuang, skema lain ditolak', () => {
   assert.equal(normalizeUrl('/login#form', ORIGIN + '/', ORIGIN), ORIGIN + '/login');
   assert.equal(normalizeUrl(ORIGIN + '/a?x=1#y', ORIGIN, ORIGIN), ORIGIN + '/a?x=1');
+  assert.equal(normalizeUrl(ORIGIN + '/page?_rsc=abc123xyz', ORIGIN, ORIGIN), ORIGIN + '/page');
   assert.equal(normalizeUrl('https://evil.test/', ORIGIN, ORIGIN), null);
   assert.equal(normalizeUrl('mailto:qa@example.test', ORIGIN, ORIGIN), null);
   assert.equal(normalizeUrl('javascript:alert(1)', ORIGIN, ORIGIN), null);
@@ -162,6 +164,12 @@ test('buildSpec: file valid, assertion nyata, BASE_URL, dan escaping aman', () =
   assert.ok(code.includes('await expect(tombol1).toBeEnabled();'));
   assert.ok(code.includes('const tautan = page.getByRole("link", { name: "Tentang", exact: true }).first();'));
   assert.ok(code.includes('const res = await page.goto(new URL(href!, page.url()).href'));
+  // Checkpoint debug: pause/step dari dashboard tanpa mengubah spec manual.
+  assert.ok(code.includes('const jeda = async (label: string) => {'));
+  assert.ok(code.includes('await langkah("Isi Email", async () => {'));
+  assert.ok(code.includes('await langkah("Centang ingat", async () => {'));
+  assert.ok(code.includes('await langkah("Tombol Masuk", async () => {'));
+  assert.match(code, /await langkah\("Buka \/\?q=/, 'langkah buka memakai label halaman');
   // Satu test pembuka, satu form, satu tombol, satu tautan.
   assert.equal(code.match(/^  test\(/gm)?.length, 4);
 });
@@ -174,6 +182,198 @@ test('buildSpec: tanpa halaman tetap menghasilkan file yang valid', () => {
 test('generateSpec menolak origin di luar allowlist sebelum membuka browser', async () => {
   await assert.rejects(
     () => generateSpec({ startUrl: 'https://evil.test/', origins: [ORIGIN] }),
+    /belum diizinkan/,
+  );
+});
+
+test('classifyPage: klasifikasi akurat berdasarkan URL, metadata, input, dan tombol', () => {
+  // Login
+  const loginMeta = { url: 'https://toko.test/masuk', title: 'Masuk ke Akun', h1: 'Login' };
+  const loginInputs = [
+    { type: 'email', name: 'email', placeholder: 'Email' },
+    { type: 'password', name: 'password', placeholder: 'Kata sandi' },
+  ];
+  const loginButtons = [{ type: 'submit', text: 'Masuk' }];
+  assert.equal(classifyPage(loginMeta, loginInputs, loginButtons, []).type, 'login');
+
+  // Register
+  const regMeta = { url: 'https://toko.test/daftar', title: 'Daftar Akun Baru', h1: 'Registrasi' };
+  const regInputs = [
+    { type: 'text', name: 'nama', placeholder: 'Nama Lengkap' },
+    { type: 'email', name: 'email', placeholder: 'Email' },
+    { type: 'password', name: 'password', placeholder: 'Password' },
+  ];
+  const regButtons = [{ type: 'submit', text: 'Daftar' }];
+  assert.equal(classifyPage(regMeta, regInputs, regButtons, []).type, 'register');
+
+  // Detail produk
+  const detMeta = { url: 'https://toko.test/product/buku-tulis', title: 'Buku Tulis', h1: 'Buku Tulis' };
+  const detButtons = [{ text: 'Tambah ke Keranjang', visible: true }];
+  assert.equal(classifyPage(detMeta, [], detButtons, []).type, 'detail');
+
+  // Cart
+  const cartMeta = { url: 'https://toko.test/cart', title: 'Keranjang Belanja', h1: 'Keranjang' };
+  const cartButtons = [{ text: 'Checkout', visible: true }];
+  assert.equal(classifyPage(cartMeta, [], cartButtons, []).type, 'cart');
+
+  // Checkout
+  const coMeta = { url: 'https://toko.test/checkout', title: 'Pembayaran', h1: 'Checkout' };
+  const coInputs = [{ type: 'text', name: 'address', label: 'Alamat Pengiriman' }];
+  assert.equal(classifyPage(coMeta, coInputs, [], []).type, 'checkout');
+
+  // Search
+  const searchMeta = { url: 'https://toko.test/search', title: 'Pencarian' };
+  const searchInputs = [{ type: 'search', name: 'q' }];
+  assert.equal(classifyPage(searchMeta, searchInputs, [], []).type, 'search');
+
+  // Listing
+  const listMeta = { url: 'https://toko.test/kategori/buku', title: 'Kategori Buku' };
+  const listLinks = [
+    { href: '/product/1' },
+    { href: '/product/2' },
+    { href: '/product/3' },
+  ];
+  assert.equal(classifyPage(listMeta, [], [], listLinks).type, 'listing');
+});
+
+test('findJourneyLinks: mendeteksi tautan penting alur belanja', () => {
+  const links = [
+    { text: 'Masuk / Login', href: 'https://toko.test/login' },
+    { text: 'Daftar Sekarang', href: 'https://toko.test/register' },
+    { text: 'Keranjang (0)', href: 'https://toko.test/cart' },
+    { text: 'Pencarian', href: 'https://toko.test/search' },
+    { text: 'Kategori Buku', href: 'https://toko.test/kategori/buku' },
+    { text: 'Buku A', href: 'https://toko.test/product/buku-a' },
+    { text: 'Profil Saya', href: 'https://toko.test/account' },
+    { text: 'Checkout Langsung', href: 'https://toko.test/checkout' },
+  ];
+
+  const found = findJourneyLinks(links, 'https://toko.test/');
+  assert.equal(found.login?.href, 'https://toko.test/login');
+  assert.equal(found.register?.href, 'https://toko.test/register');
+  assert.equal(found.cart?.href, 'https://toko.test/cart');
+  assert.equal(found.search?.href, 'https://toko.test/search');
+  assert.equal(found.categories.length, 1);
+  assert.equal(found.products.length, 1);
+  assert.equal(found.profile?.href, 'https://toko.test/account');
+  assert.equal(found.checkout?.href, 'https://toko.test/checkout');
+});
+
+test('buildJourneySpec: menyusun spec serial lengkap dengan kredensial BOT dan langkah', () => {
+  const journey = {
+    origin: 'https://toko.test',
+    host: 'toko.test',
+    homepage: { path: '/', title: 'Toko Online', hasNav: true },
+    register: {
+      path: '/register',
+      fields: [
+        { type: 'text', name: 'name', locator: 'page.getByLabel("Nama")', visible: true },
+        { type: 'email', name: 'email', locator: 'page.getByLabel("Email")', visible: true },
+        { type: 'password', name: 'password', locator: 'page.getByLabel("Password")', visible: true },
+      ],
+    },
+    login: {
+      path: '/login',
+      emailField: { locator: 'page.getByLabel("Email")' },
+      passwordField: { locator: 'page.getByLabel("Password")' },
+      submitButton: { locator: 'page.getByRole("button", { name: "Masuk" })' },
+    },
+    search: {
+      path: '/search',
+      searchField: { locator: 'page.getByPlaceholder("Cari")' },
+    },
+    listing: { path: '/kategori/semua' },
+    detail: {
+      path: '/product/123',
+      addToCartButton: { locator: 'page.getByRole("button", { name: "Tambah ke Keranjang" })' },
+    },
+    cart: {
+      path: '/cart',
+      checkoutButton: { locator: 'page.getByRole("button", { name: "Checkout" })' },
+    },
+    checkout: {
+      path: '/checkout',
+      fields: [
+        { type: 'text', name: 'address', locator: 'page.getByLabel("Alamat")', visible: true },
+      ],
+    },
+    profile: { path: '/profile' },
+  };
+
+  const code = buildJourneySpec(journey);
+
+  assert.ok(code.includes('test.describe.serial("Journey lengkap - toko.test"'));
+  assert.ok(code.includes('name: "QAbot"'));
+  assert.ok(code.includes('password: "botplaywright123"'));
+  assert.ok(code.includes('TC-01 Homepage terbuka'));
+  assert.ok(code.includes('TC-02 Registrasi akun'));
+  assert.ok(code.includes('TC-03 Login'));
+  assert.ok(code.includes('TC-04 Cari produk'));
+  assert.ok(code.includes('TC-05 Jelajah kategori'));
+  assert.ok(code.includes('TC-06 Lihat detail produk'));
+  assert.ok(code.includes('TC-07 Tambah ke keranjang'));
+  assert.ok(code.includes('TC-08 Buka keranjang'));
+  assert.ok(code.includes('TC-09 Mulai checkout'));
+  assert.ok(code.includes('TC-10 Lihat profil'));
+  // Memastikan tidak submit pembayaran
+  assert.ok(code.includes('PENTING: TIDAK submit pembayaran'));
+});
+
+test('buildJourneySpec: menghasilkan alur komprehensif untuk banyak kategori, produk, dan navigasi BFS', () => {
+  const journey = {
+    origin: 'https://eurekabookhouse.com',
+    host: 'eurekabookhouse.com',
+    homepage: { path: '/', title: 'Eureka Bookhouse' },
+    navButtons: [{ text: 'Kategori' }, { text: 'Genre' }],
+    register: { path: '/auth/register', fields: [] },
+    login: { path: '/auth/login', emailField: null, passwordField: null, submitButton: null },
+    search: { path: '/', searchField: null },
+    categories: [
+      { name: 'Flash Sale', path: '/flashsale' },
+      { name: 'Pre-Orders', path: '/pre-order' },
+      { name: 'Buku Anak', path: '/Halaman/Kategori/buku-anak' },
+      { name: 'Buku Pelajaran', path: '/Halaman/Kategori/buku-pelajaran' },
+    ],
+    products: [
+      { title: 'Buku Parenting', path: '/detail-produk/parenting' },
+      { title: 'Majalah Bobo', path: '/detail-produk/bobo' },
+    ],
+    cart: { path: '/cart', checkoutButton: null },
+    checkout: { path: '/checkout', fields: [] },
+    profile: { path: '/profile' },
+    navPages: [
+      { text: 'Store Location', path: '/Halaman/StoreLocation' },
+      { text: 'Tentang Kami', path: '/tentang-kami' },
+      { text: 'FAQ', path: '/faq' },
+    ],
+  };
+
+  const code = buildJourneySpec(journey);
+
+  assert.ok(code.includes('TC-01 Homepage terbuka'));
+  assert.ok(code.includes('TC-02 Interaksi tombol navigasi - Kategori'));
+  assert.ok(code.includes('TC-03 Interaksi tombol navigasi - Genre'));
+  assert.ok(code.includes('TC-04 Registrasi akun'));
+  assert.ok(code.includes('TC-05 Login'));
+  assert.ok(code.includes('TC-06 Cari produk'));
+  assert.ok(code.includes('TC-07 Jelajah kategori - Flash Sale'));
+  assert.ok(code.includes('TC-08 Jelajah kategori - Pre-Orders'));
+  assert.ok(code.includes('TC-09 Jelajah kategori - Buku Anak'));
+  assert.ok(code.includes('TC-10 Jelajah kategori - Buku Pelajaran'));
+  assert.ok(code.includes('TC-11 Lihat detail produk - Buku Parenting'));
+  assert.ok(code.includes('TC-12 Lihat detail produk - Majalah Bobo'));
+  assert.ok(code.includes('TC-13 Tambah ke keranjang'));
+  assert.ok(code.includes('TC-14 Buka keranjang'));
+  assert.ok(code.includes('TC-15 Mulai checkout'));
+  assert.ok(code.includes('TC-16 Lihat profil'));
+  assert.ok(code.includes('TC-17 Navigasi Store Location'));
+  assert.ok(code.includes('TC-18 Navigasi Tentang Kami'));
+  assert.ok(code.includes('TC-19 Navigasi FAQ'));
+});
+
+test('generateJourneySpec menolak origin di luar allowlist sebelum membuka browser', async () => {
+  await assert.rejects(
+    () => generateJourneySpec({ startUrl: 'https://evil.test/', origins: [ORIGIN] }),
     /belum diizinkan/,
   );
 });

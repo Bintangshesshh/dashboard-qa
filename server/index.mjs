@@ -14,7 +14,7 @@ import { ensureQuickFiles, writeLighthouseConfig, pwConfig } from './quick-check
 import { reportMarkdownFor } from '../scripts/report-md.mjs';
 import { runRetention } from './retention.mjs';
 import { specPath, readSpec, writeSpec } from './spec-sync.mjs';
-import { generateSpec } from './spec-generator.mjs';
+import { generateSpec, generateJourneySpec } from './spec-generator.mjs';
 import { backupDatabase } from './backup.mjs';
 import { fail, id, text, code as codeValue, env as envValue, tool as toolValue, allowlist, target, url as urlValue, originList, cursor, bool, rangeDays, isoTimestamp, testFilePath, checkLhConfig, checkPwConfig } from './validation.mjs';
 
@@ -206,7 +206,8 @@ export function createApp({ store, runner, origins }) {
   app.post('/api/generate-spec', requireAuth, requireAdmin, route(async (req, res) => {
     if (specGenerating) fail('Generator sedang berjalan. Coba lagi sebentar.', 429);
     const url = text(req.body?.url, 'url', 2048);
-    // Origin project ikut diizinkan; tanpa ini URL local/staging yang hanya terdaftar di project ditolak.
+    const journey = req.body?.journey === true;
+    const maxPages = req.body?.maxPages ? Number(req.body.maxPages) : undefined;
     const projectId = req.body?.projectId == null ? null : id(req.body.projectId);
     let allowed = origins;
     if (projectId) {
@@ -217,7 +218,10 @@ export function createApp({ store, runner, origins }) {
     const startUrl = target(url, allowed);
     specGenerating = true;
     try {
-      res.json(await generateSpec({ startUrl, origins: allowed }));
+      const result = journey
+        ? await generateJourneySpec({ startUrl, origins: allowed, maxPages })
+        : await generateSpec({ startUrl, origins: allowed });
+      res.json(result);
     } finally {
       specGenerating = false;
     }
@@ -663,11 +667,16 @@ export function createApp({ store, runner, origins }) {
     // max queue
     if (store.countActiveRuns() >= Number(store.getSetting('max_queue_length') ?? 10)) fail('Antrean penuh', 429);
     const runId = randomUUID();
+    // Opsi visual/debug dipilih per run di dashboard Playwright. Disimpan di
+    // state runner (bukan DB): kalau server restart, run memang sudah mati.
+    const options = tf.tool === 'pw'
+      ? { recordVideo: req.body?.recordVideo === true, debug: req.body?.debug === true }
+      : {};
     store.tx(() => {
       store.createRun({ id: runId, sessionId: session.id, testFileId, tool: tf.tool });
       traceProduction(runId, session.env, req.user);
     });
-    Promise.resolve(runner.start(runId, tf, session.id, session.target_url))
+    Promise.resolve(runner.start(runId, tf, session.id, session.target_url, options))
       .catch(err => {
         console.error('[run]', err.message);
         try { store.systemLog(runId, `runner gagal start: ${err.message}`); } catch {}
@@ -855,6 +864,52 @@ export function createApp({ store, runner, origins }) {
     if (!await runner.cancel(run.id)) fail('Run is not active', 409);
     store.audit({ userId: req.user.id, action: 'cancel_run', entity: 'runs', entityId: run.id });
     res.json(store.getRun(run.id));
+  }));
+
+  // Layar live: JPEG ditulis preload Playwright selama run. Frame disimpan di
+  // .runs/<id>/live, bukan artifacts, supaya tabel artifacts tidak banjir baris.
+  app.get('/api/runs/:id/live', requireAuth, route(async (req, res) => {
+    const run = store.getRun(id(req.params.id));
+    if (!run) fail('Data tidak ditemukan', 404);
+    const frames = run.tool === 'pw' ? await runner.liveFrames(run.id) : [];
+    const control = run.tool === 'pw' ? await runner.controlState(run.id) : { mode: 'run', state: null };
+    const debug = run.tool === 'pw' && runner.active?.runId === run.id && !!runner.active.options?.debug;
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ frames, latest: frames.at(-1)?.n ?? null, debug, ...control });
+  }));
+
+  app.get('/api/runs/:id/live/:n', requireAuth, route(async (req, res) => {
+    const run = store.getRun(id(req.params.id));
+    if (!run) fail('Data tidak ditemukan', 404);
+    const file = runner.liveFramePath(run.id, Number(req.params.n));
+    if (!file) fail('Nomor frame tidak sah', 400);
+    const stat = await lstat(file).catch(() => null);
+    if (!stat?.isFile()) fail('Frame tidak ditemukan', 404);
+    // Nama file memuat timestamp, jadi isinya tidak pernah berubah.
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.type('image/jpeg');
+    res.sendFile(file);
+  }));
+
+  app.get('/api/runs/:id/control', requireAuth, route(async (req, res) => {
+    const run = store.getRun(id(req.params.id));
+    if (!run) fail('Data tidak ditemukan', 404);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await runner.controlState(run.id));
+  }));
+
+  app.post('/api/runs/:id/control', requireAuth, requireAdmin, route(async (req, res) => {
+    const run = store.getRun(id(req.params.id));
+    if (!run) fail('Data tidak ditemukan', 404);
+    if (run.tool !== 'pw') fail('Kontrol hanya untuk run Playwright', 400);
+    // Checkpoint memperpanjang timeout; tanpa mode debug, pause akan dibunuh
+    // timeout normal 2 menit, jadi tolak di depan daripada gagal membingungkan.
+    if (!runner.active || runner.active.runId !== run.id) fail('Run belum berjalan di runner', 409);
+    if (!runner.active.options?.debug) fail('Pause/step hanya aktif saat run memakai mode Debug', 409);
+    const out = await runner.control(run.id, String(req.body?.action ?? ''));
+    store.audit({ userId: req.user.id, action: 'control_run', entity: 'runs', entityId: run.id, detail: JSON.stringify(out) });
+    res.json(out);
   }));
 
   app.delete('/api/runs/:id', requireAuth, requireAdmin, route(async (req, res) => {
