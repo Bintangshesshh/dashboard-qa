@@ -634,24 +634,12 @@ export default function SettingsPage() {
               <div className="pb-set-toolbar">
                 <button className={`pb-btn sm ${addPanel === "group" ? "primary" : ""}`}
                   aria-expanded={addPanel === "group"}
-                  onClick={() => confirmRun({
-                    title: addPanel === "group" ? "Tutup form grup?" : "Buka form grup?",
-                    confirmButtonText: addPanel === "group" ? "Tutup" : "Buka",
-                  }, () => {
-                    setAddPanel(addPanel === "group" ? null : "group");
-                    showInfoToast(addPanel === "group" ? "Form grup ditutup." : "Form grup dibuka.");
-                  })}>
+                  onClick={() => setAddPanel(addPanel === "group" ? null : "group")}>
                   + Grup
                 </button>
                 <button className={`pb-btn sm ${addPanel === "project" ? "primary" : ""}`}
                   aria-expanded={addPanel === "project"}
-                  onClick={() => confirmRun({
-                    title: addPanel === "project" ? "Tutup form project?" : "Buka form project?",
-                    confirmButtonText: addPanel === "project" ? "Tutup" : "Buka",
-                  }, () => {
-                    setAddPanel(addPanel === "project" ? null : "project");
-                    showInfoToast(addPanel === "project" ? "Form project ditutup." : "Form project dibuka.");
-                  })}>
+                  onClick={() => setAddPanel(addPanel === "project" ? null : "project")}>
                   + Project
                 </button>
                 <span className="pb-spacer" />
