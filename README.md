@@ -73,16 +73,6 @@ Aturan penting:
 - Satu sesi dipakai ulang selama belum ada run baru dalam `session_reuse_minutes` (default 20 menit, diatur di **Pengaturan > Report**). Patokannya run terakhir, bukan waktu sesi dibuat, jadi run yang berurutan tetap satu sesi dan sesi yang didiamkan tertutup sendiri. Tombol **Sesi baru** memaksa sesi terpisah; **Tutup sesi** menutup sesi sekarang dan run berikutnya membuat sesi baru.
 - Semua waktu di UI ditampilkan dalam WIB.
 
-## Token CLI
-
-Token CLI berbeda dari login dashboard. Token dibuat lewat CLI:
-
-```powershell
-npm run playbook -- login --server http://127.0.0.1:3001
-```
-
-Token disimpan di `~/.playbook/credentials.json`. Daftar dan pencabutan token ada di **Pengaturan > Bantuan** (tidak ada tombol buat token manual). Cabut dari UI, lalu jalankan `npm run playbook -- logout` di mesin yang memakainya.
-
 ## Update tool
 
 ```powershell

@@ -114,15 +114,6 @@ export class Store {
   // Tanpa ini baris kedaluwarsa tumbuh selamanya; login adalah titik tulis yang murah.
   deleteExpiredAuthSessions() { this.db.prepare('DELETE FROM auth_sessions WHERE expires_at < ?').run(new Date().toISOString()); }
 
-  // ─── Auth: cli tokens ────────────────────────────────────────────────────
-  createCliToken({ id, userId, tokenHash, label }) {
-    this.db.prepare('INSERT INTO cli_tokens (id, user_id, token_hash, label, created_at) VALUES (?,?,?,?,?)')
-      .run(id, userId, tokenHash, label ?? null, new Date().toISOString());
-  }
-  cliTokenByHash(hash) { return this.db.prepare('SELECT * FROM cli_tokens WHERE token_hash=?').get(hash); }
-  touchCliToken(id) { this.db.prepare('UPDATE cli_tokens SET last_used_at=? WHERE id=?').run(new Date().toISOString(), id); }
-  listCliTokens(userId) { return this.db.prepare('SELECT id, label, created_at, last_used_at, revoked_at FROM cli_tokens WHERE user_id=? ORDER BY created_at DESC').all(userId); }
-  revokeCliToken(id) { return this.db.prepare('UPDATE cli_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL').run(new Date().toISOString(), id).changes > 0; }
 
   // ─── Project groups ──────────────────────────────────────────────────────
   // Grup hanya wadah: tidak punya URL, spec, config, run, atau report.

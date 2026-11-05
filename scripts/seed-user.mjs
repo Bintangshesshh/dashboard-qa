@@ -94,10 +94,9 @@ if (action === 'skip') {
     try {
       if (existing) {
         db.prepare('UPDATE users SET password_hash = ?, role = ? WHERE id = ?').run(passwordHash, role, existing.id);
-        // PRD 6.3: reset password menghapus semua sesi login + token CLI user itu
+        // PRD 6.3: reset password menghapus semua sesi login user itu
         db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').run(existing.id);
-        db.prepare('DELETE FROM cli_tokens WHERE user_id = ?').run(existing.id);
-        console.log(`password ${username} diganti; auth_sessions + cli_tokens user ini dihapus`);
+        console.log(`password ${username} diganti; auth_sessions user ini dihapus`);
       } else {
         db.prepare('INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)')
           .run(randomUUID(), username, passwordHash, role, new Date().toISOString());

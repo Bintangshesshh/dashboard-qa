@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   api, fmtDate, fmtTime, readLastProject, rememberProject,
-  type CliToken, type Project, type ProjectGroup, type Settings, type TestFile,
+  type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
 import { confirmAction, confirmRun, promptText, showErrorAlert, showInfoToast, showSuccessToast } from "../../../lib/alerts";
 import { SpecGenerator } from "../spec-generator";
@@ -29,7 +29,7 @@ const fmtMinutes = (value: string) => {
     : `${minutes.toLocaleString("id-ID")} menit`;
 };
 
-type TabId = "project" | "pw" | "lh" | "report" | "akses" | "bantuan";
+type TabId = "project" | "pw" | "lh" | "report" | "bantuan";
 
 // Urutan tab mengikuti alur kerja: siapkan project dulu, baru pengaturan per tool.
 const TABS: { id: TabId; label: string }[] = [
@@ -37,7 +37,6 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "pw", label: "Playwright" },
   { id: "lh", label: "Lighthouse CI" },
   { id: "report", label: "Report" },
-  { id: "akses", label: "Akses" },
   { id: "bantuan", label: "Bantuan" },
 ];
 
@@ -46,7 +45,6 @@ const TAB_HINT: Record<TabId, string> = {
   pw: "Buat spec, atur antrean run, dan setelan runner Playwright.",
   lh: "Target audit dan budget Lighthouse per project.",
   report: "Retensi data, batas upload, dan tampilan ringkasan.",
-  akses: "Token CLI untuk memicu run dari laptop tanpa login dashboard.",
   bantuan: "Istilah, versi tool, dan pertanyaan yang sering muncul.",
 };
 
@@ -167,7 +165,6 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Partial<Record<keyof Settings, string>>>({});
   const [savedAt, setSavedAt] = useState<Record<string, string>>({});
-  const [tokens, setTokens] = useState<CliToken[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [showArchived, setShowArchived] = useState(false);
@@ -183,7 +180,6 @@ export default function SettingsPage() {
   const load = () => {
     api.settings().then(s => { setSettings(s); setDraft({}); setSavedAt({}); })
       .catch(e => setError(e.message));
-    api.cliTokens().then(setTokens).catch(() => {});
     api.projects({ all: true }).then(setProjects).catch(() => {});
     api.projectGroups().then(setGroups).catch(() => {});
     api.testFiles({ all: true }).then(setFiles).catch(() => {});
@@ -381,17 +377,6 @@ export default function SettingsPage() {
       setNotice(`${p.name} dihapus.`);
       showSuccessToast(`${p.name} dihapus.`);
     } catch (e) { setError((e as Error).message); }
-  };
-
-  const revoke = async (id: string) => {
-    if (!(await confirmAction({
-      icon: "warning",
-      title: "Cabut token ini?",
-      text: "CLI yang memakainya langsung gagal.",
-      confirmButtonText: "Ya, Cabut",
-    }))) return;
-    try { await api.revokeCliToken(id); api.cliTokens().then(setTokens).catch(() => {}); showSuccessToast("Token dicabut."); }
-    catch (e) { setError((e as Error).message); }
   };
 
   if (error && !settings) return <p className="pb-empty">{error}</p>;
@@ -756,40 +741,6 @@ export default function SettingsPage() {
             </section>
 
           </>
-        )}
-
-        {tab === "akses" && (
-          <section className="pb-card">
-            <div className="pb-card-head">
-              <div>
-                <h2>Token CLI</h2>
-                <div className="pb-card-sub">
-                  Dipakai playbook CLI di laptop untuk memicu run tanpa login. Token ini
-                  bukan kredensial login dashboard, dan pembuatannya lewat CLI
-                  (<code className="pb-mono">playbook login</code>).
-                </div>
-              </div>
-            </div>
-            {tokens.length === 0
-              ? <p className="pb-empty">Belum ada token.</p>
-              : <div className="pb-table-wrap"><table className="pb-table">
-                <thead><tr><th>Label</th><th>Dibuat</th><th>Terakhir dipakai</th><th /></tr></thead>
-                <tbody>
-                  {tokens.map(t => (
-                    <tr key={t.id}>
-                      <td>{t.label ?? "-"}</td>
-                      <td className="mono">{fmtDate(t.created_at)}</td>
-                      <td className="mono">{t.last_used_at ? fmtDate(t.last_used_at) : "belum"}</td>
-                      <td className="pb-right">
-                        {t.revoked_at
-                          ? <span className="pb-muted">dicabut</span>
-                          : <button className="pb-btn sm danger" onClick={() => revoke(t.id)}>Cabut</button>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table></div>}
-          </section>
         )}
 
         {tab === "bantuan" && <Bantuan />}

@@ -56,6 +56,16 @@ export const readLastProject = () => {
 export const rememberProject = (id: string) => {
   try { localStorage.setItem("pb-project", id); } catch { /* storage diblokir */ }
 };
+// Environment terakhir berlaku lintas halaman Playwright/Lighthouse.
+export const readLastEnv = () => {
+  try {
+    const v = localStorage.getItem("pb-env");
+    return v === "local" || v === "staging" || v === "production" ? v : "";
+  } catch { return ""; }
+};
+export const rememberEnv = (env: string) => {
+  try { localStorage.setItem("pb-env", env); } catch { /* storage diblokir */ }
+};
 export type Artifact = { id: string; run_id: string; kind: string; path: string; bytes: number | null };
 export type PlaywrightResult = {
   id: string; run_id: string; tc_id: string | null; file: string; title: string;
@@ -120,10 +130,6 @@ export type Settings = {
   artifact_retention_days: string; report_retention_days: string;
   log_retention_days: string; max_queue_length: string;
   max_upload_mb: string; range_default_days: string;
-};
-export type CliToken = {
-  id: string; label: string | null; created_at: string;
-  last_used_at: string | null; revoked_at: string | null;
 };
 export type AuditRow = {
   id: string; user_id: string | null; username?: string | null; action: string; entity: string;
@@ -243,14 +249,6 @@ export const api = {
   publicSettings: () => request<Pick<Settings, "artifact_retention_days" | "report_retention_days">>("/api/settings/public"),
   patchSettings: (body: Partial<Record<keyof Settings, number>>) =>
     request<Settings>("/api/settings", { method: "PATCH", body: JSON.stringify(body) }),
-
-  cliTokens: () => request<CliToken[]>("/api/auth/cli-token"),
-  createCliToken: (label: string) =>
-    request<{ id: string; token: string; label: string | null }>("/api/auth/cli-token", {
-      method: "POST", body: JSON.stringify({ label }),
-    }),
-  revokeCliToken: (id: string) =>
-    request<null>(`/api/auth/cli-token/${id}`, { method: "DELETE" }),
 
   // Ringkasan per project sekaligus: 1 request, bukan 1 per kartu.
   statsAll: (q: { range?: number } = {}) =>

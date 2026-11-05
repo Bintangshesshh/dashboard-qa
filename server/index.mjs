@@ -95,26 +95,13 @@ export function createApp({ store, runner, origins }) {
     return !site;
   };
 
-  // Resolve authenticated user. Returns { user, via: 'cookie' | 'bearer' } or null.
+  // Resolve authenticated user dari cookie pb_session, atau null.
   const resolveUser = req => {
-    // 1. Bearer token CLI → cli_tokens
-    const bearer = req.headers.authorization?.replace(/^Bearer /, '');
-    if (bearer) {
-      const tok = store.cliTokenByHash(sha256(bearer));
-      if (tok && !tok.revoked_at) {
-        store.touchCliToken(tok.id);
-        const user = store.userById(tok.user_id);
-        if (user) return { user, via: 'bearer', tokenRow: tok };
-      }
-      return null;
-    }
-    // 2. Cookie pb_session → auth_sessions (browser, wajib same-origin untuk mutasi)
     const sess = sessionCookie(req);
     if (sess) {
       const row = store.authSessionById(sha256(sess));
       if (row && new Date(row.expires_at) > new Date()) {
-        const user = store.userById(row.user_id);
-        if (user) return { user, via: 'cookie' };
+        return store.userById(row.user_id) ?? null;
       }
     }
     return null;
@@ -123,15 +110,13 @@ export function createApp({ store, runner, origins }) {
   const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
   const requireAuth = (req, res, next) => {
-    const auth = resolveUser(req);
-    if (!auth) return res.status(401).json({ error: 'Sesi tidak valid' });
-    // PRD §7: cookie + cek same-origin. Bearer CLI dikecualikan (tidak punya Origin).
-    if (auth.via === 'cookie' && !SAFE_METHODS.has(req.method) && !sameOrigin(req)) {
+    const user = resolveUser(req);
+    if (!user) return res.status(401).json({ error: 'Sesi tidak valid' });
+    // PRD §7: mutasi wajib same-origin.
+    if (!SAFE_METHODS.has(req.method) && !sameOrigin(req)) {
       return res.status(403).json({ error: 'Permintaan lintas origin ditolak' });
     }
-    req.user = auth.user;
-    req.via = auth.via;
-    req.tokenRow = auth.tokenRow;
+    req.user = user;
     next();
   };
 
@@ -221,26 +206,6 @@ export function createApp({ store, runner, origins }) {
     } finally {
       specGenerating = false;
     }
-  }));
-
-  app.post('/api/auth/cli-token', requireAuth, requireAdmin, route(async (req, res) => {
-    const label = req.body?.label != null ? text(req.body.label, 'label', 64) : null;
-    const rawToken = randomBytes(32).toString('hex');
-    store.createCliToken({ id: randomUUID(), userId: req.user.id, tokenHash: sha256(rawToken), label });
-    const row = store.cliTokenByHash(sha256(rawToken));
-    res.status(201).json({ id: row.id, token: rawToken, label: row.label });
-  }));
-
-  app.get('/api/auth/cli-token', requireAuth, requireAdmin, route(async (req, res) => {
-    res.json(store.listCliTokens(req.user.id));
-  }));
-
-  app.delete('/api/auth/cli-token/:id', requireAuth, requireAdmin, route(async (req, res) => {
-    const tokenId = id(req.params.id);
-    if (!store.revokeCliToken(tokenId)) fail('Token tidak ditemukan atau sudah dicabut', 404);
-    // Pencabutan kredensial wajib tercatat: tanpa ini insiden token tidak bisa direkonstruksi.
-    store.audit({ userId: req.user.id, action: 'revoke_cli_token', entity: 'cli_tokens', entityId: tokenId });
-    res.sendStatus(204);
   }));
 
   // ─── Project groups ──────────────────────────────────────────────────────
@@ -1090,10 +1055,9 @@ function attachWebSocket(app, { store, runner, resolveUser, sameOrigin }) {
   const wss = new WebSocketServer({ server, path: '/ws' });
   wss.on('connection', (ws, req) => {
     // Log run memuat data pelanggan: tanpa sesi valid tidak ada yang boleh mendengar. Resolver sama dengan requireAuth.
-    const auth = resolveUser(req);
-    if (!auth) return ws.close(1008, 'Unauthorized');
+    if (!resolveUser(req)) return ws.close(1008, 'Unauthorized');
     // Cookie browser wajib same-origin, sama seperti mutasi HTTP.
-    if (auth.via === 'cookie' && !sameOrigin(req)) return ws.close(1008, 'Forbidden');
+    if (!sameOrigin(req)) return ws.close(1008, 'Forbidden');
     // Satu socket hanya menerima run yang dilanggannya; runner menyiarkan log semua run ke semua listener.
     let subscribedRun = null;
     const onLog = (msg) => { if (subscribedRun && msg.runId === subscribedRun) ws.send(JSON.stringify(msg)); };

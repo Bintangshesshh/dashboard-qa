@@ -2,9 +2,6 @@
   "name": "dashboard-qa",
   "version": "1.0.0",
   "description": "QA dashboard - Playwright + Lighthouse CI (Eureka Group: jaja, masdis, ebh)",
-  "bin": {
-    "playbook": "bin/playbook.mjs"
-  },
   "scripts": {
     "test": "npm test --prefix server",
     "test:md": "node scripts/test-report-md.mjs",
@@ -16,7 +13,6 @@
     "dev:server": "node --experimental-sqlite --env-file=.env server/index.mjs",
     "retention": "node --experimental-sqlite --env-file=.env scripts/retention.mjs",
     "backup": "node --experimental-sqlite --env-file=.env scripts/backup.mjs",
-    "playbook": "node bin/playbook.mjs",
     "build": "npm run build --prefix web"
   },
   "keywords": [],

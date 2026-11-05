@@ -22,17 +22,6 @@ CREATE TABLE auth_sessions (                 -- sesi login browser (cookie pb_se
 CREATE INDEX auth_sessions_user ON auth_sessions(user_id);
 CREATE INDEX auth_sessions_expires ON auth_sessions(expires_at);
 
-CREATE TABLE cli_tokens (                    -- token bearer untuk CLI, terpisah dari cookie
-  id           TEXT PRIMARY KEY,
-  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  token_hash   TEXT NOT NULL UNIQUE,         -- sha256(token)
-  label        TEXT,
-  created_at   TEXT NOT NULL,
-  last_used_at TEXT,
-  revoked_at   TEXT
-);
-CREATE INDEX cli_tokens_user ON cli_tokens(user_id);
-
 -- 2. Yang dites
 CREATE TABLE projects (
   id               TEXT PRIMARY KEY,

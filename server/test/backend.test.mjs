@@ -47,7 +47,7 @@ async function fixture(t) {
     on() {},
     off() {},
   };
-  const app = createApp({ store, runner, token: null, origins: [ORIGIN, 'https://ebh.test', 'https://staging.ebh.test'] });
+  const app = createApp({ store, runner, origins: [ORIGIN, 'https://ebh.test', 'https://staging.ebh.test'] });
   // Pakai server yang sama dengan tempat WebSocket terpasang, persis seperti main().
   const server = app.__wssServer ?? createServer(app);
   server.listen(0, '127.0.0.1');
@@ -325,35 +325,6 @@ test('quick-check: laporan sesi dibuat sendiri setelah kedua run final', async t
   const reports = f.store.listReportsBySession(r.body.sessionId);
   assert.deepEqual(reports.map(x => x.scope), ['both'], 'hasil quick check langsung punya laporan');
   assert.equal(JSON.parse(reports[0].run_ids).length, 2);
-});
-
-test('CLI token: dibuat, terdaftar tanpa nilai plain, lalu dicabut', async t => {
-  const f = await fixture(t);
-  const cookie = await f.login();
-
-  let r = await f.call('/api/auth/cli-token', { method: 'POST', cookie, body: { label: 'laptop-kerja' } });
-  assert.equal(r.status, 201);
-  const { id, token } = r.body;
-  assert.ok(token && token.length === 64, 'token plain hanya sekali');
-
-  r = await f.call('/api/auth/cli-token', { cookie });
-  assert.equal(r.status, 200);
-  assert.equal(r.body.length, 1);
-  assert.equal(r.body[0].id, id);
-  assert.equal(r.body[0].label, 'laptop-kerja');
-  assert.equal(r.body[0].revoked_at, null);
-  assert.equal(JSON.stringify(r.body).includes(token), false, 'token plain tidak boleh ikut terdaftar');
-
-  // token bisa dipakai sebagai bearer
-  r = await f.call('/api/me', { headers: { authorization: 'Bearer ' + token } });
-  assert.equal(r.status, 200);
-  r = await f.call('/api/auth/cli-token', { cookie });
-  assert.ok(r.body[0].last_used_at, 'last_used_at harus terisi setelah dipakai');
-
-  r = await f.call(`/api/auth/cli-token/${id}`, { method: 'DELETE', cookie });
-  assert.equal(r.status, 204);
-  r = await f.call('/api/me', { headers: { authorization: 'Bearer ' + token } });
-  assert.equal(r.status, 401, 'token yang dicabut harus ditolak');
 });
 
 test('CLI lokal: local → start → logs → upload artifact → finalisasi', async t => {
@@ -1065,23 +1036,6 @@ test('backup: VACUUM INTO menyalin DB, backup lama dibuang', async t => {
   await assert.rejects(() => backupDatabase({ store: new Store(':memory:'), backupDir }), /in-memory/);
 });
 
-test('CLI playbook: tanpa argumen cetak bantuan, tanpa kredensial keluar 1', async () => {
-  const { execFile } = await import('node:child_process');
-  const bin = resolve(import.meta.dirname, '..', '..', 'bin', 'playbook.mjs');
-  const runCli = args => new Promise(res => {
-    execFile(process.execPath, [bin, ...args], { env: { ...process.env, HOME: tmpdir(), USERPROFILE: tmpdir() } },
-      (err, stdout, stderr) => res({ code: err?.code ?? 0, out: stdout + stderr }));
-  });
-
-  const help = await runCli([]);
-  assert.equal(help.code, 0);
-  for (const c of ['login', 'run', 'upload', 'status']) assert.match(help.out, new RegExp(c));
-
-  const whoami = await runCli(['whoami']);
-  assert.equal(whoami.code, 1);
-  assert.match(whoami.out, /Belum login/);
-});
-
 test('settings publik: viewer boleh baca retensi, penuh tetap admin-only', async t => {
   const f = await fixture(t);
   const viewer = { id: randomUUID(), username: 'pengamat', role: 'viewer' };
@@ -1355,13 +1309,13 @@ test('T07: label sesi memakai WIB', async t => {
   assert.match(r.body.session.label, / WIB$/, 'label sesi berakhir WIB');
   assert.equal(/T\d{2}:\d{2}.*Z/.test(r.body.session.label), false);
 });
-test('T01: fresh DB → project_groups ada, user_version=7, reuse=20', async t => {
+test('T01: fresh DB → project_groups ada, user_version=8, reuse=20', async t => {
   const store = new Store(':memory:');
   await store.init();
   t.after(() => store.close());
 
   const version = store.db.prepare('PRAGMA user_version').get().user_version;
-  assert.equal(version, 7);
+  assert.equal(version, 8);
 
   // Tabel project_groups harus ada
   const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='project_groups'").all();

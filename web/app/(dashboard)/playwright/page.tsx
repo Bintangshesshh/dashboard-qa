@@ -5,7 +5,7 @@ import { CodeEditor } from "../code-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, fmtDur, fmtTime, groupProjects, readLastProject, rememberProject,
+  api, fmtDur, fmtTime, groupProjects, readLastEnv, readLastProject, rememberEnv, rememberProject,
   type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
 import { confirmAction, showInfoToast, showSuccessToast } from "../../../lib/alerts";
@@ -81,6 +81,9 @@ export default function PlaywrightPage() {
       const last = readLastProject();
       if (p.some(x => x.id === last)) setProjectId(last);
       else if (p[0]) setProjectId(p[0].id);
+      // Environment ikut pilihan terakhir lintas halaman.
+      const lastEnv = readLastEnv();
+      if (lastEnv) setEnv(lastEnv as Env);
     }).catch(e => setError(e.message));
   }, []);
 
@@ -340,7 +343,7 @@ export default function PlaywrightPage() {
           <label className="pb-field">
             Environment
             <select className="pb-select" value={env}
-              onChange={e => { setEnv(e.target.value as Env); setConfirmName(""); }}>
+              onChange={e => { const v = e.target.value as Env; setEnv(v); rememberEnv(v); setConfirmName(""); }}>
               {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
