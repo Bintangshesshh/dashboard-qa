@@ -646,7 +646,7 @@ button { cursor: pointer; }
 .pb-runbar-seg {
   width: 4px;
   height: 20px;
-  flex: 0 0 4px;
+  flex-shrink: 0;
   border-radius: 2px;
   background: var(--surface-warm);
 }
