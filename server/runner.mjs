@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdir, writeFile, appendFile, readdir, readFile, rm, copyFile } from 'node:fs/promises';
+import { mkdir, writeFile, appendFile, readdir, readFile, rm, copyFile, unlink } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute, basename, dirname } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +16,19 @@ const pwBin = join(binDir('@playwright/test'), 'cli.js');
 const pwCapture = require.resolve('./scripts/pw-capture.cjs').replaceAll('\\', '/');
 
 // Config Playwright untuk spec dari database; testDir = folder spec asli agar import relatif (`./creds`) tetap jalan.
-const runConfig = (testDir, specFile, cfg = {}) => `import { defineConfig, devices } from '@playwright/test';
+export const runConfig = (testDir, specFile, cfg = {}) => {
+  // Opsi rekam/debug per-run. Video "on" mahal, jadi hanya saat diminta user;
+  // trace hanya berguna untuk membedah kegagalan, jadi default retain-on-failure.
+  const use = [
+    `...devices['Desktop Chrome'],`,
+    `navigationTimeout: 90000,`,
+    `ignoreHTTPSErrors: true,`,
+    cfg.recordVideo ? `video: 'on',` : null,
+    `trace: ${JSON.stringify(cfg.debug ? 'on' : 'retain-on-failure')},`,
+    cfg.debug ? `screenshot: 'only-on-failure',` : null,
+    cfg.debug ? `launchOptions: { slowMo: ${Number(cfg.slowMo) || 400} },` : null,
+  ].filter(Boolean).join('\n    ');
+  return `import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: ${JSON.stringify(testDir)},
@@ -30,13 +42,21 @@ export default defineConfig({
     ['html', { outputDir: process.env.PLAYWRIGHT_HTML_OUTPUT_DIR, open: 'never' }],
   ],
   // ignoreHTTPSErrors: target lokal sering pakai sertifikat self-signed (basicSsl).
-  use: { ...devices['Desktop Chrome'], navigationTimeout: 90000, ignoreHTTPSErrors: true },
+  use: { ${use} },
 });
 `;
+};
 
 // Lighthouse (PRD FR-04/FR-05): target sesi + maksimal 4 URL tambahan.
 export const MAX_LH_URLS = 5;
 export const MAX_LH_RUNS = 10;
+
+// Mode debug menahan test di checkpoint (pause/step), jadi timeout normal
+// 2 menit akan membunuh run yang sedang dijeda. Batas ini juga dipakai runner.
+export const DEBUG_TEST_TIMEOUT_MS = 30 * 60_000;
+export const DEBUG_RUN_TIMEOUT_MS = 35 * 60_000;
+// Frame live disimpan untuk scrub setelah run; sisakan 1 menit terakhir saja.
+const LIVE_FRAMES_KEPT = 60;
 // Lantai 15 menit: killing lhci mid-run membuang report, jadi 1 URL pun dapat lantai.
 const MIN_LH_TIMEOUT_MS = 900_000;
 const LH_TIMEOUT_CAP_MS = 120 * 60_000;
@@ -145,9 +165,13 @@ export class Runner extends EventEmitter {
 
   directory(runId) { return join(this.runsDir, runId); }
 
-  async start(runId, testFile, sessionId = null, targetUrl = null) {
+  liveDir(runId) { return join(this.directory(runId), 'live'); }
+
+  controlPath(runId) { return join(this.directory(runId), 'control.json'); }
+
+  async start(runId, testFile, sessionId = null, targetUrl = null, options = {}) {
     // Antrekan, jangan tolak: hanya satu proses tool sekaligus; `this.chain` selalu di-catch agar satu run gagal tidak mematikan antrean.
-    const run = (this.chain ?? Promise.resolve()).then(() => this._start(runId, testFile, sessionId, targetUrl));
+    const run = (this.chain ?? Promise.resolve()).then(() => this._start(runId, testFile, sessionId, targetUrl, options));
     const tail = run.catch(() => {});
     this.chain = tail;
     // Jangan biarkan rantai promise tumbuh selama proses hidup.
@@ -155,14 +179,68 @@ export class Runner extends EventEmitter {
     return run;
   }
 
-  async _start(runId, testFile, sessionId, targetUrl) {
+  async _start(runId, testFile, sessionId, targetUrl, options = {}) {
     // Run bisa dibatalkan saat masih antre; jangan dijalankan sama sekali.
     if (this.store.getRun(runId)?.status === 'cancelled') return;
     // Baris `system` bisa sudah ditulis route sebelum runner jalan; mulai seq dari yang ada agar tidak bentrok primary key.
-    const state = { runId, sessionId, testFile, targetUrl, seq: this.store.lastLogSeq(runId), chain: Promise.resolve(), child: null, cancelled: false, startTime: Date.now() };
+    const state = { runId, sessionId, testFile, targetUrl, options, seq: this.store.lastLogSeq(runId), chain: Promise.resolve(), child: null, cancelled: false, startTime: Date.now() };
     this.active = state;
     state.done = this.execute(state).finally(() => { this.active = null; });
     return state.done;
+  }
+
+  // Kontrol debug dari dashboard. File, bukan IPC: test berjalan di proses
+  // worker Playwright yang terpisah dan tidak punya kanal balik ke server.
+  async control(runId, action) {
+    const run = this.store.getRun(runId);
+    if (!run) throw Object.assign(new Error('Data tidak ditemukan'), { status: 404 });
+    if (run.status !== 'running') throw Object.assign(new Error('Run tidak sedang berjalan'), { status: 409 });
+    const mode = action === 'resume' ? 'run' : action === 'pause' || action === 'step' ? action : null;
+    if (!mode) throw Object.assign(new Error('Aksi kontrol tidak dikenal'), { status: 400 });
+    // Run yang sedang berjalan sudah punya folder, tapi mkdir membuat kontrol
+    // tetap aman kalau dipanggil tepat saat run baru mulai.
+    await mkdir(dirname(this.controlPath(runId)), { recursive: true }).catch(() => {});
+    await writeFile(this.controlPath(runId), JSON.stringify({ mode, at: Date.now() }));
+    return { mode };
+  }
+
+  async controlState(runId) {
+    const raw = await readFile(this.controlPath(runId), 'utf8').catch(() => null);
+    let mode = 'run';
+    try { mode = JSON.parse(raw)?.mode ?? 'run'; } catch { /* file belum ada */ }
+    const stateRaw = await readFile(this.controlPath(runId) + '.state', 'utf8').catch(() => null);
+    let state = null;
+    try { state = JSON.parse(stateRaw); } catch { /* checkpoint belum tercapai */ }
+    return { mode, state };
+  }
+
+  async liveFrames(runId) {
+    const dir = this.liveDir(runId);
+    const names = (await readdir(dir).catch(() => [])).filter(f => /^frame-\d+\.jpg$/.test(f));
+    // Urut numerik: nama file memuat epoch ms, dan sort string akan salah
+    // kalau panjang angkanya berbeda (mis. frame uji 1000 vs 10000).
+    return names.map(name => {
+      const n = Number(name.slice(6, -4));
+      return { n, at: new Date(n).toISOString() };
+    }).sort((a, b) => a.n - b.n);
+  }
+
+  liveFramePath(runId, n) {
+    return Number.isSafeInteger(n) && n > 0 ? join(this.liveDir(runId), `frame-${n}.jpg`) : null;
+  }
+
+  // Sisa frame setelah run selesai: cukup 1 menit terakhir untuk scrub.
+  async cleanupLive(runId) {
+    const dir = this.liveDir(runId);
+    const names = (await readdir(dir).catch(() => []))
+      .filter(f => /^frame-\d+\.jpg$/.test(f))
+      .map(name => ({ name, n: Number(name.slice(6, -4)) }))
+      .sort((a, b) => a.n - b.n);
+    for (const { name } of names.slice(0, Math.max(0, names.length - LIVE_FRAMES_KEPT))) {
+      await unlink(join(dir, name)).catch(() => {});
+    }
+    await unlink(this.controlPath(runId)).catch(() => {});
+    await unlink(this.controlPath(runId) + '.state').catch(() => {});
   }
 
   async cancel(runId) {
@@ -230,7 +308,8 @@ export class Runner extends EventEmitter {
     await mkdir(dir, { recursive: true });
     await this.store.patchRun(runId, { status: 'running', started_at: new Date().toISOString() });
     this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
-    this.arm(state, testFile.tool === 'lh' ? lhTimeout(...lhAuditShape(testFile, state.targetUrl)) : this.timeout);
+    const runTimeout = state.options?.debug ? DEBUG_RUN_TIMEOUT_MS : this.timeout;
+    this.arm(state, testFile.tool === 'lh' ? lhTimeout(...lhAuditShape(testFile, state.targetUrl)) : runTimeout);
 
     const started = Date.now();
     try {
@@ -247,6 +326,8 @@ export class Runner extends EventEmitter {
       await this.store.patchRun(runId, { status: 'failed', error: stripAnsi(error.message), finished_at: new Date().toISOString(), duration_ms: Date.now() - started });
     } finally {
       clearTimeout(state.timer);
+      // Frame live dan file kontrol tidak boleh tertinggal setelah run final.
+      if (testFile.tool === 'pw') await this.cleanupLive(runId).catch(() => {});
     }
     this.emit('status', { type: 'status', runId, run: await this.store.getRun(runId) });
   }
@@ -256,12 +337,23 @@ export class Runner extends EventEmitter {
     const { runId, testFile, targetUrl } = state;
     const dir = this.directory(runId);
     await this.log(state, 'system', `[runner] Menjalankan Playwright ${testFile.path}\n`);
+    if (state.options?.debug) {
+      await this.log(state, 'system', `[runner] Mode debug: slowMo ${Number(state.options.slowMo) || 400}ms, pause/step aktif, timeout ${DEBUG_TEST_TIMEOUT_MS / 60000} menit\n`);
+    }
+    if (state.options?.recordVideo) await this.log(state, 'system', '[runner] Merekam video tiap test\n');
     let specPath = testFile.path.replaceAll('\\', '/'); // relatif: path absolut Windows dibaca Playwright sebagai regex
     const captureFile = join(dir, 'capture.jsonl');
+    // Layar live + kanal kontrol debug. Keduanya file-based karena worker
+    // Playwright tidak punya koneksi balik ke proses server.
+    const liveDir = this.liveDir(runId);
+    await mkdir(liveDir, { recursive: true }).catch(() => {});
+    await writeFile(this.controlPath(runId), JSON.stringify({ mode: 'run', at: Date.now() })).catch(() => {});
     const env = {
       ...process.env,
       ...(targetUrl ? { BASE_URL: targetUrl } : {}),
       PLAYBOOK_CAPTURE_FILE: captureFile,
+      PLAYBOOK_LIVE_DIR: liveDir,
+      PLAYBOOK_CONTROL_FILE: this.controlPath(runId),
       // Preload: page events are only reachable from inside the worker.
       NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require ${pwCapture}`].filter(Boolean).join(' '),
       PLAYWRIGHT_JSON_OUTPUT_NAME: join(dir, 'artifacts', 'report.json'),
@@ -269,9 +361,20 @@ export class Runner extends EventEmitter {
       PLAYWRIGHT_HTML_OUTPUT_DIR: join(dir, 'artifacts', 'playwright-report'),
     };
     // `config` opsional: { configPath } untuk config Playwright khusus (quick check).
-    const pwCfg = (() => { try { return JSON.parse(testFile.config ?? '{}') ?? {}; } catch { return {}; } })();
-    let cfgPath = pwCfg.configPath ?? null;
-    // Kode dari DB menang atas file disk, ditulis di sebelah spec aslinya agar import relatif tetap jalan; config di root repo agar `@playwright/test` resolve. Keduanya dihapus setelah run.
+    const parsedCfg = (() => { try { return JSON.parse(testFile.config ?? '{}') ?? {}; } catch { return {}; } })();
+    // Opsi dashboard menang atas config tersimpan: user memilihnya per run.
+    const pwCfg = {
+      ...parsedCfg,
+      ...(state.options?.recordVideo ? { recordVideo: true } : {}),
+      ...(state.options?.debug
+        ? { debug: true, slowMo: Number(state.options.slowMo) || 400, timeout: DEBUG_TEST_TIMEOUT_MS }
+        : {}),
+    };
+    let cfgPath = parsedCfg.configPath ?? null;
+    // Kode dari DB (editor dashboard) menang atas file di disk. Ditulis di sebelah
+    // spec aslinya karena spec eureka mengimpor `./creds` - memindahkan file ke
+    // folder run akan memutus import relatif. Config ditaruh di root repo supaya
+    // `@playwright/test` bisa di-resolve. Keduanya dihapus setelah run.
     let generated = null;
     let generatedCfg = null;
     if (testFile.code?.trim()) {
@@ -318,6 +421,9 @@ export class Runner extends EventEmitter {
     await stopTail();
     await this.ingestCapture(state, captureFile);
     await this.collectArtifacts(runId, dir, 'pw');
+    // Prune frame sebelum status final: UI berhenti polling saat final, jadi
+    // daftar frame yang dilihatnya harus sudah final juga (tidak menaut 404).
+    await this.cleanupLive(runId);
     const finishedAt = new Date().toISOString();
     await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'pw', finishedAt });
     // Status final di-patch paling akhir: UI berhenti polling saat final, jadi artifact harus sudah masuk DB.

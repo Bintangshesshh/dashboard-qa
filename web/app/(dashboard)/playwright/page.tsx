@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
 import { CodeEditor } from "../code-editor";
 import { RunPanel } from "../run-panel";
+import { ScreenPanel } from "../screen-panel";
 import { useEffect, useRef, useState } from "react";
 import {
   api, artifactUrl, fmtDur, fmtTime, groupProjects,
@@ -44,6 +45,9 @@ export default function PlaywrightPage() {
   // Run + terminal. runId disimpan per project di sessionStorage: ganti
   // dropdown tidak menumpuk log project lain, dan run tetap terpantau saat pindah halaman.
   const [starting, setStarting] = useState(false);
+  // Opsi visual per run. Debug = slowMo + timeout panjang + pause/step.
+  const [recordVideo, setRecordVideo] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
   // Sesi milik run terakhir + batas reuse dari DB (bukan hardcode).
   const [session, setSession] = useState<Session | null>(null);
   const [reuseMinutes, setReuseMinutes] = useState<number | null>(null);
@@ -225,7 +229,9 @@ export default function PlaywrightPage() {
       const created = await api.createSession(
         projectId, env, env === "production" ? confirmName : undefined, fresh,
       );
-      const { runId } = await api.createRun(created.session.id, selected.id);
+      const { runId } = await api.createRun(created.session.id, selected.id, {
+        recordVideo, debug: debugMode,
+      });
       sessionStorage.setItem(`pw-run:${projectId}`, runId);
       setRunId(runId);
     } catch (e) {
@@ -256,6 +262,16 @@ export default function PlaywrightPage() {
           <span className={`pb-save-state${conflict ? " bad" : dirty ? " dirty" : ""}`} aria-live="polite">
             {conflict ? "Konflik disk" : saveState}
           </span>
+          <label className="pb-check" title="Simpan rekaman WebM tiap test (lebih besar di disk)">
+            <input type="checkbox" checked={recordVideo} disabled={running || starting}
+              onChange={e => setRecordVideo(e.target.checked)} />
+            Rekam video
+          </label>
+          <label className="pb-check" title="Slow motion, timeout 30 menit, dan tombol jeda/step di panel layar">
+            <input type="checkbox" checked={debugMode} disabled={running || starting}
+              onChange={e => setDebugMode(e.target.checked)} />
+            Debug
+          </label>
           <button className="pb-btn primary" onClick={() => start()}
             disabled={starting || running || !selected || !target || !productionOk}>
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
@@ -346,12 +362,15 @@ export default function PlaywrightPage() {
         )}
       </section>
 
-      <RunPanel
-        logs={logs}
-        run={run}
-        live={running}
-        downloadHref={runId ? `/api/runs/${runId}/logs/download` : null}
-      />
+      <div className="pb-run-split">
+        <RunPanel
+          logs={logs}
+          run={run}
+          live={running}
+          downloadHref={runId ? `/api/runs/${runId}/logs/download` : null}
+        />
+        <ScreenPanel runId={runId} run={run} live={running} />
+      </div>
       {done && run && (
         <section className="pb-card">
           <div className="pb-card-head">
