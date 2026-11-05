@@ -9,7 +9,7 @@ import {
   api, artifactUrl, fmtDur, fmtTime, groupProjects,
   type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
-import { confirmAction, showSuccessToast } from "../../../lib/alerts";
+import { confirmAction, showInfoToast, showSuccessToast } from "../../../lib/alerts";
 
 const FINAL = ["passed", "failed", "cancelled", "interrupted"];
 
@@ -22,6 +22,8 @@ const resolvedUrl = (p: Project | undefined, e: Env) =>
 
 
 export default function PlaywrightPage() {
+  // Pilih spec: project bisa punya beberapa file Playwright; run memakai yang aktif.
+  const [fileId, setFileId] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<TestFile[]>([]);
   const [projectId, setProjectId] = useState("");
@@ -86,15 +88,23 @@ export default function PlaywrightPage() {
       .catch(() => {});
   }, []);
 
-  // Spec otomatis: project hanya punya satu spec Playwright (belum ada API bikin file baru).
+  // Semua spec Playwright project; file pertama jadi pilihan awal.
   useEffect(() => {
     if (!projectId) return;
+    setFiles([]); setFileId(""); setDraft(""); setSavedCode("");
+    setSavedAt(null); setConflict(false);
     api.testFiles({ project: projectId, tool: "pw" })
-      .then(f => { setFiles(f); setDraft(f[0]?.code ?? ""); setSavedCode(f[0]?.code ?? ""); })
+      .then(f => {
+        setFiles(f);
+        const first = f[0] ?? null;
+        setFileId(first?.id ?? "");
+        setDraft(first?.code ?? "");
+        setSavedCode(first?.code ?? "");
+      })
       .catch(e => setError(e.message));
   }, [projectId]);
 
-  const selected = files[0] ?? null;
+  const selected = files.find(f => f.id === fileId) ?? files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
   // Server juga menolak production kalau project belum mengizinkannya; tombol
@@ -157,7 +167,7 @@ export default function PlaywrightPage() {
     setSaving(true); setError("");
     try {
       const updated = await api.patchTestFile(selected.id, { code: snapshot, ...(force ? { force: true } : {}) });
-      setFiles([updated]);
+      setFiles(prev => prev.map(f => (f.id === updated.id ? updated : f)));
       // Backend men-trim teks. Sync balik hanya kalau user belum mengetik lagi.
       if (draftRef.current === snapshot) setDraft(updated.code);
       setSavedCode(updated.code);
@@ -186,6 +196,20 @@ export default function PlaywrightPage() {
     : dirty ? "Belum disimpan"
     : savedAt ? `Tersimpan ${fmtTime(savedAt)}` : "Tersimpan";
 
+  // Pindah spec: simpan dulu perubahan spec lama supaya tidak hilang.
+  const pickFile = async (id: string) => {
+    const next = files.find(f => f.id === id);
+    if (!next || next.id === selected?.id) return;
+    if (pending.current) { clearTimeout(pending.current); pending.current = null; }
+    if (dirty && !(await save())) return;
+    setFileId(next.id);
+    setDraft(next.code);
+    setSavedCode(next.code);
+    setSavedAt(null);
+    setConflict(false);
+    showInfoToast(`Spec ${next.label} dipakai.`);
+  };
+
   // Arah sebaliknya: ambil versi disk (mis. habis pull dari git).
   const reload = async () => {
     if (!selected) return;
@@ -198,7 +222,7 @@ export default function PlaywrightPage() {
     setSaving(true); setError("");
     try {
       const updated = await api.reloadTestFile(selected.id);
-      setFiles([updated]);
+      setFiles(prev => prev.map(f => (f.id === updated.id ? updated : f)));
       setDraft(updated.code);
       setSavedCode(updated.code);
       setSavedAt(new Date().toISOString());
@@ -250,7 +274,7 @@ export default function PlaywrightPage() {
       title: fresh ? "Mulai sesi baru?" : "Jalankan test suite?",
       text: fresh
         ? "Sesi terbuka yang idle akan ditutup lalu run baru dimulai."
-        : `Run memakai spec tersimpan di env ${env}.`,
+        : `Spec ${selected?.label ?? "terpilih"} di env ${env}.`,
       confirmButtonText: fresh ? "Ya, Sesi Baru" : "Ya, Jalankan",
     }))) return;
     if (await start(fresh)) showSuccessToast(fresh ? "Sesi baru dimulai." : "Run dimulai.");
@@ -336,12 +360,25 @@ export default function PlaywrightPage() {
       </section>
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
-        <div className="pb-row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
+        <div className="pb-row" style={{ justifyContent: "space-between", marginBottom: 10, gap: 12 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 15 }}>Spec</h2>
             <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada spec"}</div>
           </div>
-          <Link className="pb-link-muted" href="/settings">Kelola spec di Pengaturan</Link>
+          <div className="pb-row" style={{ gap: 12 }}>
+            {files.length > 0 && (
+              <label className="pb-field" style={{ minWidth: 260 }}>
+                File spec
+                <select className="pb-select" value={selected?.id ?? ""}
+                  onChange={e => pickFile(e.target.value)} disabled={saving}>
+                  {files.map(f => (
+                    <option key={f.id} value={f.id}>{f.label} · {f.path}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <Link className="pb-link-muted" href="/settings">Kelola spec di Pengaturan</Link>
+          </div>
         </div>
         {conflict && (
           <div className="pb-err" role="alert" style={{ marginBottom: 8, display: "grid", gap: 8 }}>

@@ -1097,6 +1097,7 @@ test('T04: test file — path unik global, config LHCI divalidasi, hapus ditolak
 
   // Project kedua untuk membuktikan path unik lintas project.
   const p2 = (await call('/api/projects', { method: 'POST', cookie, body: { name: 'Kedua', base_url: 'https://kedua.test' } })).body;
+  const p3 = (await call('/api/projects', { method: 'POST', cookie, body: { name: 'Ketiga', base_url: 'https://ketiga.test' } })).body;
 
   let r = await call('/api/test-files', {
     method: 'POST', cookie,
@@ -1105,6 +1106,13 @@ test('T04: test file — path unik global, config LHCI divalidasi, hapus ditolak
   assert.equal(r.status, 201);
   assert.equal(r.body.code, '');
   const lhId = r.body.id;
+
+  // Satu project hanya boleh punya satu config Lighthouse.
+  r = await call('/api/test-files', {
+    method: 'POST', cookie,
+    body: { projectId: 'p1', tool: 'lh', path: 'lighthouserc.kedua.js', label: 'LH 2' },
+  });
+  assert.equal(r.status, 409);
 
   // Label kosong diturunkan dari nama file: klien lama yang belum mengirim
   // label tidak boleh gagal hanya karena metadata.
@@ -1141,6 +1149,7 @@ test('T04: test file — path unik global, config LHCI divalidasi, hapus ditolak
     { budgets: { 'categories:performance': { minScore: 'tinggi' } } },
   ];
   store.db.prepare("UPDATE projects SET origins='[\"https://ebh.test\",\"https://staging.ebh.test\"]' WHERE id='p1'").run();
+  store.db.prepare("UPDATE projects SET origins='[\"https://ebh.test\",\"https://staging.ebh.test\"]' WHERE id IN (?, ?)").run(p2.id, p3.id);
   for (const cfg of invalidConfigs) {
     r = await call('/api/test-files', {
       method: 'POST', cookie,
@@ -1153,7 +1162,7 @@ test('T04: test file — path unik global, config LHCI divalidasi, hapus ditolak
   r = await call('/api/test-files', {
     method: 'POST', cookie,
     body: {
-      projectId: 'p1', tool: 'lh', path: 'lighthouserc.ebh2.js', label: 'C',
+      projectId: p2.id, tool: 'lh', path: 'lighthouserc.ebh2.js', label: 'C',
       config: { urls: ['https://ebh.test/halaman', 'https://staging.ebh.test'], numberOfRuns: 3, budgets: { 'categories:performance': { minScore: 0.8 } } },
     },
   });
@@ -1165,7 +1174,7 @@ test('T04: test file — path unik global, config LHCI divalidasi, hapus ditolak
   // Dedupe URL
   r = await call('/api/test-files', {
     method: 'POST', cookie,
-    body: { projectId: 'p1', tool: 'lh', path: 'lighthouserc.dedupe.js', label: 'D', config: { urls: ['https://ebh.test/a', 'https://ebh.test/a'] } },
+    body: { projectId: p3.id, tool: 'lh', path: 'lighthouserc.dedupe.js', label: 'D', config: { urls: ['https://ebh.test/a', 'https://ebh.test/a'] } },
   });
   assert.equal(r.status, 201);
   assert.equal(JSON.parse(r.body.config).urls.length, 1);
@@ -1179,7 +1188,7 @@ test('T04: test file — path unik global, config LHCI divalidasi, hapus ditolak
   assert.equal(r.status, 409);
 
   // Yang belum dipakai run boleh dihapus
-  r = await call(`/api/test-files/${store.listTestFiles({ projectId: 'p1', tool: 'lh' }).find(f => f.id !== lhId && f.id !== undefined).id}`, { method: 'DELETE', cookie });
+  r = await call(`/api/test-files/${store.listTestFiles({ projectId: p3.id, tool: 'lh' })[0].id}`, { method: 'DELETE', cookie });
   assert.equal(r.status, 204);
   assert.ok(store.listAudit({ entity: 'test_files' }).some(a => a.action === 'delete_test_file'));
 });

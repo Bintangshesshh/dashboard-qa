@@ -413,10 +413,14 @@ export function createApp({ store, runner, origins }) {
       ? path.split('/').pop().slice(0, 200)
       : text(req.body.label, 'label', 200);
     const code = codeFor(t, req.body?.code ?? '');
+    const config = configJson(t, req.body?.config, project);
     assertPathFree(path);
+    // Satu project satu config Lighthouse: UI hanya menampilkan yang pertama.
+    if (t === 'lh' && store.listTestFiles({ projectId, tool: 'lh', includeDisabled: true }).length)
+      fail('Project ini sudah punya config Lighthouse. Ubah yang ada, jangan tambah baru.', 409);
     const tf = {
       id: randomUUID(), projectId, tool: t, path, label, code,
-      config: configJson(t, req.body?.config, project), updatedBy: req.user.id,
+      config, updatedBy: req.user.id,
     };
     store.createTestFile(tf);
     store.audit({ userId: req.user.id, action: 'create_test_file', entity: 'test_files', entityId: tf.id });
