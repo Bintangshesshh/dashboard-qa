@@ -48,6 +48,14 @@ const RUN_STATUS_LABEL: Record<Run["status"], string> = {
 };
 export const runStatusLabel = (status: string) =>
   RUN_STATUS_LABEL[status as Run["status"]] ?? status;
+
+// Project terakhir berlaku lintas halaman; localStorage bisa diblokir.
+export const readLastProject = () => {
+  try { return localStorage.getItem("pb-project") ?? ""; } catch { return ""; }
+};
+export const rememberProject = (id: string) => {
+  try { localStorage.setItem("pb-project", id); } catch { /* storage diblokir */ }
+};
 export type Artifact = { id: string; run_id: string; kind: string; path: string; bytes: number | null };
 export type PlaywrightResult = {
   id: string; run_id: string; tc_id: string | null; file: string; title: string;

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { api, fmtDate, reportUrl, runStatusLabel, type Project, type Session } from "../../../../../lib/playbook";
+import { api, fmtDate, rememberProject, reportUrl, runStatusLabel, type Project, type Session } from "../../../../../lib/playbook";
 import { ArtifactLink } from "../../../../_components/report-link";
 import { confirmAction, promptText, showSuccessToast } from "../../../../../lib/alerts";
 
@@ -26,6 +26,7 @@ export default function ProjectReports() {
       .then(ps => {
         const found = ps.find(p => p.id === projectId) ?? null;
         setProject(found);
+        if (found?.active) rememberProject(found.id);
         if (!found) setProjectError("Project tidak ditemukan");
       })
       .catch(e => setProjectError(e.message));

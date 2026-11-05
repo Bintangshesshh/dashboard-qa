@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
-  api, artifactUrl, fmtDate, fmtDur, pct, reportUrl, runStatusLabel,
+  api, artifactUrl, fmtDate, fmtDur, pct, rememberProject, reportUrl, runStatusLabel,
   type LighthouseResult, type PlaywrightResult, type Report, type Run, type Session,
 } from "../../../../lib/playbook";
 import { RunTerminal } from "../../run-terminal";
@@ -57,6 +57,11 @@ export default function SessionDetail() {
   const load = useCallback(() => {
     api.session(sessionId).then(setSession).catch(e => setError(friendly(e.message)));
   }, [sessionId]);
+
+  // Buka laporan = jadikan project sesi ini project terakhir.
+  useEffect(() => {
+    if (session?.project_id) rememberProject(session.project_id);
+  }, [session?.project_id]);
 
   useEffect(() => { load(); }, [load]);
 

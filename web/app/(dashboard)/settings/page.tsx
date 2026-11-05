@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  api, fmtDate, fmtTime,
+  api, fmtDate, fmtTime, readLastProject, rememberProject,
   type CliToken, type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
 import { confirmAction, confirmRun, showInfoToast, showSuccessToast } from "../../../lib/alerts";
@@ -191,11 +191,13 @@ export default function SettingsPage() {
 
   useEffect(load, []);
 
-  // Pilihan generator ikut project aktif; kalau project itu diarsipkan, pilih yang pertama.
+  // Pilihan generator ikut project terakhir yang masih aktif; kalau tidak ada, yang pertama.
   useEffect(() => {
     setGenProjectId(current => {
       const active = projects.filter(p => p.active);
-      return active.some(p => p.id === current) ? current : active[0]?.id ?? "";
+      if (active.some(p => p.id === current)) return current;
+      const last = readLastProject();
+      return active.some(p => p.id === last) ? last : active[0]?.id ?? "";
     });
   }, [projects]);
 
@@ -486,7 +488,7 @@ export default function SettingsPage() {
           <>
             <SpecGenerator
               projectOptions={genProjects}
-              onProjectChange={setGenProjectId}
+              onProjectChange={id => { setGenProjectId(id); rememberProject(id); }}
               defaultUrl={genUrl}
               projectId={genProject?.id}
               projectSlug={genProject?.slug}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, fmtDate, fmtDur, runStatusLabel,
+  api, fmtDate, fmtDur, readLastProject, rememberProject, runStatusLabel,
   type Project, type RunRow, type Session, type Stats,
 } from "../../lib/playbook";
 
@@ -140,7 +140,12 @@ export default function OverviewPage() {
   const [hoverDay, setHoverDay] = useState<number | null>(null);
 
   useEffect(() => {
-    api.projects().then(setProjects).catch(e => setError(e.message));
+    api.projects().then(p => {
+      setProjects(p);
+      // Overview ikut project terakhir yang dipilih di halaman lain.
+      const last = readLastProject();
+      if (p.some(x => x.id === last)) setProjectId(last);
+    }).catch(e => setError(e.message));
     // B11: range awal ikut settings `range_default_days`; viewer 403 → tetap 14.
     api.settings()
       .then(s => { const d = Number(s.range_default_days); if (d > 0) setRange(d); })
@@ -286,7 +291,10 @@ export default function OverviewPage() {
           </p>
         </div>
         <div className="pb-filters">
-          <select className="pb-select" value={projectId} onChange={e => setProjectId(e.target.value)} aria-label="Project">
+          <select className="pb-select" value={projectId} onChange={e => {
+            const id = e.target.value;
+            setProjectId(id); if (id) rememberProject(id);
+          }} aria-label="Project">
             <option value="">Semua project</option>
             {grouped.map(g => (
               <optgroup key={g.id} label={g.name}>

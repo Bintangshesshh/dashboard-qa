@@ -6,7 +6,7 @@ import { CodeEditor } from "../code-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, fmtDur, fmtTime, groupProjects,
+  api, artifactUrl, fmtDur, fmtTime, groupProjects, readLastProject, rememberProject,
   type LogEntry, type PlaywrightResult, type Project, type Run, type Session, type TestFile,
 } from "../../../lib/playbook";
 import { confirmAction, showInfoToast, showSuccessToast } from "../../../lib/alerts";
@@ -78,7 +78,10 @@ export default function PlaywrightPage() {
   useEffect(() => {
     api.projects().then(p => {
       setProjects(p);
-      if (p[0]) setProjectId(p[0].id);
+      // Pakai project terakhir kalau masih aktif; kalau tidak, project pertama.
+      const last = readLastProject();
+      if (p.some(x => x.id === last)) setProjectId(last);
+      else if (p[0]) setProjectId(p[0].id);
     }).catch(e => setError(e.message));
   }, []);
 
@@ -324,7 +327,10 @@ export default function PlaywrightPage() {
           <label className="pb-field" style={{ minWidth: 240 }}>
             Project
             <select className="pb-select" value={projectId}
-              onChange={e => { setProjectId(e.target.value); setConfirmName(""); }}>
+              onChange={e => {
+                const id = e.target.value;
+                setProjectId(id); rememberProject(id); setConfirmName("");
+              }}>
               {groupProjects(projects).map(g => (
                 <optgroup key={g.id} label={g.name}>
                   {g.items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
