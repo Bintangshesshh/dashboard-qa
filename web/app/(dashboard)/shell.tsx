@@ -145,21 +145,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="pb-topbar-title">{screen}</div>
             <div className="pb-topbar-sub">Eureka Group - Playbook QA</div>
           </div>
-          {path !== "/" && (
-            <nav className="pb-crumb" aria-label="Breadcrumb">
-              {crumbs.map((c, i) => {
-                const last = i === crumbs.length - 1;
-                return (
-                  <span className="pb-crumb-item" key={c.href + i}>
-                    {i > 0 && <span className="pb-crumb-sep" aria-hidden="true">/</span>}
-                    {last
-                      ? <strong aria-current="page">{c.label}</strong>
-                      : <Link href={c.href}>{c.label}</Link>}
-                  </span>
-                );
-              })}
-            </nav>
-          )}
+          <div className="pb-topbar-right">
+            <div id="pb-topbar-actions" className="pb-topbar-actions" />
+            {path !== "/" && (
+              <nav className="pb-crumb" aria-label="Breadcrumb">
+                {crumbs.map((c, i) => {
+                  const last = i === crumbs.length - 1;
+                  return (
+                    <span className="pb-crumb-item" key={c.href + i}>
+                      {i > 0 && <span className="pb-crumb-sep" aria-hidden="true">/</span>}
+                      {last
+                        ? <strong aria-current="page">{c.label}</strong>
+                        : <Link href={c.href}>{c.label}</Link>}
+                    </span>
+                  );
+                })}
+              </nav>
+            )}
+          </div>
         </header>
 
         <main className="pb-main">

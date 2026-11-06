@@ -217,13 +217,7 @@ export default function LighthousePage() {
     catch (e) { setError((e as Error).message); return false; }
   };
 
-  const runWithConfirm = async () => {
-    if (!(await confirmAction({
-      icon: "question",
-      title: "Jalankan audit Lighthouse?",
-      text: `Audit memakai config tersimpan di env ${env}.`,
-      confirmButtonText: "Ya, Jalankan",
-    }))) return;
+  const runNow = async () => {
     if (await start()) showSuccessToast("Audit Lighthouse dimulai.");
   };
 
@@ -248,7 +242,7 @@ export default function LighthousePage() {
         </div>
         <div className="pb-filters">
           <span className="pb-save-state" aria-live="polite">{saveState}</span>
-          <button className="pb-btn primary" onClick={runWithConfirm}
+          <button className="pb-btn primary" onClick={runNow}
             disabled={starting || running || !selected || !target || productionBlocked}>
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
           </button>

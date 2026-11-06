@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   api, fmtDate, fmtDur, readLastProject, rememberProject, runStatusLabel,
   type Project, type RunRow, type Session, type Stats,
@@ -136,6 +137,10 @@ export default function OverviewPage() {
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [error, setError] = useState("");
   const [hoverDay, setHoverDay] = useState<number | null>(null);
+  // Filter pindah ke topbar shell; portal dipasang setelah topbar ada di DOM.
+  const [topbar, setTopbar] = useState<HTMLElement | null>(null);
+
+  useEffect(() => setTopbar(document.getElementById("pb-topbar-actions")), []);
 
   useEffect(() => {
     api.projects().then(p => {
@@ -244,7 +249,7 @@ export default function OverviewPage() {
 
   return (
     <>
-      <div className="pb-head">
+      {topbar && createPortal(
         <div className="pb-filters">
           <select className="pb-select" value={projectId} onChange={e => {
             const id = e.target.value;
@@ -263,8 +268,9 @@ export default function OverviewPage() {
           {lastSessionId && (
             <Link className="pb-btn" href={`/reports/${lastSessionId}`}>Buka sesi terakhir</Link>
           )}
-        </div>
-      </div>
+        </div>,
+        topbar,
+      )}
 
       {error && <div className="pb-err" role="alert">{error}</div>}
 

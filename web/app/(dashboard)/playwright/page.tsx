@@ -341,15 +341,7 @@ export default function PlaywrightPage() {
     el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
   };
 
-  const runWithConfirm = async (fresh = false) => {
-    if (!(await confirmAction({
-      icon: "question",
-      title: fresh ? "Mulai sesi baru?" : "Jalankan run?",
-      text: fresh
-        ? "Sesi terbuka yang idle akan ditutup lalu run baru dimulai."
-        : `Spec ${selected?.label ?? "terpilih"} di env ${env}.`,
-      confirmButtonText: fresh ? "Ya, Sesi Baru" : "Ya, Jalankan",
-    }))) return;
+  const runNow = async (fresh = false) => {
     if (await start(fresh)) {
       showSuccessToast(fresh ? "Sesi baru dimulai." : "Run dimulai.");
       scrollToTerminal();
@@ -446,11 +438,11 @@ export default function PlaywrightPage() {
                 onChange={e => setDebugMode(e.target.checked)} />
               Debug
             </label>
-            <button className="pb-btn primary" onClick={() => runWithConfirm()}
+            <button className="pb-btn primary" onClick={() => runNow()}
               disabled={starting || running || !selected || !target || productionBlocked}>
               {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
             </button>
-            <button className="pb-btn" onClick={() => runWithConfirm(true)}
+            <button className="pb-btn" onClick={() => runNow(true)}
               disabled={starting || running || !selected || !target || productionBlocked}
               title="Tutup sesi terbuka yang idle lalu mulai sesi baru">
               Sesi baru

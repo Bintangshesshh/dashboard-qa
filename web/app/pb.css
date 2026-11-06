@@ -1858,3 +1858,12 @@ button { cursor: pointer; }
   .pb-lh-budgets { grid-template-columns: minmax(0, 1fr); }
   .pb-lh-budget input.pb-lh-range-v { height: 72px; }
 }
+
+/* ---------- Overview: filter di topbar ---------- */
+.pb-topbar-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pb-topbar-actions { display: flex; align-items: center; min-width: 0; }
+.pb-topbar-actions .pb-filters { margin-left: 0; flex-wrap: nowrap; }
+@media (max-width: 860px) {
+  .pb-topbar { height: auto; min-height: 64px; padding: 10px 16px; flex-wrap: wrap; }
+  .pb-topbar-actions .pb-filters { flex-wrap: wrap; }
+}
