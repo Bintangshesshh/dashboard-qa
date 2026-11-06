@@ -1885,3 +1885,28 @@ button { cursor: pointer; }
   .pb-lh-budget-row { align-items: stretch; }
   .pb-lh-budget-head { flex: 1 1 100%; }
 }
+
+/* ---------- Lighthouse: form 4 kolom, satu baris, tidak full width ---------- */
+.pb-lh-form { max-width: 1120px; gap: 14px; }
+.pb-lh-top { grid-template-columns: minmax(200px, 1.6fr) auto auto auto; align-items: end; }
+.pb-lh-bottom {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.5fr) minmax(140px, .7fr) auto auto;
+  gap: 14px;
+  align-items: end;
+}
+.pb-lh-url-cell, .pb-lh-budget-cell { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pb-lh-bottom .pb-lh-urls { flex-direction: row; flex-wrap: wrap; align-items: center; flex: 1 1 auto; }
+.pb-lh-bottom .pb-lh-urls .pb-row { flex: 1 1 220px; min-width: 0; }
+.pb-lh-url-help { align-self: center; }
+.pb-lh-audit-total { align-self: center; }
+@media (max-width: 1100px) {
+  .pb-lh-top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pb-lh-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .pb-lh-top { grid-template-columns: minmax(0, 1fr); }
+  .pb-lh-bottom { grid-template-columns: minmax(0, 1fr); }
+  .pb-lh-bottom .pb-lh-urls { flex-direction: column; align-items: stretch; }
+  .pb-lh-bottom .pb-lh-urls .pb-row { flex: 1 1 auto; }
+}

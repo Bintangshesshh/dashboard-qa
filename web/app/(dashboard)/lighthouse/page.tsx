@@ -275,7 +275,7 @@ export default function LighthousePage() {
         </div>
       </section>
 
-      <section className="pb-card" style={{ marginBottom: 16 }}>
+      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 1120 }}>
         <div className="pb-card-head" style={{ marginBottom: 12 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 15 }}>Konfigurasi</h2>

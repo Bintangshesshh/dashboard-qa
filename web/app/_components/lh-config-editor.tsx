@@ -195,9 +195,7 @@ export default function LhConfigEditor({
               }} />
           </div>
         </div>
-      </div>
 
-      <div className="pb-lh-options">
         <div className="pb-field">
           <span>Perangkat</span>
           <div className="pb-seg" role="group" aria-label="Perangkat Lighthouse">
@@ -220,7 +218,8 @@ export default function LhConfigEditor({
         </div>
       </div>
 
-      <div className="pb-lh-url-row">
+      <div className="pb-lh-bottom">
+        <div className="pb-lh-url-cell">
         <span className="pb-lh-url-label">URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
         <span className="pb-lh-urls">
           {extra.map((u, i) => (
@@ -261,16 +260,13 @@ export default function LhConfigEditor({
               }}>+ Tambah URL</button>
           )}
         </span>
-        <span className="pb-set-help">
+        </div>
+        <span className="pb-set-help pb-lh-url-help">
           URL yang host-nya sama dengan project otomatis ikut Environment yang dipilih.
         </span>
-      </div>
-
-      <div className="pb-lh-budget-row">
-        <div className="pb-lh-budget-head">
+        <div className="pb-lh-budget-cell">
           <span>Skor minimum per kategori</span>
           <span className="pb-set-help">Run dianggap gagal bila skor di bawah batas ini.</span>
-        </div>
         <div className="pb-lh-budgets">
           {LH_CATEGORIES.map(c => (
             <label className="pb-lh-budget" key={c.key}>
@@ -297,6 +293,7 @@ export default function LhConfigEditor({
               Perkiraan ~{roughMinutes} menit; jalankan saat tidak buru-buru
             </span>
           )}
+        </div>
         </div>
       </div>
 
