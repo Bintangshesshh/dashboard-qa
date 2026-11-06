@@ -1867,3 +1867,21 @@ button { cursor: pointer; }
   .pb-topbar { height: auto; min-height: 64px; padding: 10px 16px; flex-wrap: wrap; }
   .pb-topbar-actions .pb-filters { flex-wrap: wrap; }
 }
+
+/* ---------- Lighthouse: URL tambahan & budget satu baris ---------- */
+.pb-lh-url-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pb-lh-url-label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.pb-lh-url-row .pb-lh-urls { flex-direction: row; flex-wrap: wrap; align-items: center; flex: 1 1 auto; }
+.pb-lh-urls .pb-row { flex: 0 1 340px; min-width: 220px; }
+.pb-lh-url-row > .pb-set-help { flex: 1 1 260px; min-width: 220px; }
+.pb-lh-budget-row { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+.pb-lh-budget-head { display: flex; flex-direction: column; gap: 4px; flex: 0 1 220px; min-width: 180px; }
+.pb-lh-budget-row .pb-lh-budgets { flex: 1 1 340px; }
+.pb-lh-audit-total { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; flex: 0 1 auto; }
+@media (max-width: 720px) {
+  .pb-lh-url-row { align-items: stretch; }
+  .pb-lh-url-row .pb-lh-urls { flex-direction: column; align-items: stretch; }
+  .pb-lh-urls .pb-row { flex: 1 1 auto; min-width: 0; }
+  .pb-lh-budget-row { align-items: stretch; }
+  .pb-lh-budget-head { flex: 1 1 100%; }
+}

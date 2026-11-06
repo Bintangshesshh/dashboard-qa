@@ -220,8 +220,8 @@ export default function LhConfigEditor({
         </div>
       </div>
 
-      <div className="pb-field">
-        <span>URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
+      <div className="pb-lh-url-row">
+        <span className="pb-lh-url-label">URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
         <span className="pb-lh-urls">
           {extra.map((u, i) => (
             <span className="pb-row" key={i} style={{ gap: 8 }}>
@@ -266,11 +266,11 @@ export default function LhConfigEditor({
         </span>
       </div>
 
-      <div className="pb-field">
-        <span>Skor minimum per kategori</span>
-        <span className="pb-set-help">
-          Run dianggap gagal bila skor di bawah batas ini.
-        </span>
+      <div className="pb-lh-budget-row">
+        <div className="pb-lh-budget-head">
+          <span>Skor minimum per kategori</span>
+          <span className="pb-set-help">Run dianggap gagal bila skor di bawah batas ini.</span>
+        </div>
         <div className="pb-lh-budgets">
           {LH_CATEGORIES.map(c => (
             <label className="pb-lh-budget" key={c.key}>
@@ -288,17 +288,16 @@ export default function LhConfigEditor({
             </label>
           ))}
         </div>
-      </div>
-
-      <div className="pb-row" style={{ gap: 16, flexWrap: "wrap" }}>
-        <span className="pb-muted" style={{ fontSize: 12 }}>
-          Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
-        </span>
-        {totalAudits > 20 && (
-          <span className="pb-badge warn">
-            Perkiraan ~{roughMinutes} menit; jalankan saat tidak buru-buru
+        <div className="pb-lh-audit-total">
+          <span className="pb-muted" style={{ fontSize: 12 }}>
+            Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
           </span>
-        )}
+          {totalAudits > 20 && (
+            <span className="pb-badge warn">
+              Perkiraan ~{roughMinutes} menit; jalankan saat tidak buru-buru
+            </span>
+          )}
+        </div>
       </div>
 
       {err && <div className="pb-err" role="alert">{err}</div>}
