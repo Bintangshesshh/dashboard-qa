@@ -1913,3 +1913,17 @@ button { cursor: pointer; }
 
 /* URL tambahan dan pengatur skor sebelahan; help dihapus. */
 .pb-lh-bottom { grid-template-columns: minmax(280px, 1.5fr) auto auto; }
+
+/* Lighthouse: kolom field kiri, URL/skor/audit kanan, preview kanan atas. */
+.pb-lh-columns {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.3fr);
+  gap: 24px;
+  align-items: start;
+}
+.pb-lh-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.pb-lh-col .pb-lh-urls { flex-direction: row; flex-wrap: wrap; align-items: center; }
+.pb-lh-col .pb-lh-urls .pb-row { flex: 1 1 240px; min-width: 0; }
+@media (max-width: 900px) {
+  .pb-lh-columns { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+}

@@ -161,144 +161,147 @@ export default function LhConfigEditor({
 
   return (
     <div className="pb-lh-form">
-      <div className="pb-lh-top">
-        <div className="pb-field">
-          <span>Target project (dari URL project)</span>
-          <input className="pb-input pb-mono" value={target} readOnly aria-label="Target utama"
-            placeholder="belum diisi di project" />
-          {!target.trim() && <span className="pb-err" role="alert">Isi URL project dulu sebelum menyimpan config.</span>}
-        </div>
-
-        <div className="pb-field pb-lh-runs">
-          <span>Jumlah run per URL (1-{MAX_RUNS})</span>
-          <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
-            {[1, 2, 3, 5, 10].map(n => (
-              <button key={n} type="button" className={runs === n ? "active" : ""}
-                aria-pressed={runs === n} disabled={disabled}
-                onClick={async () => {
-                  if (!(await confirmAction({
-                    icon: "question",
-                    title: `Ubah jumlah run ke ${n}×?`,
-                    text: "Config Lighthouse disimpan otomatis setelah perubahan.",
-                    confirmButtonText: "Ya, Ubah",
-                  }))) return;
-                  setRuns(n); emit({ runs: n });
-                  showInfoToast(`Jumlah run ${n}× dipilih.`);
-                }}>{n}×</button>
-            ))}
-            <input type="number" className="pb-input" min={1} max={MAX_RUNS}
-              inputMode="numeric" aria-label="Jumlah run custom" disabled={disabled}
-              value={runs}
-              onChange={e => {
-                const v = Math.min(MAX_RUNS, Math.max(1, Number(e.target.value) || 1));
-                setRuns(v); emit({ runs: v });
-              }} />
+      <div className="pb-lh-columns">
+        <div className="pb-lh-col">
+          <div className="pb-field">
+            <span>Target project (dari URL project)</span>
+            <input className="pb-input pb-mono" value={target} readOnly aria-label="Target utama"
+              placeholder="belum diisi di project" />
+            {!target.trim() && <span className="pb-err" role="alert">Isi URL project dulu sebelum menyimpan config.</span>}
           </div>
-        </div>
 
-        <div className="pb-field">
-          <span>Perangkat</span>
-          <div className="pb-seg" role="group" aria-label="Perangkat Lighthouse">
-            {([["mobile", "Mobile"], ["desktop", "Desktop"], ["both", "Keduanya"]] as const).map(([value, label]) => (
-              <button key={value} type="button" className={formFactor === value ? "active" : ""}
-                aria-pressed={formFactor === value} disabled={disabled}
-                onClick={() => { setFormFactor(value); emit({ formFactor: value }); }}>{label}</button>
-            ))}
-          </div>
-        </div>
-        <div className="pb-field">
-          <span>Bahasa report</span>
-          <div className="pb-seg" role="group" aria-label="Bahasa report Lighthouse">
-            {([["id", "Indonesia"], ["en", "Inggris"]] as const).map(([value, label]) => (
-              <button key={value} type="button" className={locale === value ? "active" : ""}
-                aria-pressed={locale === value} disabled={disabled}
-                onClick={() => { setLocale(value); emit({ locale: value }); }}>{label}</button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="pb-lh-bottom">
-        <div className="pb-lh-url-cell">
-        <span className="pb-lh-url-label">URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
-        <span className="pb-lh-urls">
-          {extra.map((u, i) => (
-            <span className="pb-row" key={i} style={{ gap: 8 }}>
-              <input className="pb-input pb-mono" value={u} id={`${idPrefix}-url-${i}`}
-                placeholder="https://contoh.test/halaman-lain" disabled={disabled}
+          <div className="pb-field pb-lh-runs">
+            <span>Jumlah run per URL (1-{MAX_RUNS})</span>
+            <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
+              {[1, 2, 3, 5, 10].map(n => (
+                <button key={n} type="button" className={runs === n ? "active" : ""}
+                  aria-pressed={runs === n} disabled={disabled}
+                  onClick={async () => {
+                    if (!(await confirmAction({
+                      icon: "question",
+                      title: `Ubah jumlah run ke ${n}×?`,
+                      text: "Config Lighthouse disimpan otomatis setelah perubahan.",
+                      confirmButtonText: "Ya, Ubah",
+                    }))) return;
+                    setRuns(n); emit({ runs: n });
+                    showInfoToast(`Jumlah run ${n}× dipilih.`);
+                  }}>{n}×</button>
+              ))}
+              <input type="number" className="pb-input" min={1} max={MAX_RUNS}
+                inputMode="numeric" aria-label="Jumlah run custom" disabled={disabled}
+                value={runs}
                 onChange={e => {
-                  const v = e.target.value;
-                  const next = extra.map((x, j) => (j === i ? v : x));
-                  setExtra(next); emit({ extra: next });
+                  const v = Math.min(MAX_RUNS, Math.max(1, Number(e.target.value) || 1));
+                  setRuns(v); emit({ runs: v });
                 }} />
-              <button type="button" className="pb-btn sm danger" disabled={disabled}
-                aria-label={"Hapus URL " + (i + 1)}
-                onClick={async () => {
-                  if (!(await confirmAction({
-                    icon: "warning",
-                    title: "Hapus URL tambahan?",
-                    text: `URL ke-${i + 1} akan dihapus dari config.`,
-                    confirmButtonText: "Ya, Hapus",
-                  }))) return;
-                  const next = extra.filter((_, j) => j !== i);
-                  setExtra(next); emit({ extra: next });
-                  showInfoToast("URL tambahan dihapus.");
-                }}>Hapus</button>
+            </div>
+          </div>
+
+          <div className="pb-field">
+            <span>Perangkat</span>
+            <div className="pb-seg" role="group" aria-label="Perangkat Lighthouse">
+              {([["mobile", "Mobile"], ["desktop", "Desktop"], ["both", "Keduanya"]] as const).map(([value, label]) => (
+                <button key={value} type="button" className={formFactor === value ? "active" : ""}
+                  aria-pressed={formFactor === value} disabled={disabled}
+                  onClick={() => { setFormFactor(value); emit({ formFactor: value }); }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="pb-field">
+            <span>Bahasa report</span>
+            <div className="pb-seg" role="group" aria-label="Bahasa report Lighthouse">
+              {([["id", "Indonesia"], ["en", "Inggris"]] as const).map(([value, label]) => (
+                <button key={value} type="button" className={locale === value ? "active" : ""}
+                  aria-pressed={locale === value} disabled={disabled}
+                  onClick={() => { setLocale(value); emit({ locale: value }); }}>{label}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="pb-lh-col">
+          <details className="pb-lh-preview">
+            <summary>Pratinjau config lhci</summary>
+            <pre className="pb-mono">{preview}</pre>
+          </details>
+
+          <div className="pb-lh-url-cell">
+            <span className="pb-lh-url-label">URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
+            <span className="pb-lh-urls">
+              {extra.map((u, i) => (
+                <span className="pb-row" key={i} style={{ gap: 8 }}>
+                  <input className="pb-input pb-mono" value={u} id={`${idPrefix}-url-${i}`}
+                    placeholder="https://contoh.test/halaman-lain" disabled={disabled}
+                    onChange={e => {
+                      const v = e.target.value;
+                      const next = extra.map((x, j) => (j === i ? v : x));
+                      setExtra(next); emit({ extra: next });
+                    }} />
+                  <button type="button" className="pb-btn sm danger" disabled={disabled}
+                    aria-label={"Hapus URL " + (i + 1)}
+                    onClick={async () => {
+                      if (!(await confirmAction({
+                        icon: "warning",
+                        title: "Hapus URL tambahan?",
+                        text: `URL ke-${i + 1} akan dihapus dari config.`,
+                        confirmButtonText: "Ya, Hapus",
+                      }))) return;
+                      const next = extra.filter((_, j) => j !== i);
+                      setExtra(next); emit({ extra: next });
+                      showInfoToast("URL tambahan dihapus.");
+                    }}>Hapus</button>
+                </span>
+              ))}
+              {extra.length < MAX_EXTRA_URLS && (
+                <button type="button" className="pb-btn sm" disabled={disabled}
+                  onClick={async () => {
+                    if (!(await confirmAction({
+                      icon: "question",
+                      title: "Tambah URL baru?",
+                      text: "Kolom URL tambahan baru akan ditambahkan.",
+                      confirmButtonText: "Ya, Tambah",
+                    }))) return;
+                    setExtra(list => [...list, ""]);
+                    showInfoToast("Kolom URL ditambahkan.");
+                  }}>+ Tambah URL</button>
+              )}
             </span>
-          ))}
-          {extra.length < MAX_EXTRA_URLS && (
-            <button type="button" className="pb-btn sm" disabled={disabled}
-              onClick={async () => {
-                if (!(await confirmAction({
-                  icon: "question",
-                  title: "Tambah URL baru?",
-                  text: "Kolom URL tambahan baru akan ditambahkan.",
-                  confirmButtonText: "Ya, Tambah",
-                }))) return;
-                setExtra(list => [...list, ""]);
-                showInfoToast("Kolom URL ditambahkan.");
-              }}>+ Tambah URL</button>
-          )}
-        </span>
-        </div>
-        <div className="pb-lh-budget-cell">
-          <span>Skor minimum per kategori</span>
-          <div className="pb-lh-budgets">
-          {LH_CATEGORIES.map(c => (
-            <label className="pb-lh-budget" key={c.key}>
-              <span className="pb-lh-budget-label">{c.label}</span>
-              <input type="range" min={0} max={100} step={5} disabled={disabled}
-                className="pb-lh-range-v" value={scores[c.key] ?? 60}
-                style={{ writingMode: "vertical-lr", direction: "rtl", height: 96 }}
-                aria-label={"Skor minimum " + c.label}
-                onChange={e => {
-                  const v = Number(e.target.value);
-                  const next = { ...scores, [c.key]: v };
-                  setScores(next); emit({ scores: next });
-                }} />
-              <output>{scores[c.key] ?? 60}%</output>
-            </label>
-          ))}
-        </div>
-        <div className="pb-lh-audit-total">
-          <span className="pb-muted" style={{ fontSize: 12 }}>
-            Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
-          </span>
-          {totalAudits > 20 && (
-            <span className="pb-badge warn">
-              Perkiraan ~{roughMinutes} menit; jalankan saat tidak buru-buru
-            </span>
-          )}
-        </div>
+          </div>
+
+          <div className="pb-lh-budget-cell">
+            <span>Skor minimum per kategori</span>
+            <div className="pb-lh-budgets">
+              {LH_CATEGORIES.map(c => (
+                <label className="pb-lh-budget" key={c.key}>
+                  <span className="pb-lh-budget-label">{c.label}</span>
+                  <input type="range" min={0} max={100} step={5} disabled={disabled}
+                    className="pb-lh-range-v" value={scores[c.key] ?? 60}
+                    style={{ writingMode: "vertical-lr", direction: "rtl", height: 96 }}
+                    aria-label={"Skor minimum " + c.label}
+                    onChange={e => {
+                      const v = Number(e.target.value);
+                      const next = { ...scores, [c.key]: v };
+                      setScores(next); emit({ scores: next });
+                    }} />
+                  <output>{scores[c.key] ?? 60}%</output>
+                </label>
+              ))}
+            </div>
+            <div className="pb-lh-audit-total">
+              <span className="pb-muted" style={{ fontSize: 12 }}>
+                Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
+              </span>
+              {totalAudits > 20 && (
+                <span className="pb-badge warn">
+                  Perkiraan ~{roughMinutes} menit; jalankan saat tidak buru-buru
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       {err && <div className="pb-err" role="alert">{err}</div>}
-
-      <details className="pb-lh-preview">
-        <summary>Pratinjau config lhci</summary>
-        <pre className="pb-mono">{preview}</pre>
-      </details>
     </div>
   );
 }

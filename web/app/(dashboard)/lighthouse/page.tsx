@@ -264,6 +264,15 @@ export default function LighthousePage() {
               {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
+        </div>
+      </section>
+
+      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 1120 }}>
+        <div className="pb-card-head" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15 }}>Konfigurasi</h2>
+            <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada konfigurasi"}</div>
+          </div>
           <div className="pb-row" style={{ gap: 8, alignItems: "center" }}>
             <span className="pb-save-state" aria-live="polite">{saveState}</span>
             <button className="pb-btn primary" onClick={runNow}
@@ -271,15 +280,6 @@ export default function LighthousePage() {
               {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
             </button>
             {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
-          </div>
-        </div>
-      </section>
-
-      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 1120 }}>
-        <div className="pb-card-head" style={{ marginBottom: 12 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 15 }}>Konfigurasi</h2>
-            <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada konfigurasi"}</div>
           </div>
         </div>
         {selected && project ? (
