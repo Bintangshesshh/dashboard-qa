@@ -204,6 +204,7 @@ export default function LhConfigEditor({
         </div>
 
         <div className="pb-lh-col">
+          <div className="pb-lh-pair">
           <div className="pb-lh-url-cell">
             <span className="pb-lh-url-label">URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
             <span className="pb-lh-urls">
@@ -266,16 +267,17 @@ export default function LhConfigEditor({
                 </label>
               ))}
             </div>
-            <div className="pb-lh-audit-total">
-              <span className="pb-muted" style={{ fontSize: 12 }}>
-                Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
+          </div>
+          </div>
+          <div className="pb-lh-audit-total">
+            <span className="pb-muted" style={{ fontSize: 12 }}>
+              Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
+            </span>
+            {totalAudits > 20 && (
+              <span className="pb-badge warn">
+                Perkiraan ~{roughMinutes} menit; jalankan saat tidak buru-buru
               </span>
-              {totalAudits > 20 && (
-                <span className="pb-badge warn">
-                  Perkiraan ~{roughMinutes} menit; jalankan saat tidak buru-buru
-                </span>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>

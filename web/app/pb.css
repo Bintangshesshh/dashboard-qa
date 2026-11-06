@@ -1950,3 +1950,8 @@ button { cursor: pointer; }
 @media (max-width: 900px) {
   .pb-lh-columns { display: flex; gap: 12px; }
 }
+
+/* URL tambahan dan pengatur skor bersebelahan di kolom kanan. */
+.pb-lh-pair { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: flex-end; gap: 16px; }
+.pb-lh-pair .pb-lh-url-cell { flex: 1 1 0; min-width: 0; }
+.pb-lh-pair .pb-lh-budget-cell { flex: 0 0 auto; }
