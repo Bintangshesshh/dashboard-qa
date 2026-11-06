@@ -1941,3 +1941,12 @@ button { cursor: pointer; }
   .pb-lh-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 12px; }
 }
 .pb-lh-col .pb-seg { flex-wrap: wrap; }
+
+/* Lighthouse: dua kolom via flex, tidak pernah menumpuk. */
+.pb-lh-columns { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: flex-start; gap: 18px; }
+.pb-lh-columns > .pb-lh-col { flex: 1 1 0; min-width: 0; }
+.pb-lh-columns > .pb-lh-col:first-child { flex: 0 1 42%; }
+.pb-lh-columns > .pb-lh-col:last-child { flex: 1 1 58%; }
+@media (max-width: 900px) {
+  .pb-lh-columns { display: flex; gap: 12px; }
+}

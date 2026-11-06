@@ -142,22 +142,6 @@ export default function LhConfigEditor({
   const totalAudits = totalUrls * runs * devices;
   const roughMinutes = Math.round(lhEstimateMs(totalUrls, runs, devices) / 60000);
   const err = lhConfigError({ target, extra: clean, runs, scores });
-  // Host project pada URL tambahan ikut origin target (env yang dipilih).
-  const effective = effectiveUrls(target, clean, project);
-  const preview = JSON.stringify({
-    formFactor,
-    ci: {
-      collect: {
-        url: [...new Set([target, ...effective].filter(Boolean))],
-        numberOfRuns: runs,
-        settings: {
-          locale,
-          ...(formFactor === "desktop" ? { preset: "desktop" } : {}),
-        },
-      },
-      assert: { assertions: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, ["error", { minScore: (scores[c.key] ?? 60) / 100 }]])) },
-    },
-  }, null, 2);
 
   return (
     <div className="pb-lh-form">
@@ -220,11 +204,6 @@ export default function LhConfigEditor({
         </div>
 
         <div className="pb-lh-col">
-          <details className="pb-lh-preview">
-            <summary>Pratinjau config lhci</summary>
-            <pre className="pb-mono">{preview}</pre>
-          </details>
-
           <div className="pb-lh-url-cell">
             <span className="pb-lh-url-label">URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
             <span className="pb-lh-urls">
