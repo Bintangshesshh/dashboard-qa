@@ -261,13 +261,9 @@ export default function LhConfigEditor({
           )}
         </span>
         </div>
-        <span className="pb-set-help pb-lh-url-help">
-          URL yang host-nya sama dengan project otomatis ikut Environment yang dipilih.
-        </span>
         <div className="pb-lh-budget-cell">
           <span>Skor minimum per kategori</span>
-          <span className="pb-set-help">Run dianggap gagal bila skor di bawah batas ini.</span>
-        <div className="pb-lh-budgets">
+          <div className="pb-lh-budgets">
           {LH_CATEGORIES.map(c => (
             <label className="pb-lh-budget" key={c.key}>
               <span className="pb-lh-budget-label">{c.label}</span>

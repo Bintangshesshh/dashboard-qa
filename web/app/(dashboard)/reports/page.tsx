@@ -10,6 +10,7 @@ export default function ReportsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<Record<string, Stats>>({});
   const [error, setError] = useState("");
+  const [q, setQ] = useState("");
 
   useEffect(() => {
     // all=true: report project arsip harus tetap bisa dibuka.
@@ -19,12 +20,23 @@ export default function ReportsPage() {
       .catch(e => setError(e.message));
   }, []);
 
+  const term = q.trim().toLowerCase();
+  const groups = groupProjects(projects)
+    .map(g => ({
+      ...g,
+      items: g.name.toLowerCase().includes(term)
+        ? g.items
+        : g.items.filter(p => p.name.toLowerCase().includes(term)),
+    }))
+    .filter(g => g.items.length > 0);
+
   return (
     <>
       <div className="pb-head">
-        <div>
-          <h1>Laporan per project.</h1>
-          <p className="pb-lead">Pilih project untuk melihat sesi, run, dan laporannya.</p>
+        <div className="pb-filters">
+          <input className="pb-input" style={{ minWidth: 260 }} value={q}
+            onChange={e => setQ(e.target.value)} placeholder="Cari grup atau project"
+            aria-label="Cari grup atau project" />
         </div>
       </div>
 
@@ -32,9 +44,11 @@ export default function ReportsPage() {
 
       {!error && projects.length === 0 ? (
         <p className="pb-empty">Belum ada project.</p>
+      ) : !error && groups.length === 0 ? (
+        <p className="pb-empty">Tidak ada grup atau project yang cocok.</p>
       ) : !error && (
         // Laporan dikelompokkan per grup project supaya daftar panjang tidak menumpuk.
-        groupProjects(projects).map(g => (
+        groups.map(g => (
           <section className="pb-group-block" key={g.id}>
             <div className="pb-group-label">
               <strong>{g.name}</strong>

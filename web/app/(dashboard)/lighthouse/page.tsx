@@ -238,9 +238,9 @@ export default function LighthousePage() {
     <>
       {error && <div className="pb-err" role="alert">{error}</div>}
 
-      <section className="pb-card" style={{ marginBottom: 16 }}>
-        <div className="pb-row" style={{ gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <label className="pb-field" style={{ minWidth: 240 }}>
+      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 560 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <label className="pb-field">
             Project
             <select className="pb-select" value={projectId}
               onChange={e => {
@@ -254,17 +254,17 @@ export default function LighthousePage() {
               ))}
             </select>
           </label>
-          <label className="pb-field">
+          <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
+            Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
+          </p>
+          <label className="pb-field" style={{ maxWidth: 240 }}>
             Environment
             <select className="pb-select" value={env}
               onChange={e => { const v = e.target.value as Env; setEnv(v); rememberEnv(v); }}>
               {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
-          <p className="pb-muted" style={{ fontSize: 12, margin: 0, flex: "1 1 260px" }}>
-            Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
-          </p>
-          <div className="pb-row" style={{ gap: 8, marginLeft: "auto", alignItems: "center" }}>
+          <div className="pb-row" style={{ gap: 8, alignItems: "center" }}>
             <span className="pb-save-state" aria-live="polite">{saveState}</span>
             <button className="pb-btn primary" onClick={runNow}
               disabled={starting || running || !selected || !target || productionBlocked}>
