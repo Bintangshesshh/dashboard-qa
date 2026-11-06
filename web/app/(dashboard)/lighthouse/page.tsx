@@ -236,23 +236,10 @@ export default function LighthousePage() {
 
   return (
     <>
-      <div className="pb-head">
-        <div>
-          <h1>Audit performa.</h1>
-        </div>
-        <div className="pb-filters">
-          <span className="pb-save-state" aria-live="polite">{saveState}</span>
-          <button className="pb-btn primary" onClick={runNow}
-            disabled={starting || running || !selected || !target || productionBlocked}>
-            {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
-          </button>
-          {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
-        </div>
-      </div>
       {error && <div className="pb-err" role="alert">{error}</div>}
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
-        <div className="pb-row" style={{ justifyContent: "space-between", gap: 16 }}>
+        <div className="pb-row" style={{ gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label className="pb-field" style={{ minWidth: 240 }}>
             Project
             <select className="pb-select" value={projectId}
@@ -274,9 +261,17 @@ export default function LighthousePage() {
               {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
-          <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
+          <p className="pb-muted" style={{ fontSize: 12, margin: 0, flex: "1 1 260px" }}>
             Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
           </p>
+          <div className="pb-row" style={{ gap: 8, marginLeft: "auto", alignItems: "center" }}>
+            <span className="pb-save-state" aria-live="polite">{saveState}</span>
+            <button className="pb-btn primary" onClick={runNow}
+              disabled={starting || running || !selected || !target || productionBlocked}>
+              {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
+            </button>
+            {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
+          </div>
         </div>
       </section>
 
