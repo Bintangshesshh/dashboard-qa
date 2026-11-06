@@ -42,7 +42,7 @@ const runSpan = run => {
   return Number.isFinite(duration) && duration >= 0 ? duration : null;
 };
 const testMs = test => (test.results || []).reduce((sum, result) => sum + (Number(result.duration) || 0), 0);
-const CAT_SHORT = { performance: 'Perf', accessibility: 'A11y', 'best-practices': 'BP', 'best practices': 'BP', seo: 'SEO' };
+const CAT_SHORT = { performance: 'Performa', accessibility: 'Aksesibilitas', 'best-practices': 'Praktik terbaik', 'best practices': 'Praktik terbaik', seo: 'SEO' };
 const catShort = title => CAT_SHORT[String(title ?? '').toLowerCase()] || title || 'Lainnya';
 
 // Pembungkus semua halaman report: nav + hero + panel. Satu tempat untuk <head> dan tema.
@@ -233,7 +233,8 @@ ${a.errorMessage ? `<p class="cause-why" role="alert">${esc(a.errorMessage)}</p>
 <td class="mono">${[a.displayValue, auditSavings(a)].filter(Boolean).map(esc).join(' · ') || '-'}</td>
 <td class="audit-desc">${esc(a.explanation || a.description || '')}
 ${a.details ? `<details class="audit-more"><summary>Elemen terdampak dan nilai terukur</summary>${pre(a.details)}</details>` : ''}</td></tr>`).join('');
-  return `<p class="mono">URL: ${esc(data.finalDisplayedUrl || data.finalUrl || data.requestedUrl)} · diambil: ${esc(data.fetchTime)}</p>`
+  const device = data.configSettings?.formFactor === 'desktop' ? 'Desktop' : 'Mobile';
+  return `<p class="mono"><span class="b">${device}</span> · URL: ${esc(data.finalDisplayedUrl || data.finalUrl || data.requestedUrl)} · diambil: ${esc(data.fetchTime)}</p>`
     + `<h3>Skor kategori</h3><ul class="scores">${categories}</ul>`
     + `${metrics ? `<div class="cwv-grid">${metrics}</div>` : ''}`
     + `<div class="diagnosis"><h3>Kenapa skor segini?</h3>

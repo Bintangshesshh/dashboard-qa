@@ -28,8 +28,6 @@ export default function PlaywrightPage() {
   const [files, setFiles] = useState<TestFile[]>([]);
   const [projectId, setProjectId] = useState("");
   // Default local: kasus utama menguji web di laptop sendiri.
-  // Konfirmasi production: ketik nama project. Guard sama ada di server.
-  const [confirmName, setConfirmName] = useState("");
   const [env, setEnv] = useState<Env>("local");
 
   // Editor
@@ -120,8 +118,7 @@ export default function PlaywrightPage() {
   const target = resolvedUrl(project, env);
   // Server juga menolak production kalau project belum mengizinkannya; tombol
   // jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
-  const productionOk = env !== "production"
-    || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
+  const productionBlocked = env === "production" && !project?.allow_production;
   const dirty = !!selected && draft !== savedCode;
   const running = !!run && !FINAL.includes(run.status);
   // Umur sesi dari run terakhir, sama dengan server: satu sesi kerja, bukan satu hari.
@@ -306,8 +303,6 @@ export default function PlaywrightPage() {
     setRunId(null); setRun(null); setLogs([]);
     try {
       if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
-      if (env === "production" && confirmName.trim() !== project?.name)
-        throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya spec Playwright.");
       // Run harus memakai kode tersimpan; kalau simpan gagal, jangan lanjut diam-diam.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; }
@@ -315,9 +310,9 @@ export default function PlaywrightPage() {
         const saved = await save();
         if (!saved) throw new Error("Kode belum tersimpan. Selesaikan error simpan sebelum run.");
       }
-      // Konfirmasi production diketik user; guard yang sama ada di server.
+      // Konfirmasi production lewat dialog; server tetap wajib allow_production.
       const created = await api.createSession(
-        projectId, env, env === "production" ? confirmName : undefined, fresh,
+        projectId, env, undefined, fresh,
       );
       const { runId } = await api.createRun(created.session.id, selected.id, {
         recordVideo, debug: debugMode,
@@ -339,16 +334,26 @@ export default function PlaywrightPage() {
     catch (e) { setError((e as Error).message); return false; }
   };
 
+  const scrollToTerminal = () => {
+    const el = document.getElementById("run-terminal");
+    if (!el) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  };
+
   const runWithConfirm = async (fresh = false) => {
     if (!(await confirmAction({
       icon: "question",
-      title: fresh ? "Mulai sesi baru?" : "Jalankan test suite?",
+      title: fresh ? "Mulai sesi baru?" : "Jalankan run?",
       text: fresh
         ? "Sesi terbuka yang idle akan ditutup lalu run baru dimulai."
         : `Spec ${selected?.label ?? "terpilih"} di env ${env}.`,
       confirmButtonText: fresh ? "Ya, Sesi Baru" : "Ya, Jalankan",
     }))) return;
-    if (await start(fresh)) showSuccessToast(fresh ? "Sesi baru dimulai." : "Run dimulai.");
+    if (await start(fresh)) {
+      showSuccessToast(fresh ? "Sesi baru dimulai." : "Run dimulai.");
+      scrollToTerminal();
+    }
   };
 
   const stopWithConfirm = async () => {
@@ -368,46 +373,16 @@ export default function PlaywrightPage() {
 
   return (
     <>
-      <div className="pb-head">
-        <div>
-          <h1>Jalankan test suite.</h1>
-        </div>
-        <div className="pb-filters">
-          <span className={`pb-save-state${conflict ? " bad" : dirty ? " dirty" : ""}`} aria-live="polite">
-            {conflict ? "Konflik disk" : saveState}
-          </span>
-          <label className="pb-check" title="Simpan rekaman WebM tiap test (lebih besar di disk)">
-            <input type="checkbox" checked={recordVideo} disabled={running || starting}
-              onChange={e => setRecordVideo(e.target.checked)} />
-            Rekam video
-          </label>
-          <label className="pb-check" title="Slow motion, timeout 30 menit, dan tombol jeda/step di panel layar">
-            <input type="checkbox" checked={debugMode} disabled={running || starting}
-              onChange={e => setDebugMode(e.target.checked)} />
-            Debug
-          </label>
-          <button className="pb-btn primary" onClick={() => runWithConfirm()}
-            disabled={starting || running || !selected || !target || !productionOk}>
-            {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
-          </button>
-          <button className="pb-btn" onClick={() => runWithConfirm(true)}
-            disabled={starting || running || !selected || !target || !productionOk}
-            title="Tutup sesi terbuka yang idle lalu mulai sesi baru">
-            Sesi baru
-          </button>
-          {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
-        </div>
-      </div>
       {error && <div className="pb-err" role="alert">{error}</div>}
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
-        <div className="pb-row" style={{ justifyContent: "space-between", gap: 16 }}>
-          <label className="pb-field" style={{ minWidth: 240 }}>
+        <div className="pb-row" style={{ gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <label className="pb-field" style={{ minWidth: 200 }}>
             Project
             <select className="pb-select" value={projectId}
               onChange={e => {
                 const id = e.target.value;
-                setProjectId(id); rememberProject(id); setConfirmName("");
+                setProjectId(id); rememberProject(id);
               }}>
               {groupProjects(projects).map(g => (
                 <optgroup key={g.id} label={g.name}>
@@ -416,13 +391,25 @@ export default function PlaywrightPage() {
               ))}
             </select>
           </label>
-          <label className="pb-field">
+          <label className="pb-field" style={{ minWidth: 240, flex: "1 1 260px" }}>
+            File spec
+            <select className="pb-select" value={selected?.id ?? ""}
+              onChange={e => pickFile(e.target.value)} disabled={saving || files.length === 0}>
+              {files.length === 0 && <option value="">belum ada spec</option>}
+              {files.map(f => (
+                <option key={f.id} value={f.id}>{f.label} · {f.path}</option>
+              ))}
+            </select>
+          </label>
+          <label className="pb-field" style={{ minWidth: 150 }}>
             Environment
             <select className="pb-select" value={env}
-              onChange={e => { const v = e.target.value as Env; setEnv(v); rememberEnv(v); setConfirmName(""); }}>
+              onChange={e => { const v = e.target.value as Env; setEnv(v); rememberEnv(v); }}>
               {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
+        </div>
+        <div className="pb-row" style={{ gap: 16, marginTop: 10, flexWrap: "wrap" }}>
           <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
             Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
           </p>
@@ -435,32 +422,40 @@ export default function PlaywrightPage() {
             </p>
           )}
         </div>
-        {env === "production" && (
-          <label className="pb-field" style={{ marginTop: 12 }}>
-            Ketik <strong>{project?.name ?? "nama project"}</strong> untuk konfirmasi production
-            <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
-          </label>
-        )}
       </section>
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
-        <div className="pb-row" style={{ justifyContent: "space-between", marginBottom: 10, gap: 12 }}>
+        <div className="pb-row" style={{ justifyContent: "space-between", marginBottom: 10, gap: 12, flexWrap: "wrap" }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 15 }}>Spec</h2>
+            <div className="pb-row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <h2 style={{ margin: 0, fontSize: 15 }}>Spec</h2>
+              <span className={`pb-save-state${conflict ? " bad" : dirty ? " dirty" : ""}`} aria-live="polite">
+                {conflict ? "Konflik disk" : saveState}
+              </span>
+            </div>
             <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada spec"}</div>
           </div>
-          <div className="pb-row" style={{ gap: 12 }}>
-            {files.length > 0 && (
-              <label className="pb-field" style={{ minWidth: 260 }}>
-                File spec
-                <select className="pb-select" value={selected?.id ?? ""}
-                  onChange={e => pickFile(e.target.value)} disabled={saving}>
-                  {files.map(f => (
-                    <option key={f.id} value={f.id}>{f.label} · {f.path}</option>
-                  ))}
-                </select>
-              </label>
-            )}
+          <div className="pb-row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <label className="pb-check" title="Simpan rekaman WebM tiap test (lebih besar di disk)">
+              <input type="checkbox" checked={recordVideo} disabled={running || starting}
+                onChange={e => setRecordVideo(e.target.checked)} />
+              Rekam video
+            </label>
+            <label className="pb-check" title="Slow motion, timeout 30 menit, dan tombol jeda/step di panel layar">
+              <input type="checkbox" checked={debugMode} disabled={running || starting}
+                onChange={e => setDebugMode(e.target.checked)} />
+              Debug
+            </label>
+            <button className="pb-btn primary" onClick={() => runWithConfirm()}
+              disabled={starting || running || !selected || !target || productionBlocked}>
+              {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
+            </button>
+            <button className="pb-btn" onClick={() => runWithConfirm(true)}
+              disabled={starting || running || !selected || !target || productionBlocked}
+              title="Tutup sesi terbuka yang idle lalu mulai sesi baru">
+              Sesi baru
+            </button>
+            {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
           </div>
         </div>
         {conflict && (
@@ -503,7 +498,7 @@ export default function PlaywrightPage() {
         )}
       </section>
 
-      <div className="pb-run-split">
+      <div className="pb-run-split" id="run-terminal">
         <RunPanel
           logs={logs}
           run={run}

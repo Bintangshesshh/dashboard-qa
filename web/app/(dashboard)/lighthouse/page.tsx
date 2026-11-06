@@ -30,8 +30,6 @@ export default function LighthousePage() {
   const [projectId, setProjectId] = useState("");
   // Default local: kasus utama menguji web yang jalan di laptop sendiri.
   const [env, setEnv] = useState<Env>("local");
-  // Konfirmasi production: ketik nama project. Guard sama ada di server.
-  const [confirmName, setConfirmName] = useState("");
 
   // Draft config berupa string JSON apa adanya; editor bersama yang mengubahnya.
   const [config, setConfig] = useState("");
@@ -89,8 +87,7 @@ export default function LighthousePage() {
   const target = resolvedUrl(project, env);
   // Server juga menolak production kalau project belum mengizinkannya; tombol
   // jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
-  const productionOk = env !== "production"
-    || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
+  const productionBlocked = env === "production" && !project?.allow_production;
   const running = !!run && !FINAL.includes(run.status);
 
   // Muat config hanya saat file berganti; autosave yang menulis balik tidak boleh reset ketikan.
@@ -195,15 +192,13 @@ export default function LighthousePage() {
     setRunId(null); setRun(null); setLogs([]);
     try {
       if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
-      if (env === "production" && confirmName.trim() !== project?.name)
-        throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya konfigurasi Lighthouse.");
       const msg = validate();
       if (msg) throw new Error(msg);
       // Flush autosave yang masih menunggu supaya run memakai config terbaru.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; await saveConfig(); }
-      // Konfirmasi production diketik user; guard yang sama ada di server.
-      const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
+      // Konfirmasi production lewat dialog; server tetap menolak project tanpa allow_production.
+      const created = await api.createSession(projectId, env);
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`lh-run:${projectId}`, runId);
       setRunId(runId);
@@ -254,7 +249,7 @@ export default function LighthousePage() {
         <div className="pb-filters">
           <span className="pb-save-state" aria-live="polite">{saveState}</span>
           <button className="pb-btn primary" onClick={runWithConfirm}
-            disabled={starting || running || !selected || !target || !productionOk}>
+            disabled={starting || running || !selected || !target || productionBlocked}>
             {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
           </button>
           {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
@@ -269,7 +264,7 @@ export default function LighthousePage() {
             <select className="pb-select" value={projectId}
               onChange={e => {
                 const id = e.target.value;
-                setProjectId(id); rememberProject(id); setConfirmName("");
+                setProjectId(id); rememberProject(id);
               }}>
               {groupProjects(projects).map(g => (
                 <optgroup key={g.id} label={g.name}>
@@ -281,7 +276,7 @@ export default function LighthousePage() {
           <label className="pb-field">
             Environment
             <select className="pb-select" value={env}
-              onChange={e => { const v = e.target.value as Env; setEnv(v); rememberEnv(v); setConfirmName(""); }}>
+              onChange={e => { const v = e.target.value as Env; setEnv(v); rememberEnv(v); }}>
               {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
@@ -289,12 +284,6 @@ export default function LighthousePage() {
             Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
           </p>
         </div>
-        {env === "production" && (
-          <label className="pb-field" style={{ marginTop: 12 }}>
-            Ketik <strong>{project?.name ?? "nama project"}</strong> untuk konfirmasi production
-            <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
-          </label>
-        )}
       </section>
 
       <section className="pb-card" style={{ marginBottom: 16 }}>
@@ -337,11 +326,12 @@ export default function LighthousePage() {
             <p className="pb-empty">Tidak ada hasil Lighthouse pada run ini.</p>
           ) : (
             <div className="pb-table-wrap"><table className="pb-table">
-              <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
+              <thead><tr><th>URL</th><th>Mode</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
               <tbody>
                 {results.map(r => (
                   <tr key={r.id}>
                     <td className="mono">{r.url}</td>
+                    <td>{r.form_factor === "desktop" ? "Desktop" : "Mobile"}</td>
                     <td>{pct(r.performance)}</td>
                     <td>{pct(r.accessibility)}</td>
                     <td>{pct(r.best_practices)}</td>
@@ -356,7 +346,7 @@ export default function LighthousePage() {
                     </td>
                     <td style={{ textAlign: "right" }}>
                       {r.report_path
-                        ? <ArtifactLink href={artifactUrl(r.run_id, r.report_path)}>Buka report</ArtifactLink>
+                        ? <ArtifactLink href={artifactUrl(r.run_id, r.report_path) + `#${r.form_factor === "desktop" ? "desktop" : "mobile"}`}>Buka report</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>-</span>}
                     </td>
                   </tr>

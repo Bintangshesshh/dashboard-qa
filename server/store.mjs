@@ -476,15 +476,15 @@ export class Store {
 
   // ─── Lighthouse results ──────────────────────────────────────────────────
   addLighthouseResults(runId, rows) {
-    const ins = this.db.prepare(`INSERT INTO lighthouse_results (id, run_id, url, performance, accessibility, best_practices, seo, lcp_ms, cls, tbt_ms, budget_failed, warnings, report_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    const ins = this.db.prepare(`INSERT INTO lighthouse_results (id, run_id, url, performance, accessibility, best_practices, seo, lcp_ms, cls, tbt_ms, budget_failed, warnings, report_path, form_factor, locale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     this.db.exec('BEGIN');
     try {
       this.db.prepare('DELETE FROM lighthouse_results WHERE run_id=?').run(runId);
-      for (const r of rows) ins.run(randomUUID(), runId, r.url, r.performance ?? null, r.accessibility ?? null, r.bestPractices ?? null, r.seo ?? null, r.lcpMs ?? null, r.cls ?? null, r.tbtMs ?? null, r.budgetFailed ?? null, r.warnings ?? null, r.reportPath ?? null);
+      for (const r of rows) ins.run(randomUUID(), runId, r.url, r.performance ?? null, r.accessibility ?? null, r.bestPractices ?? null, r.seo ?? null, r.lcpMs ?? null, r.cls ?? null, r.tbtMs ?? null, r.budgetFailed ?? null, r.warnings ?? null, r.reportPath ?? null, r.formFactor === 'desktop' ? 'desktop' : 'mobile', r.locale ?? null);
       this.db.exec('COMMIT');
     } catch (e) { this.db.exec('ROLLBACK'); throw e; }
   }
-  listLighthouseResults(runId) { return this.db.prepare('SELECT * FROM lighthouse_results WHERE run_id=? ORDER BY url').all(runId); }
+  listLighthouseResults(runId) { return this.db.prepare('SELECT * FROM lighthouse_results WHERE run_id=? ORDER BY url, form_factor').all(runId); }
   listLighthouseByProject({ projectId, limit = 20 } = {}) {
     let sql = `SELECT l.*, r.status AS run_status, r.queued_at, r.session_id, s.label AS session_label, s.env
       FROM lighthouse_results l
@@ -493,7 +493,7 @@ export class Store {
       WHERE 1=1`;
     const vals = [];
     if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
-    sql += ' ORDER BY r.queued_at DESC, l.url LIMIT ?';
+    sql += ' ORDER BY r.queued_at DESC, l.url, l.form_factor LIMIT ?';
     vals.push(Math.min(Math.max(Number(limit) || 20, 1), 200));
     return this.db.prepare(sql).all(...vals);
   }

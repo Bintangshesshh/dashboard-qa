@@ -540,6 +540,37 @@ test('parseLighthouse: baca .lighthouseci/ saat upload tak sempat jalan', async 
   await rm(runsDir, { recursive: true, force: true });
 });
 
+test('parseLighthouse: mode both membaca dua folder device tanpa bentrok URL', async () => {
+  const { Runner } = await import('../runner.mjs');
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-lh-'));
+  const dir = join(runsDir, 'run1');
+  const lhr = (perf) => JSON.stringify({
+    finalUrl: 'https://a.test/',
+    fetchTime: new Date().toISOString(),
+    categories: { performance: { score: perf }, accessibility: { score: 0.9 }, 'best-practices': { score: 0.8 }, seo: { score: 1 } },
+    audits: {},
+  });
+  const devices = [];
+  for (const [device, perf] of [['mobile', 0.4], ['desktop', 0.9]]) {
+    const artifactsDir = join(dir, 'artifacts', device);
+    const lhciDir = join(dir, 'lh', device, '.lighthouseci');
+    await mkdir(artifactsDir, { recursive: true });
+    await mkdir(lhciDir, { recursive: true });
+    await writeFile(join(lhciDir, 'lhr-1.json'), lhr(perf));
+    await writeFile(join(lhciDir, 'lhr-1.html'), `<html>${device}</html>`);
+    devices.push({ formFactor: device, artifactsDir, lhciDir, reportRoot: join(dir, 'artifacts') });
+  }
+
+  const runner = new Runner({}, { runsDir });
+  const rows = await runner.parseLighthouse(dir, null, devices);
+
+  assert.equal(rows.length, 2, 'URL sama di dua device jadi dua baris');
+  assert.deepEqual(rows.map(r => r.formFactor).sort(), ['desktop', 'mobile']);
+  assert.equal(rows.find(r => r.formFactor === 'desktop').performance, 0.9);
+  assert.equal(rows.find(r => r.formFactor === 'mobile').reportPath, 'mobile/lh-lhr-1.html');
+  await rm(runsDir, { recursive: true, force: true });
+});
+
 test('captureLighthouse: network & console diambil dari LHR', async () => {
   const { Runner } = await import('../runner.mjs');
   const runner = new Runner({}, { runsDir: tmpdir() });
@@ -635,8 +666,16 @@ test('lhConfig: URL sesi didahulukan, dedupe, budget jadi assertion error', asyn
   assert.throws(() => lhConfig({ numberOfRuns: 0 }, 'https://a.test/', 'x'), /numberOfRuns/);
   assert.throws(() => lhConfig({ urls: ['https://luar.test/'] }, 'https://a.test/', 'x', { allowedOrigins: ['https://a.test'] }), /tidak diizinkan/);
   const minimal = lhConfig(null, 'https://a.test/', 'out');
-  assert.equal(JSON.parse(minimal.replace(/^module\.exports = /, '').replace(/;\n$/, '')).ci.collect.numberOfRuns, 1);
-  assert.equal(/settings/.test(minimal), false, 'target publik tidak melewati cek sertifikat');
+  const minimalCfg = JSON.parse(minimal.replace(/^module\.exports = /, '').replace(/;\n$/, ''));
+  assert.equal(minimalCfg.ci.collect.numberOfRuns, 1);
+  assert.equal(minimalCfg.ci.collect.settings.locale, 'id', 'locale default Indonesia');
+  assert.equal(minimalCfg.ci.collect.settings.chromeFlags, undefined, 'target publik tidak melewati cek sertifikat');
+
+  // Device desktop memakai preset desktop; locale en masuk settings.
+  const desktop = JSON.parse(lhConfig({ formFactor: 'desktop', locale: 'en' }, 'https://a.test/', 'out', { device: 'desktop' })
+    .replace(/^module\.exports = /, '').replace(/;\n$/, ''));
+  assert.equal(desktop.ci.collect.settings.preset, 'desktop');
+  assert.equal(desktop.ci.collect.settings.locale, 'en');
 
   // self-signed lokal: chromeFlags, karena LHCI mengabaikan settings.ignoreHTTPSErrors.
   const local = JSON.parse(lhConfig(null, 'https://localhost:5173/', 'out').replace(/^module\.exports = /, '').replace(/;\n$/, ''));
@@ -859,8 +898,8 @@ test('A5: run production menulis satu baris log system', async t => {
   let runId = (await f.call(`/api/sessions/${localSession}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf-a5' } })).body.runId;
   assert.equal(f.store.logsRaw(runId).some(l => /production run by/.test(l.text)), false);
 
-  // production: satu baris, berisi username
-  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'production', confirm: 'EBH' } });
+  // production: satu baris, berisi username (tanpa ketik ulang nama project)
+  r = await f.call('/api/sessions', { method: 'POST', cookie, body: { projectId: 'p1', env: 'production' } });
   assert.equal(r.status, 201);
   runId = (await f.call(`/api/sessions/${r.body.sessionId}/runs`, { method: 'POST', cookie, body: { testFileId: 'tf-a5' } })).body.runId;
 
@@ -886,7 +925,7 @@ test('CLI: batch log setelah baris system tidak hilang', async t => {
   f.store.db.prepare("UPDATE projects SET allow_production=1, origins='[\"https://ebh.test\"]' WHERE id='p1'").run();
   f.store.createTestFile({ id: 'tf-cli', projectId: 'p1', tool: 'pw', path: 'a.spec.ts', label: 'A', code: 'x' });
 
-  const r = await f.call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: 'tf-cli', env: 'production', confirm: 'EBH' } });
+  const r = await f.call('/api/runs/local', { method: 'POST', cookie, body: { testFileId: 'tf-cli', env: 'production' } });
   assert.equal(r.status, 201);
 
   // klien tetap mengirim seq mulai 1, seperti CLI sekarang
@@ -1192,6 +1231,45 @@ test('T05: lhTimeout proporsional — lantai 15 menit, 5 URL x 10 run tidak flat
   assert.throws(() => lhConfig({ urls: ['bukan-url'] }, 'https://a.test/', 'x'), /URL tidak valid|Maksimal/);
 });
 
+test('T05: formFactor/locale divalidasi, timeout both menghitung dua device', async () => {
+  const { checkLhConfig } = await import('../validation.mjs');
+  const { lhTimeout, lhAuditShape } = await import('../runner.mjs');
+
+  assert.equal(checkLhConfig({ formFactor: 'both', locale: 'en' }).formFactor, 'both');
+  assert.equal(checkLhConfig({ formFactor: 'mobile' }).formFactor, 'mobile');
+  assert.equal(checkLhConfig({})?.formFactor, undefined, 'config lama tetap valid');
+  for (const bad of [{ formFactor: 'tablet' }, { locale: 'fr' }, { formFactor: 1 }]) {
+    assert.throws(() => checkLhConfig(bad), /formFactor|locale/);
+  }
+
+  assert.equal(lhTimeout(1, 1, 2), 900_000, 'both tetap kena lantai');
+  assert.equal(lhTimeout(2, 10, 1), 35 * 60_000);
+  assert.equal(lhTimeout(2, 10, 2), 65 * 60_000, 'dua device menggandakan anggaran audit');
+  assert.deepEqual(lhAuditShape({ config: JSON.stringify({ formFactor: 'both' }) }, 'https://a.test/'), [1, 1, 2]);
+  assert.deepEqual(lhAuditShape({ config: JSON.stringify({ formFactor: 'desktop' }) }, 'https://a.test/'), [1, 1, 1]);
+});
+
+test('Lighthouse results: dua device URL sama tersimpan sebagai dua baris', async t => {
+  const f = await fixture(t);
+  const sessionId = randomUUID();
+  f.store.createSession({ id: sessionId, projectId: 'p1', env: 'staging', targetUrl: 'https://staging.ebh.test/', label: 'S', createdBy: null });
+  const runId = randomUUID();
+  f.store.createRun({ id: runId, sessionId, tool: 'lh' });
+
+  f.store.addLighthouseResults(runId, [
+    { url: 'https://staging.ebh.test/', formFactor: 'mobile', performance: 0.5, locale: 'id', reportPath: 'lh-report.html' },
+    { url: 'https://staging.ebh.test/', formFactor: 'desktop', performance: 0.9, locale: 'id', reportPath: 'lh-report.html' },
+  ]);
+
+  const rows = f.store.listLighthouseResults(runId);
+  assert.equal(rows.length, 2, 'UNIQUE lama (run_id,url) sudah tidak berlaku');
+  assert.deepEqual(rows.map(r => r.form_factor), ['desktop', 'mobile'], 'urut url, form_factor');
+  assert.ok(rows.every(r => r.report_path === 'lh-report.html'), 'report_path dipertahankan');
+  assert.ok(rows.every(r => r.locale === 'id'));
+  const projectRows = f.store.listLighthouseByProject({ projectId: 'p1' });
+  assert.ok(projectRows.some(r => r.form_factor === 'desktop'), 'query project ikut kolom baru');
+});
+
 test('T05: budget error membuat run LH gagal saat skor di bawah batas', async t => {
   const f = await fixture(t);
   const cookie = await f.login();
@@ -1309,13 +1387,13 @@ test('T07: label sesi memakai WIB', async t => {
   assert.match(r.body.session.label, / WIB$/, 'label sesi berakhir WIB');
   assert.equal(/T\d{2}:\d{2}.*Z/.test(r.body.session.label), false);
 });
-test('T01: fresh DB → project_groups ada, user_version=8, reuse=20', async t => {
+test('T01: fresh DB → project_groups ada, user_version=9, reuse=20', async t => {
   const store = new Store(':memory:');
   await store.init();
   t.after(() => store.close());
 
   const version = store.db.prepare('PRAGMA user_version').get().user_version;
-  assert.equal(version, 8);
+  assert.equal(version, 9);
 
   // Tabel project_groups harus ada
   const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='project_groups'").all();
@@ -1812,4 +1890,20 @@ test('A16: layar live dan kontrol debug — auth, frame, guard mode debug', asyn
   r = await f.call('/api/runs/r-live/control', { method: 'POST', cookie, body: { action: 'pause' } });
   assert.equal(r.status, 200);
   assert.equal(r.body.mode, 'pause');
+
+  r = await f.call('/api/runs/r-live/control', { method: 'POST', cookie, body: { action: 'skip' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.mode, 'skip');
+});
+
+test('runner control: skip menulis mode skip, resume mengembalikan run', async t => {
+  const runsDir = await mkdtemp(join(tmpdir(), 'pb-control-'));
+  t.after(() => rm(runsDir, { recursive: true, force: true }));
+  const runner = new Runner({ getRun: () => ({ id: 'r-skip', status: 'running' }) }, { runsDir });
+
+  assert.deepEqual(await runner.control('r-skip', 'skip'), { mode: 'skip' });
+  assert.equal((await runner.controlState('r-skip')).mode, 'skip');
+
+  assert.deepEqual(await runner.control('r-skip', 'resume'), { mode: 'run' });
+  assert.equal((await runner.controlState('r-skip')).mode, 'run');
 });

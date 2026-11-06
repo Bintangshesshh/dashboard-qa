@@ -486,7 +486,6 @@ export function createApp({ store, runner, origins }) {
     if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
     if (e === 'production') {
       if (!project.allow_production) fail('Run production diblokir untuk project ini', 403);
-      if (req.body?.confirm !== project.name) fail('Ketik ulang nama project untuk konfirmasi production', 400);
     }
     return { e, targetUrl };
   };
@@ -894,7 +893,7 @@ export function createApp({ store, runner, origins }) {
     // Checkpoint memperpanjang timeout; tanpa mode debug, pause akan dibunuh
     // timeout normal 2 menit, jadi tolak di depan daripada gagal membingungkan.
     if (!runner.active || runner.active.runId !== run.id) fail('Run belum berjalan di runner', 409);
-    if (!runner.active.options?.debug) fail('Pause/step hanya aktif saat run memakai mode Debug', 409);
+    if (!runner.active.options?.debug) fail('Pause/step/skip hanya aktif saat run memakai mode Debug', 409);
     const out = await runner.control(run.id, String(req.body?.action ?? ''));
     store.audit({ userId: req.user.id, action: 'control_run', entity: 'runs', entityId: run.id, detail: JSON.stringify(out) });
     res.json(out);

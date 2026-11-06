@@ -13,9 +13,9 @@ export const MAX_EXTRA_URLS = 4;
 export const MAX_RUNS = 10;
 
 export const LH_CATEGORIES = [
-  { key: "categories:performance", label: "Performance" },
-  { key: "categories:accessibility", label: "Accessibility" },
-  { key: "categories:best-practices", label: "Best practices" },
+  { key: "categories:performance", label: "Performa" },
+  { key: "categories:accessibility", label: "Aksesibilitas" },
+  { key: "categories:best-practices", label: "Praktik terbaik" },
   { key: "categories:seo", label: "SEO" },
 ];
 
@@ -23,6 +23,8 @@ export type LhConfig = {
   urls?: string[];
   numberOfRuns?: number;
   budgets?: Record<string, { minScore: number }>;
+  formFactor?: "mobile" | "desktop" | "both";
+  locale?: "id" | "en";
 };
 
 export const parseLhConfig = (raw: string | null | undefined): LhConfig => {
@@ -78,8 +80,8 @@ export function lhConfigError(draft: {
   return "";
 }
 
-// Perkiraan durasi: tiap audit ~90 dtk, ditambah 5 menit overhead.
-export const lhEstimateMs = (urlCount: number, runs: number) => 300_000 + urlCount * runs * 90_000;
+// Perkiraan durasi: tiap audit ~90 dtk, ditambah 5 menit overhead; both = 2 device.
+export const lhEstimateMs = (urlCount: number, runs: number, devices = 1) => 300_000 + urlCount * runs * Math.max(1, devices) * 90_000;
 
 export default function LhConfigEditor({
   project, value, target, disabled, onChange, idPrefix = "lh",
@@ -97,6 +99,8 @@ export default function LhConfigEditor({
   const [scores, setScores] = useState<Record<string, number>>(
     Object.fromEntries(LH_CATEGORIES.map(c => [c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100)])),
   );
+  const [formFactor, setFormFactor] = useState<NonNullable<LhConfig["formFactor"]>>(cfg.formFactor ?? "mobile");
+  const [locale, setLocale] = useState<NonNullable<LhConfig["locale"]>>(cfg.locale ?? "id");
 
   // Nilai dari luar (config dimuat belakangan / diganti di tab lain) disalin ke
   // form, tapi hasil emit sendiri diabaikan supaya autosave tidak mereset input.
@@ -110,9 +114,14 @@ export default function LhConfigEditor({
     setScores(Object.fromEntries(LH_CATEGORIES.map(c => [
       c.key, Math.round((next.budgets?.[c.key]?.minScore ?? 0.6) * 100),
     ])));
+    setFormFactor(next.formFactor ?? "mobile");
+    setLocale(next.locale ?? "id");
   }, [value, project]);
 
-  const emit = (next: { extra?: string[]; runs?: number; scores?: Record<string, number> }) => {
+  const emit = (next: {
+    extra?: string[]; runs?: number; scores?: Record<string, number>;
+    formFactor?: NonNullable<LhConfig["formFactor"]>; locale?: NonNullable<LhConfig["locale"]>;
+  }) => {
     const e = next.extra ?? extra;
     const r = next.runs ?? runs;
     const s = next.scores ?? scores;
@@ -120,6 +129,8 @@ export default function LhConfigEditor({
       urls: e.map(u => u.trim()).filter(Boolean),
       numberOfRuns: r,
       budgets: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, { minScore: (s[c.key] ?? 60) / 100 }])),
+      formFactor: next.formFactor ?? formFactor,
+      locale: next.locale ?? locale,
     });
     lastEmit.current = json;
     onChange(json);
@@ -127,54 +138,85 @@ export default function LhConfigEditor({
 
   const clean = extra.map(u => u.trim()).filter(Boolean);
   const totalUrls = (target.trim() ? 1 : 0) + clean.length;
-  const totalAudits = totalUrls * runs;
-  const roughMinutes = Math.round(lhEstimateMs(totalUrls, runs) / 60000);
+  const devices = formFactor === "both" ? 2 : 1;
+  const totalAudits = totalUrls * runs * devices;
+  const roughMinutes = Math.round(lhEstimateMs(totalUrls, runs, devices) / 60000);
   const err = lhConfigError({ target, extra: clean, runs, scores });
   // Host project pada URL tambahan ikut origin target (env yang dipilih).
   const effective = effectiveUrls(target, clean, project);
   const preview = JSON.stringify({
+    formFactor,
     ci: {
-      collect: { url: [...new Set([target, ...effective].filter(Boolean))], numberOfRuns: runs },
+      collect: {
+        url: [...new Set([target, ...effective].filter(Boolean))],
+        numberOfRuns: runs,
+        settings: {
+          locale,
+          ...(formFactor === "desktop" ? { preset: "desktop" } : {}),
+        },
+      },
       assert: { assertions: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, ["error", { minScore: (scores[c.key] ?? 60) / 100 }]])) },
     },
   }, null, 2);
 
   return (
     <div className="pb-lh-form">
-      <div className="pb-field">
-        <span>Target project (dari URL project)</span>
-        <input className="pb-input pb-mono" value={target} readOnly aria-label="Target utama"
-          placeholder="belum diisi di project" />
-        {!target.trim() && <span className="pb-err" role="alert">Isi URL project dulu sebelum menyimpan config.</span>}
+      <div className="pb-lh-top">
+        <div className="pb-field">
+          <span>Target project (dari URL project)</span>
+          <input className="pb-input pb-mono" value={target} readOnly aria-label="Target utama"
+            placeholder="belum diisi di project" />
+          {!target.trim() && <span className="pb-err" role="alert">Isi URL project dulu sebelum menyimpan config.</span>}
+        </div>
+
+        <div className="pb-field pb-lh-runs">
+          <span>Jumlah run per URL (1-{MAX_RUNS})</span>
+          <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
+            {[1, 2, 3, 5, 10].map(n => (
+              <button key={n} type="button" className={runs === n ? "active" : ""}
+                aria-pressed={runs === n} disabled={disabled}
+                onClick={async () => {
+                  if (!(await confirmAction({
+                    icon: "question",
+                    title: `Ubah jumlah run ke ${n}×?`,
+                    text: "Config Lighthouse disimpan otomatis setelah perubahan.",
+                    confirmButtonText: "Ya, Ubah",
+                  }))) return;
+                  setRuns(n); emit({ runs: n });
+                  showInfoToast(`Jumlah run ${n}× dipilih.`);
+                }}>{n}×</button>
+            ))}
+            <input type="number" className="pb-input" min={1} max={MAX_RUNS}
+              inputMode="numeric" aria-label="Jumlah run custom" disabled={disabled}
+              value={runs}
+              onChange={e => {
+                const v = Math.min(MAX_RUNS, Math.max(1, Number(e.target.value) || 1));
+                setRuns(v); emit({ runs: v });
+              }} />
+          </div>
+        </div>
       </div>
 
-      <div className="pb-field">
-        <span>Jumlah run per URL (1-{MAX_RUNS})</span>
-        <span className="pb-set-help">
-          Lebih banyak run = skor lebih stabil, durasi lebih lama.
-        </span>
-        <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
-          {[1, 2, 3, 5, 10].map(n => (
-            <button key={n} type="button" className={runs === n ? "active" : ""}
-              aria-pressed={runs === n} disabled={disabled}
-              onClick={async () => {
-                if (!(await confirmAction({
-                  icon: "question",
-                  title: `Ubah jumlah run ke ${n}×?`,
-                  text: "Config Lighthouse disimpan otomatis setelah perubahan.",
-                  confirmButtonText: "Ya, Ubah",
-                }))) return;
-                setRuns(n); emit({ runs: n });
-                showInfoToast(`Jumlah run ${n}× dipilih.`);
-              }}>{n}×</button>
-          ))}
-          <input type="number" className="pb-input" min={1} max={MAX_RUNS}
-            inputMode="numeric" aria-label="Jumlah run custom" disabled={disabled}
-            value={runs}
-            onChange={e => {
-              const v = Math.min(MAX_RUNS, Math.max(1, Number(e.target.value) || 1));
-              setRuns(v); emit({ runs: v });
-            }} />
+      <div className="pb-lh-options">
+        <div className="pb-field">
+          <span>Perangkat</span>
+          <div className="pb-seg" role="group" aria-label="Perangkat Lighthouse">
+            {([["mobile", "Mobile"], ["desktop", "Desktop"], ["both", "Keduanya"]] as const).map(([value, label]) => (
+              <button key={value} type="button" className={formFactor === value ? "active" : ""}
+                aria-pressed={formFactor === value} disabled={disabled}
+                onClick={() => { setFormFactor(value); emit({ formFactor: value }); }}>{label}</button>
+            ))}
+          </div>
+        </div>
+        <div className="pb-field">
+          <span>Bahasa report</span>
+          <div className="pb-seg" role="group" aria-label="Bahasa report Lighthouse">
+            {([["id", "Indonesia"], ["en", "Inggris"]] as const).map(([value, label]) => (
+              <button key={value} type="button" className={locale === value ? "active" : ""}
+                aria-pressed={locale === value} disabled={disabled}
+                onClick={() => { setLocale(value); emit({ locale: value }); }}>{label}</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -232,17 +274,17 @@ export default function LhConfigEditor({
         <div className="pb-lh-budgets">
           {LH_CATEGORIES.map(c => (
             <label className="pb-lh-budget" key={c.key}>
-              <span className="pb-lh-budget-top">
-                <span>{c.label}</span>
-                <output>{scores[c.key] ?? 60}%</output>
-              </span>
+              <span className="pb-lh-budget-label">{c.label}</span>
               <input type="range" min={0} max={100} step={5} disabled={disabled}
-                value={scores[c.key] ?? 60} aria-label={"Skor minimum " + c.label}
+                className="pb-lh-range-v" value={scores[c.key] ?? 60}
+                style={{ writingMode: "vertical-lr", direction: "rtl", height: 96 }}
+                aria-label={"Skor minimum " + c.label}
                 onChange={e => {
                   const v = Number(e.target.value);
                   const next = { ...scores, [c.key]: v };
                   setScores(next); emit({ scores: next });
                 }} />
+              <output>{scores[c.key] ?? 60}%</output>
             </label>
           ))}
         </div>
@@ -250,7 +292,7 @@ export default function LhConfigEditor({
 
       <div className="pb-row" style={{ gap: 16, flexWrap: "wrap" }}>
         <span className="pb-muted" style={{ fontSize: 12 }}>
-          Total audit: {totalAudits} ({totalUrls} URL × {runs} run)
+          Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
         </span>
         {totalAudits > 20 && (
           <span className="pb-badge warn">

@@ -63,9 +63,11 @@ async function lighthouseSection(run, rows, logs) {
   }
   const body = rows.map(r => {
     const m = byUrl.get(r.url);
-    const report = m?.html ? link(`/artifacts/${run.id}/${m.html}`, 'report') : '-';
+    const device = r.form_factor === 'desktop' ? 'Desktop' : 'Mobile';
+    const raw = r.report_path ? `/artifacts/${run.id}/${r.report_path}#${device.toLowerCase()}` : null;
+    const report = raw ? link(raw, 'report') : m?.html ? link(`/artifacts/${run.id}/${m.html}`, 'report') : '-';
     return `<tr>
-      <td class="mono">${esc(r.url)}</td><td class="num-${tone(r.performance)}">${score(r.performance)}</td><td class="num-${tone(r.accessibility)}">${score(r.accessibility)}</td>
+      <td class="mono">${esc(r.url)}</td><td>${device}</td><td class="num-${tone(r.performance)}">${score(r.performance)}</td><td class="num-${tone(r.accessibility)}">${score(r.accessibility)}</td>
       <td class="num-${tone(r.best_practices)}">${score(r.best_practices)}</td><td class="num-${tone(r.seo)}">${score(r.seo)}</td><td class="mono">${ms(r.lcp_ms)}</td>
       <td class="mono">${r.cls == null ? '-' : Number(r.cls).toFixed(3)}</td><td class="mono">${ms(r.tbt_ms)}</td>
       <td>${report}</td></tr>`;
@@ -73,9 +75,9 @@ async function lighthouseSection(run, rows, logs) {
   // Audit yang skornya < 1 → daftar penyebab, dengan displayValue dari JSON.
   const first = rows[0] || {};
   const diag = `<div class="diagnosis"><div class="diag-grid">
-<div class="diag"><span class="diag-label">Performance</span><span class="diag-value num-${tone(first.performance)}">${score(first.performance)}</span><span class="diag-sub">skor kategori</span></div>
-<div class="diag"><span class="diag-label">Accessibility</span><span class="diag-value num-${tone(first.accessibility)}">${score(first.accessibility)}</span><span class="diag-sub">skor kategori</span></div>
-<div class="diag"><span class="diag-label">Best Practices</span><span class="diag-value num-${tone(first.best_practices)}">${score(first.best_practices)}</span><span class="diag-sub">skor kategori</span></div>
+<div class="diag"><span class="diag-label">Performa</span><span class="diag-value num-${tone(first.performance)}">${score(first.performance)}</span><span class="diag-sub">skor kategori</span></div>
+<div class="diag"><span class="diag-label">Aksesibilitas</span><span class="diag-value num-${tone(first.accessibility)}">${score(first.accessibility)}</span><span class="diag-sub">skor kategori</span></div>
+<div class="diag"><span class="diag-label">Praktik terbaik</span><span class="diag-value num-${tone(first.best_practices)}">${score(first.best_practices)}</span><span class="diag-sub">skor kategori</span></div>
 <div class="diag"><span class="diag-label">SEO</span><span class="diag-value num-${tone(first.seo)}">${score(first.seo)}</span><span class="diag-sub">skor kategori</span></div>
 </div></div>`;
   const audits = [];
@@ -94,7 +96,7 @@ async function lighthouseSection(run, rows, logs) {
     if (r.budget_failed) list.push(`${r.url}: budget gagal - ${r.budget_failed}`);
     return list;
   });
-  return `${diag}<div class="tbl"><table><thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>CLS</th><th>TBT</th><th /></tr></thead><tbody>${body}</tbody></table></div>
+  return `${diag}<div class="tbl"><table><thead><tr><th>URL</th><th>Mode</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>CLS</th><th>TBT</th><th /></tr></thead><tbody>${body}</tbody></table></div>
     ${audits.length ? `<div class="diagnosis"><h3>Kenapa skor segini?</h3><ol class="cause-list">${audits.map(a => `<li class="cause"><p class="cause-why">${esc(a)}</p></li>`).join('')}</ol></div>` : ''}
     ${warns.length ? `<h3>Peringatan</h3><ul>${warns.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
     ${logs ? `<details><summary>Log run (500 baris terakhir)</summary><pre>${esc(logs)}</pre></details>` : ''}`;

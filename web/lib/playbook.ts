@@ -77,6 +77,7 @@ export type LighthouseResult = {
   accessibility: number | null; best_practices: number | null; seo: number | null;
   lcp_ms: number | null; cls: number | null; tbt_ms: number | null;
   budget_failed: string | null; warnings: string | null; report_path: string | null;
+  form_factor: "mobile" | "desktop"; locale?: string | null;
 };
 export type LighthouseRow = LighthouseResult & {
   run_status: Run["status"]; queued_at: string; session_id: string;
@@ -340,10 +341,10 @@ export const api = {
     request<{ runId: string }>(`/api/sessions/${sessionId}/runs`, {
       method: "POST", body: JSON.stringify({ testFileId, ...opts }),
     }),
-  // Layar live + kontrol debug (pause/step). Hanya run Playwright server-side.
+  // Layar live + kontrol debug (pause/step/skip). Hanya run Playwright server-side.
   live: (runId: string) =>
     request<{ frames: LiveFrame[]; latest: number | null } & RunControl>(`/api/runs/${runId}/live`),
-  control: (runId: string, action: "pause" | "resume" | "step") =>
+  control: (runId: string, action: "pause" | "resume" | "step" | "skip") =>
     request<{ mode: string }>(`/api/runs/${runId}/control`, {
       method: "POST", body: JSON.stringify({ action }),
     }),
@@ -380,7 +381,7 @@ export type LogEntry = { seq: number; stream: string; text: string; at: string }
 // dengan timestamp log tanpa endpoint tambahan.
 export type LiveFrame = { n: number; at: string };
 export type RunControl = {
-  mode: "run" | "pause" | "step";
+  mode: "run" | "pause" | "step" | "skip";
   state: { label: string; at: number } | null;
   // Hanya true kalau run aktif memakai mode Debug (pause/step diizinkan server).
   debug?: boolean;

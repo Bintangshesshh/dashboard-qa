@@ -442,11 +442,12 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
         </table></div>
       ) : (
         <div className="pb-table-wrap"><table className="pb-table">
-          <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
+          <thead><tr><th>URL</th><th>Mode</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
           <tbody>
             {(results as LighthouseResult[]).map(r => (
               <tr key={r.id}>
                 <td className="mono">{r.url}</td>
+                <td>{r.form_factor === "desktop" ? "Desktop" : "Mobile"}</td>
                 <td>{pct(r.performance)}</td>
                 <td>{pct(r.accessibility)}</td>
                 <td>{pct(r.best_practices)}</td>
@@ -455,7 +456,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
                 <td className="mono">{r.budget_failed ?? "-"}</td>
                 <td style={{ textAlign: "right" }}>
                   {r.report_path
-                    ? <ArtifactLink href={artifactUrl(run.id, r.report_path)}>Report</ArtifactLink>
+                    ? <ArtifactLink href={artifactUrl(run.id, r.report_path) + `#${r.form_factor === "desktop" ? "desktop" : "mobile"}`}>Report</ArtifactLink>
                     : <span className="pb-muted">-</span>}
                 </td>
               </tr>

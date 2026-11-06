@@ -65,7 +65,7 @@ export function ScreenPanel({ runId, run, live }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [zoom]);
 
-  const control = async (action: "pause" | "resume" | "step") => {
+  const control = async (action: "pause" | "resume" | "step" | "skip") => {
     if (!runId) return;
     setBusy(true); setError("");
     try {
@@ -102,15 +102,20 @@ export function ScreenPanel({ runId, run, live }: {
           {isDebug && (
             <div className="pb-debug-bar">
               <span className={"pb-debug-badge" + (mode === "pause" ? " pause" : "")}>
-                {mode === "pause" ? "jeda" : mode === "step" ? "melangkah" : "debug"}
+                {mode === "pause" ? "jeda" : mode === "step" ? "melangkah" : mode === "skip" ? "melewati TC" : "debug"}
               </span>
               <span className="pb-debug-label" title={paused?.label ?? ""}>
                 {paused?.label ? `di: ${paused.label}` : "menunggu checkpoint…"}
               </span>
               <span className="pb-row" style={{ gap: 6, marginLeft: "auto" }}>
                 {mode === "pause"
-                  ? <button className="pb-btn sm" disabled={busy} onClick={() => control("step")}>Step</button>
-                  : <button className="pb-btn sm" disabled={busy || !live} onClick={() => control("pause")}>Jeda</button>}
+                  ? <>
+                      <button className="pb-btn sm" disabled={busy} onClick={() => control("step")}>Step</button>
+                      <button className="pb-btn sm" disabled={busy} onClick={() => control("skip")}>Lewati TC</button>
+                    </>
+                  : mode === "skip"
+                    ? null
+                    : <button className="pb-btn sm" disabled={busy || !live} onClick={() => control("pause")}>Jeda</button>}
                 {mode !== "run" && <button className="pb-btn sm" disabled={busy} onClick={() => control("resume")}>Lanjut</button>}
               </span>
             </div>

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { RunBar } from "../_components/run-bar";
 import {
   api, fmtDate, fmtDur, readLastProject, rememberProject, runStatusLabel,
   type Project, type RunRow, type Session, type Stats,
@@ -128,8 +127,6 @@ export default function OverviewPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  // Pass rate per project untuk kartu project.
-  const [perProject, setPerProject] = useState<Record<string, Stats>>({});
   const [projectId, setProjectId] = useState("");
   const [range, setRange] = useState(14);
   // Rentang yang benar-benar diwakili `stats`; grafik tidak beranimasi ke data lama.
@@ -163,7 +160,7 @@ export default function OverviewPage() {
       try {
         const [s, st, rs] = await Promise.all([
           api.sessions(q), api.stats({ ...q, failures: 5 }),
-          api.runs({ project: projectId || undefined, limit: 8 }),
+          api.runs({ project: projectId || undefined, limit: 20 }),
         ]);
         if (!alive) return;
         setSessions(s); setStats(st); setStatsRange(range); setRuns(rs);
@@ -177,50 +174,11 @@ export default function OverviewPage() {
     return () => { alive = false; clearTimeout(timer); };
   }, [range, projectId]);
 
-  // Stats per project: dipakai kartu project. Jumlah project kecil, aman di-fetch semua.
-  useEffect(() => {
-    let alive = true;
-    Promise.all(projects.map(p => api.stats({ range, project: p.id }).then(s => [p.id, s] as const)))
-      .then(pairs => { if (alive) setPerProject(Object.fromEntries(pairs)); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [projects, range]);
-
   // Data grafik baru dipasang setelah stats untuk rentang itu tiba.
   useEffect(() => {
     if (!stats || statsRange !== range) return;
     setChartDaily(fillDaily(stats.daily, range));
   }, [stats, statsRange, range]);
-
-  // Kartu project dipakai di dalam tiap grup; pass rate dari stats per project.
-  const projectCard = (p: Project) => {
-    const ps = perProject[p.id];
-    const prate = ps?.passRate == null ? null : Math.round(ps.passRate * 100);
-    const tone = prate == null ? "" : prate >= 90 ? "ok" : prate >= 75 ? "warn" : "bad";
-    const failedRuns = ps?.failedRuns ?? 0;
-    const rateTitle = "Gabungan test case Playwright dan run Lighthouse. Satu run Lighthouse = satu nilai.";
-    return (
-      <Link className="pb-card pb-pcard" key={p.id} href={`/reports/project/${p.id}`}>
-        <div className="pb-pcard-top">
-          <div>
-            <h3>{p.name}</h3>
-            <div className="pb-pcard-meta">
-              {ps?.sessions ?? 0} sesi · {ps?.runs ?? 0} run
-              {failedRuns > 0 && ` · ${failedRuns} gagal`}
-            </div>
-          </div>
-          <span className={`pb-badge ${tone === "ok" ? "passed" : tone === "warn" ? "warn" : tone === "bad" ? "failed" : "closed"}`}>
-            {tone === "ok" ? "Lulus" : tone === "bad" ? "Gagal" : prate == null ? "Belum ada" : "Waspada"}
-          </span>
-        </div>
-        <RunBar runs={ps?.recentRuns ?? []} label={`Riwayat run ${p.name}`} />
-        <div className="pb-pcard-foot">
-          <span title={rateTitle}>Lulus <strong>{prate == null ? "-" : `${prate}%`}</strong></span>
-          <span>{p.lastRunAt ? fmtDate(p.lastRunAt) : "belum pernah"}</span>
-        </div>
-      </Link>
-    );
-  };
 
   // Grup diturunkan dari projects; project tanpa grup masuk bucket "Tanpa grup".
   const grouped: { id: string; name: string; items: Project[] }[] = [];
@@ -234,7 +192,6 @@ export default function OverviewPage() {
 
   const rate = stats?.passRate == null ? null : Math.round(stats.passRate * 100);
   const rateClass = rate == null ? "" : rate >= 90 ? "ok" : rate >= 75 ? "warn" : "bad";
-  const lh = stats?.lighthouse ?? null;
   // Lengkapi hari tanpa run dengan nol; saat rentang baru dimuat, pakai data lama dulu.
   const daily = chartDaily.length ? chartDaily : fillDaily(stats?.daily ?? [], range);
   const totalRuns = daily.reduce((sum, d) => sum + d.total, 0);
@@ -288,14 +245,6 @@ export default function OverviewPage() {
   return (
     <>
       <div className="pb-head">
-        <div>
-          <h1>Kondisi QA hari ini.</h1>
-          <p className="pb-lead">
-            {stats
-              ? `${stats.failedRuns} run gagal dari ${stats.runs} run final${projectId ? ` di ${projects.find(p => p.id === projectId)?.name ?? "project terpilih"}` : " di semua project"}.`
-              : "Memuat ringkasan…"}
-          </p>
-        </div>
         <div className="pb-filters">
           <select className="pb-select" value={projectId} onChange={e => {
             const id = e.target.value;
@@ -526,7 +475,8 @@ export default function OverviewPage() {
         {runs.length === 0 ? (
           <p className="pb-empty">Belum ada run.</p>
         ) : (
-          <div className="pb-run-feed">
+          <div className="pb-run-feed"
+            style={{ display: "grid", gap: 0, maxHeight: 360, overflowY: "auto", paddingRight: 6 }}>
             {runs.map(r => (
               <Link className="pb-run-row" key={r.id} href={`/reports/${r.session_id}`}>
                 <span className={`pb-badge ${r.status}`}>{runStatusLabel(r.status)}</span>
@@ -546,69 +496,6 @@ export default function OverviewPage() {
               </Link>
             ))}
           </div>
-        )}
-      </section>
-
-      <div className="pb-section-title">
-        <h2>Project</h2>
-        <span className="eyebrow">{projectId ? 1 : projects.length} aktif</span>
-      </div>
-      {projects.length === 0 ? (
-        <p className="pb-empty">Belum ada project.</p>
-      ) : (
-        // Grup hanya pengelompokan tampilan dari projects.group_name.
-        grouped.map(g => (
-          <section className="pb-group-block" key={g.id}>
-            <div className="pb-group-label">
-              <strong>{g.name}</strong>
-              <span className="pb-muted pb-mono">{g.items.length} project</span>
-            </div>
-            <div className="pb-project-grid">
-              {g.items.map(p => projectCard(p))}
-            </div>
-          </section>
-        ))
-      )}
-
-      <section className="pb-card pb-lh" style={{ marginTop: 16 }}>
-        <div className="pb-card-head">
-          <div>
-            <h2>Audit Lighthouse</h2>
-            <div className="pb-card-sub">Skor rata-rata per kategori dari run Lighthouse final.</div>
-          </div>
-          <Link className="pb-link-muted" href="/lighthouse">Buka Lighthouse</Link>
-        </div>
-        {lh == null ? (
-          <p className="pb-empty">Belum ada run Lighthouse dalam {range} hari terakhir.</p>
-        ) : (
-          <>
-            <div className="pb-score-grid">
-              {[
-                { key: "perf", label: "Performance", v: lh.performance },
-                { key: "a11y", label: "Accessibility", v: lh.accessibility },
-                { key: "bp", label: "Best practices", v: lh.bestPractices },
-                { key: "seo", label: "SEO", v: lh.seo },
-              ].map(s => {
-                const n = s.v == null ? null : Math.round(s.v * 100);
-                const tone = n == null ? "" : n >= 90 ? "ok" : n >= 50 ? "warn" : "bad";
-                return (
-                  <div className="pb-score" key={s.key}>
-                    <svg className="pb-score-ring" viewBox="0 0 76 76" role="img"
-                      aria-label={n == null ? `${s.label} belum ada data` : `${s.label} ${n}`}>
-                      <circle className="pb-donut-track" cx="38" cy="38" r="30" />
-                      <circle className={`pb-donut-val ${tone}`} cx="38" cy="38" r="30"
-                        strokeDasharray={188.5} strokeDashoffset={188.5 - (188.5 * (n ?? 0)) / 100} />
-                      <text className="pb-score-num" x="38" y="43" textAnchor="middle">{n ?? "-"}</text>
-                    </svg>
-                    <span className="pb-score-label">{s.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="pb-chart-note">
-              <span>{lh.urls} URL diaudit</span>
-            </div>
-          </>
         )}
       </section>
 
