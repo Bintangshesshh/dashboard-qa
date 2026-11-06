@@ -1246,7 +1246,9 @@ test('T05: formFactor/locale divalidasi, timeout both menghitung dua device', as
   assert.equal(lhTimeout(2, 10, 1), 35 * 60_000);
   assert.equal(lhTimeout(2, 10, 2), 65 * 60_000, 'dua device menggandakan anggaran audit');
   assert.deepEqual(lhAuditShape({ config: JSON.stringify({ formFactor: 'both' }) }, 'https://a.test/'), [1, 1, 2]);
-  assert.deepEqual(lhAuditShape({ config: JSON.stringify({ formFactor: 'desktop' }) }, 'https://a.test/'), [1, 1, 1]);
+  // UI tidak lagi memberi pilihan device: config lama pun tetap dua device.
+  assert.deepEqual(lhAuditShape({ config: JSON.stringify({ formFactor: 'desktop' }) }, 'https://a.test/'), [1, 1, 2]);
+  assert.deepEqual(lhAuditShape({ config: null }, 'https://a.test/'), [1, 1, 2]);
 });
 
 test('Lighthouse results: dua device URL sama tersimpan sebagai dua baris', async t => {

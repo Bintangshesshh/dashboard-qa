@@ -99,7 +99,6 @@ export default function LhConfigEditor({
   const [scores, setScores] = useState<Record<string, number>>(
     Object.fromEntries(LH_CATEGORIES.map(c => [c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100)])),
   );
-  const [formFactor, setFormFactor] = useState<NonNullable<LhConfig["formFactor"]>>(cfg.formFactor ?? "mobile");
   const [locale, setLocale] = useState<NonNullable<LhConfig["locale"]>>(cfg.locale ?? "id");
 
   // Nilai dari luar (config dimuat belakangan / diganti di tab lain) disalin ke
@@ -114,13 +113,12 @@ export default function LhConfigEditor({
     setScores(Object.fromEntries(LH_CATEGORIES.map(c => [
       c.key, Math.round((next.budgets?.[c.key]?.minScore ?? 0.6) * 100),
     ])));
-    setFormFactor(next.formFactor ?? "mobile");
     setLocale(next.locale ?? "id");
   }, [value, project]);
 
   const emit = (next: {
     extra?: string[]; runs?: number; scores?: Record<string, number>;
-    formFactor?: NonNullable<LhConfig["formFactor"]>; locale?: NonNullable<LhConfig["locale"]>;
+    locale?: NonNullable<LhConfig["locale"]>;
   }) => {
     const e = next.extra ?? extra;
     const r = next.runs ?? runs;
@@ -129,7 +127,8 @@ export default function LhConfigEditor({
       urls: e.map(u => u.trim()).filter(Boolean),
       numberOfRuns: r,
       budgets: Object.fromEntries(LH_CATEGORIES.map(c => [c.key, { minScore: (s[c.key] ?? 60) / 100 }])),
-      formFactor: next.formFactor ?? formFactor,
+      // UI tidak lagi memberi pilihan device: selalu audit mobile + desktop.
+      formFactor: "both",
       locale: next.locale ?? locale,
     });
     lastEmit.current = json;
@@ -138,7 +137,7 @@ export default function LhConfigEditor({
 
   const clean = extra.map(u => u.trim()).filter(Boolean);
   const totalUrls = (target.trim() ? 1 : 0) + clean.length;
-  const devices = formFactor === "both" ? 2 : 1;
+  const devices = 2;
   const totalAudits = totalUrls * runs * devices;
   const roughMinutes = Math.round(lhEstimateMs(totalUrls, runs, devices) / 60000);
   const err = lhConfigError({ target, extra: clean, runs, scores });
@@ -181,16 +180,6 @@ export default function LhConfigEditor({
             </div>
           </div>
 
-          <div className="pb-field">
-            <span>Perangkat</span>
-            <div className="pb-seg" role="group" aria-label="Perangkat Lighthouse">
-              {([["mobile", "Mobile"], ["desktop", "Desktop"], ["both", "Keduanya"]] as const).map(([value, label]) => (
-                <button key={value} type="button" className={formFactor === value ? "active" : ""}
-                  aria-pressed={formFactor === value} disabled={disabled}
-                  onClick={() => { setFormFactor(value); emit({ formFactor: value }); }}>{label}</button>
-              ))}
-            </div>
-          </div>
           <div className="pb-field">
             <span>Bahasa report</span>
             <div className="pb-seg" role="group" aria-label="Bahasa report Lighthouse">

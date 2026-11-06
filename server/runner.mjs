@@ -71,11 +71,11 @@ export function lhTimeout(urlCount, runsPerUrl = 1, devices = 1) {
   return Math.min(Math.max(MIN_LH_TIMEOUT_MS, dynamic), LH_TIMEOUT_CAP_MS);
 }
 
-// Jumlah audit untuk timeout: URL sesi ikut dihitung, duplikat dibuang; both = 2 device.
+// Jumlah audit untuk timeout: URL sesi ikut dihitung, duplikat dibuang; satu run selalu 2 device.
 export function lhAuditShape(testFile, targetUrl) {
   const cfg = (() => { try { return JSON.parse(testFile?.config ?? 'null'); } catch { return null; } })();
   const urls = lhUrls(cfg, targetUrl);
-  return [urls.length || 1, cfg?.numberOfRuns ?? 1, cfg?.formFactor === 'both' ? 2 : 1];
+  return [urls.length || 1, cfg?.numberOfRuns ?? 1, 2];
 }
 
 // URL config bisa ditulis pada host env mana pun (production paling umum).
@@ -514,8 +514,9 @@ export class Runner extends EventEmitter {
     await mkdir(artifactsRoot, { recursive: true });
     // Config digenerate dari test_files.config (PRD §8.3); tanpa ini env local/staging tetap menembak URL produksi di file repo.
     const cfg = (() => { try { return JSON.parse(testFile.config ?? 'null'); } catch { return null; } })();
-    const formFactor = cfg?.formFactor === 'both' ? 'both' : cfg?.formFactor === 'desktop' ? 'desktop' : 'mobile';
-    const devices = formFactor === 'both' ? ['mobile', 'desktop'] : [formFactor];
+    // UI tidak lagi menyediakan pilihan device: setiap run Lighthouse mengaudit mobile lalu desktop.
+    const formFactor = 'both';
+    const devices = ['mobile', 'desktop'];
     const allowed = this.allowedOriginsFor(state);
     const projectUrls = this.projectUrlsFor(state);
     // Origin URL tambahan divalidasi sebelum spawn: config bisa ditulis CLI.
