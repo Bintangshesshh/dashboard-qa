@@ -1927,3 +1927,10 @@ button { cursor: pointer; }
 @media (max-width: 900px) {
   .pb-lh-columns { grid-template-columns: minmax(0, 1fr); gap: 16px; }
 }
+
+/* Feed Run terakhir: konten tidak terpotong; bisa digeser kanan-kiri saat sempit. */
+.pb-run-feed { overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.pb-run-feed .pb-run-row { min-width: 640px; margin: 0; padding-inline: 8px; }
+@media (max-width: 720px) {
+  .pb-run-feed .pb-run-row { min-width: 560px; }
+}
