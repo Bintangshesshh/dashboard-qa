@@ -170,13 +170,6 @@ export default function LhConfigEditor({
                     showInfoToast(`Jumlah run ${n}× dipilih.`);
                   }}>{n}×</button>
               ))}
-              <input type="number" className="pb-input" min={1} max={MAX_RUNS}
-                inputMode="numeric" aria-label="Jumlah run custom" disabled={disabled}
-                value={runs}
-                onChange={e => {
-                  const v = Math.min(MAX_RUNS, Math.max(1, Number(e.target.value) || 1));
-                  setRuns(v); emit({ runs: v });
-                }} />
             </div>
           </div>
 
@@ -190,15 +183,12 @@ export default function LhConfigEditor({
               ))}
             </div>
           </div>
-        </div>
 
-        <div className="pb-lh-col">
-          <div className="pb-lh-pair">
-          <div className="pb-lh-url-cell">
-            <span className="pb-lh-url-label">URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
+          <div className="pb-field">
+            <span>URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
             <span className="pb-lh-urls">
               {extra.map((u, i) => (
-                <span className="pb-row" key={i} style={{ gap: 8 }}>
+                <span className="pb-lh-url-line" key={i}>
                   <input className="pb-input pb-mono" value={u} id={`${idPrefix}-url-${i}`}
                     placeholder="https://contoh.test/halaman-lain" disabled={disabled}
                     onChange={e => {
@@ -221,22 +211,24 @@ export default function LhConfigEditor({
                     }}>Hapus</button>
                 </span>
               ))}
-              {extra.length < MAX_EXTRA_URLS && (
-                <button type="button" className="pb-btn sm" disabled={disabled}
-                  onClick={async () => {
-                    if (!(await confirmAction({
-                      icon: "question",
-                      title: "Tambah URL baru?",
-                      text: "Kolom URL tambahan baru akan ditambahkan.",
-                      confirmButtonText: "Ya, Tambah",
-                    }))) return;
-                    setExtra(list => [...list, ""]);
-                    showInfoToast("Kolom URL ditambahkan.");
-                  }}>+ Tambah URL</button>
-              )}
             </span>
+            {extra.length < MAX_EXTRA_URLS && (
+              <button type="button" className="pb-btn sm pb-lh-add-url" disabled={disabled}
+                onClick={async () => {
+                  if (!(await confirmAction({
+                    icon: "question",
+                    title: "Tambah URL baru?",
+                    text: "Kolom URL tambahan baru akan ditambahkan.",
+                    confirmButtonText: "Ya, Tambah",
+                  }))) return;
+                  setExtra(list => [...list, ""]);
+                  showInfoToast("Kolom URL ditambahkan.");
+                }}>+ Tambah URL</button>
+            )}
           </div>
+        </div>
 
+        <div className="pb-lh-col">
           <div className="pb-lh-budget-cell">
             <span>Skor minimum per kategori</span>
             <div className="pb-lh-budgets">
@@ -257,18 +249,18 @@ export default function LhConfigEditor({
               ))}
             </div>
           </div>
-          </div>
-          <div className="pb-lh-audit-total">
-            <span className="pb-muted" style={{ fontSize: 12 }}>
-              Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
-            </span>
-            {totalAudits > 20 && (
-              <span className="pb-badge warn">
-                Perkiraan ~{roughMinutes} menit; jalankan saat tidak buru-buru
-              </span>
-            )}
-          </div>
         </div>
+      </div>
+
+      <div className="pb-lh-audit-total">
+        <span className="pb-muted" style={{ fontSize: 12 }}>
+          Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
+        </span>
+        {totalAudits > 20 && (
+          <span className="pb-badge warn">
+            Perkiraan ~{roughMinutes} menit; jalankan saat tidak buru-buru
+          </span>
+        )}
       </div>
 
       {err && <div className="pb-err" role="alert">{err}</div>}

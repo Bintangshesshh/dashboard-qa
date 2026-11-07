@@ -238,8 +238,8 @@ export default function LighthousePage() {
     <>
       {error && <div className="pb-err" role="alert">{error}</div>}
 
-      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 560 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 1120 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, alignItems: "end" }}>
           <label className="pb-field">
             Project
             <select className="pb-select" value={projectId}
@@ -254,16 +254,16 @@ export default function LighthousePage() {
               ))}
             </select>
           </label>
-          <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-            Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
-          </p>
-          <label className="pb-field" style={{ maxWidth: 240 }}>
+          <label className="pb-field">
             Environment
             <select className="pb-select" value={env}
               onChange={e => { const v = e.target.value as Env; setEnv(v); rememberEnv(v); }}>
               {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
+          <p className="pb-muted" style={{ fontSize: 12, margin: 0, gridColumn: "1 / -1" }}>
+            Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
+          </p>
         </div>
       </section>
 

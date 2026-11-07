@@ -1955,3 +1955,38 @@ button { cursor: pointer; }
 .pb-lh-pair { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: flex-end; gap: 16px; }
 .pb-lh-pair .pb-lh-url-cell { flex: 1 1 0; min-width: 0; }
 .pb-lh-pair .pb-lh-budget-cell { flex: 0 0 auto; }
+
+/* ---------- Lighthouse form: 2 kolom seimbang + footer total ---------- */
+.pb-lh-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+  align-items: start;
+}
+.pb-lh-col { gap: 16px; }
+.pb-lh-urls { display: flex; flex-direction: column; gap: 8px; }
+.pb-lh-url-line { display: flex; align-items: center; gap: 8px; }
+.pb-lh-url-line .pb-input { flex: 1 1 auto; min-width: 0; }
+.pb-lh-add-url { align-self: flex-start; margin-top: 8px; }
+.pb-lh-col .pb-lh-budgets {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+}
+.pb-lh-col .pb-lh-budget { flex: 1 1 0; min-width: 0; }
+.pb-lh-audit-total {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  text-align: right;
+}
+@media (max-width: 900px) {
+  .pb-lh-columns { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+}
