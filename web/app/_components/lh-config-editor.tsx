@@ -220,13 +220,7 @@ export default function LhConfigEditor({
             </span>
             {extra.length < MAX_EXTRA_URLS && (
               <button type="button" className="pb-btn sm pb-lh-add-url" disabled={disabled}
-                onClick={async () => {
-                  if (!(await confirmAction({
-                    icon: "question",
-                    title: "Tambah URL baru?",
-                    text: "Kolom URL tambahan baru akan ditambahkan.",
-                    confirmButtonText: "Ya, Tambah",
-                  }))) return;
+                onClick={() => {
                   setExtra(list => [...list, ""]);
                   showInfoToast("Kolom URL ditambahkan.");
                 }}>+ Tambah URL</button>
