@@ -286,6 +286,7 @@ export default function LighthousePage() {
         </div>
         {selected && project ? (
           <LhConfigEditor project={project} value={config} target={target}
+            showTarget={false}
             disabled={running} onChange={setConfig} idPrefix="lh-page" />
         ) : (
           <div className="pb-empty">

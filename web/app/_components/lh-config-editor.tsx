@@ -84,7 +84,7 @@ export function lhConfigError(draft: {
 export const lhEstimateMs = (urlCount: number, runs: number, devices = 1) => 300_000 + urlCount * runs * Math.max(1, devices) * 90_000;
 
 export default function LhConfigEditor({
-  project, value, target, disabled, onChange, idPrefix = "lh",
+  project, value, target, disabled, onChange, idPrefix = "lh", showTarget = true,
 }: {
   project: Project;
   value: string | null;
@@ -92,6 +92,8 @@ export default function LhConfigEditor({
   disabled?: boolean;
   onChange: (json: string) => void;
   idPrefix?: string;
+  // Halaman Lighthouse sudah menampilkan target di kartu atas; jangan ulangi di form.
+  showTarget?: boolean;
 }) {
   const cfg = parseLhConfig(value);
   const [extra, setExtra] = useState<string[]>(() => extraUrlsOf(cfg, project));
@@ -146,12 +148,14 @@ export default function LhConfigEditor({
     <div className="pb-lh-form">
       <div className="pb-lh-columns">
         <div className="pb-lh-col">
-          <div className="pb-field">
-            <span>Target project (dari URL project)</span>
-            <input className="pb-input pb-mono" value={target} readOnly aria-label="Target utama"
-              placeholder="belum diisi di project" />
-            {!target.trim() && <span className="pb-err" role="alert">Isi URL project dulu sebelum menyimpan config.</span>}
-          </div>
+          {showTarget && (
+            <div className="pb-field">
+              <span>Target project (dari URL project)</span>
+              <input className="pb-input pb-mono" value={target} readOnly aria-label="Target utama"
+                placeholder="belum diisi di project" />
+              {!target.trim() && <span className="pb-err" role="alert">Isi URL project dulu sebelum menyimpan config.</span>}
+            </div>
+          )}
 
           <div className="pb-field pb-lh-runs">
             <span>Jumlah run per URL (1-{MAX_RUNS})</span>
