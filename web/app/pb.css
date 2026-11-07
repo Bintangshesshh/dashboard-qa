@@ -1990,3 +1990,24 @@ button { cursor: pointer; }
 @media (max-width: 900px) {
   .pb-lh-columns { grid-template-columns: minmax(0, 1fr); gap: 20px; }
 }
+
+/* Paksa dua kolom berdampingan di semua ukuran layar. */
+.pb-lh-columns {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-start !important;
+  gap: 32px !important;
+}
+.pb-lh-columns > .pb-lh-col {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+}
+@media (max-width: 900px) {
+  .pb-lh-columns {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 16px !important;
+  }
+}
