@@ -2011,3 +2011,17 @@ button { cursor: pointer; }
     gap: 16px !important;
   }
 }
+
+/* Kartu atas Lighthouse: Project | Environment | Target sejajar. */
+.pb-lh-project-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1.4fr);
+  gap: 16px;
+  align-items: end;
+}
+.pb-lh-project-card .pb-field { min-width: 0; }
+.pb-lh-project-card .pb-lh-target .pb-input { width: 100%; }
+@media (max-width: 900px) {
+  .pb-lh-project-card { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pb-lh-project-card .pb-lh-target { grid-column: 1 / -1; }
+}
