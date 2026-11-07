@@ -157,34 +157,36 @@ export default function LhConfigEditor({
             </div>
           )}
 
-          <div className="pb-field pb-lh-runs">
-            <span>Jumlah run per URL (1-{MAX_RUNS})</span>
-            <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
-              {[1, 2, 3, 5, 10].map(n => (
-                <button key={n} type="button" className={runs === n ? "active" : ""}
-                  aria-pressed={runs === n} disabled={disabled}
-                  onClick={async () => {
-                    if (!(await confirmAction({
-                      icon: "question",
-                      title: `Ubah jumlah run ke ${n}×?`,
-                      text: "Config Lighthouse disimpan otomatis setelah perubahan.",
-                      confirmButtonText: "Ya, Ubah",
-                    }))) return;
-                    setRuns(n); emit({ runs: n });
-                    showInfoToast(`Jumlah run ${n}× dipilih.`);
-                  }}>{n}×</button>
-              ))}
+          <div className="pb-lh-inline">
+            <div className="pb-field pb-lh-runs">
+              <span>Jumlah run per URL (1-{MAX_RUNS})</span>
+              <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
+                {[1, 2, 3, 5, 10].map(n => (
+                  <button key={n} type="button" className={runs === n ? "active" : ""}
+                    aria-pressed={runs === n} disabled={disabled}
+                    onClick={async () => {
+                      if (!(await confirmAction({
+                        icon: "question",
+                        title: `Ubah jumlah run ke ${n}×?`,
+                        text: "Config Lighthouse disimpan otomatis setelah perubahan.",
+                        confirmButtonText: "Ya, Ubah",
+                      }))) return;
+                      setRuns(n); emit({ runs: n });
+                      showInfoToast(`Jumlah run ${n}× dipilih.`);
+                    }}>{n}×</button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="pb-field">
-            <span>Bahasa report</span>
-            <div className="pb-seg" role="group" aria-label="Bahasa report Lighthouse">
-              {([["id", "Indonesia"], ["en", "Inggris"]] as const).map(([value, label]) => (
-                <button key={value} type="button" className={locale === value ? "active" : ""}
-                  aria-pressed={locale === value} disabled={disabled}
-                  onClick={() => { setLocale(value); emit({ locale: value }); }}>{label}</button>
-              ))}
+            <div className="pb-field">
+              <span>Bahasa report</span>
+              <div className="pb-seg" role="group" aria-label="Bahasa report Lighthouse">
+                {([["id", "Indonesia"], ["en", "Inggris"]] as const).map(([value, label]) => (
+                  <button key={value} type="button" className={locale === value ? "active" : ""}
+                    aria-pressed={locale === value} disabled={disabled}
+                    onClick={() => { setLocale(value); emit({ locale: value }); }}>{label}</button>
+                ))}
+              </div>
             </div>
           </div>
 

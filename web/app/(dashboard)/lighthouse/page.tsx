@@ -238,7 +238,7 @@ export default function LighthousePage() {
     <>
       {error && <div className="pb-err" role="alert">{error}</div>}
 
-      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 1120 }}>
+      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 980 }}>
         <div className="pb-lh-project-card">
           <label className="pb-field">
             Project
@@ -269,7 +269,7 @@ export default function LighthousePage() {
         </div>
       </section>
 
-      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 1120 }}>
+      <section className="pb-card" style={{ marginBottom: 16, maxWidth: 980 }}>
         <div className="pb-card-head" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 15 }}>Konfigurasi</h2>

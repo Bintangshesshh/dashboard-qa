@@ -2025,3 +2025,16 @@ button { cursor: pointer; }
   .pb-lh-project-card { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .pb-lh-project-card .pb-lh-target { grid-column: 1 / -1; }
 }
+
+/* Ringkas form Lighthouse: run + bahasa satu baris, kolom kiri lebih lebar. */
+.pb-lh-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.pb-lh-inline .pb-field { min-width: 0; }
+.pb-lh-inline .pb-seg { flex-wrap: nowrap; }
+.pb-lh-inline .pb-seg button { flex: 1 1 auto; padding-left: 8px; padding-right: 8px; }
+.pb-lh-columns > .pb-lh-col:first-child { flex: 1.35 1 0 !important; }
+.pb-lh-columns > .pb-lh-col:last-child { flex: 1 1 0 !important; }
