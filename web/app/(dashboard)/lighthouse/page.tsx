@@ -1,11 +1,8 @@
 "use client";
 
-// /lighthouse (PRD §10.4): config numberOfRuns/URL/budget → test_files.config.
-// Config lhci digenerate saat run, bukan disimpan di repo. Layout menumpuk:
-// Project → Config → Terminal → Run → Hasil.
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
-import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig } from "../../_components/lh-config-editor";
+import LhConfigEditor, { LH_CATEGORIES, LhRunsLocale, extraUrlsOf, lhConfigError, parseLhConfig, patchLhConfig } from "../../_components/lh-config-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -44,7 +41,6 @@ export default function LighthousePage() {
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
-  // Ganti project → pasang lagi run project itu (kalau ada), terminal direset.
   useEffect(() => {
     if (!projectId) return;
     setRun(null); setLogs([]);
@@ -85,12 +81,12 @@ export default function LighthousePage() {
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
-  // Server juga menolak production kalau project belum mengizinkannya; tombol
-  // jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
+  const cfg = parseLhConfig(config);
+  const runs = cfg.numberOfRuns ?? 1;
+  const locale = cfg.locale ?? "id";
   const productionBlocked = env === "production" && !project?.allow_production;
   const running = !!run && !FINAL.includes(run.status);
 
-  // Muat config hanya saat file berganti; autosave yang menulis balik tidak boleh reset ketikan.
   useEffect(() => {
     setConfig(selected?.config ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -267,6 +263,17 @@ export default function LighthousePage() {
             <input className="pb-input pb-mono" value={target} readOnly
               placeholder="belum diisi di project" aria-label={`Target ${env}`} />
           </label>
+          <LhRunsLocale
+            runs={runs}
+            locale={locale}
+            disabled={running || !selected}
+            onChange={patch => {
+              const nextPatch: Parameters<typeof patchLhConfig>[1] = {};
+              if (patch.runs !== undefined) nextPatch.numberOfRuns = patch.runs;
+              if (patch.locale !== undefined) nextPatch.locale = patch.locale;
+              setConfig(patchLhConfig(config, nextPatch));
+            }}
+          />
         </div>
       </section>
 
@@ -288,6 +295,7 @@ export default function LighthousePage() {
         {selected && project ? (
           <LhConfigEditor project={project} value={config} target={target}
             showTarget={false}
+            showRunsAndLocale={false}
             disabled={running} onChange={setConfig} idPrefix="lh-page" />
         ) : (
           <div className="pb-empty">
@@ -340,7 +348,7 @@ export default function LighthousePage() {
                     </td>
                     <td style={{ textAlign: "right" }}>
                       {r.report_path
-                        ? <ArtifactLink href={artifactUrl(r.run_id, r.report_path) + `#${r.form_factor === "desktop" ? "desktop" : "mobile"}`}>Buka report</ArtifactLink>
+                        ? <ArtifactLink probeHref={artifactUrl(r.run_id, r.report_path)} href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/reports/${encodeURIComponent(run!.session_id)}/lh-report/?run=${encodeURIComponent(r.run_id)}&result=${encodeURIComponent(r.id)}`}>Buka report</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>-</span>}
                     </td>
                   </tr>

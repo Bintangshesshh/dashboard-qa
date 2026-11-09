@@ -188,39 +188,157 @@ button { cursor: pointer; }
   .pb-login-card { padding: 28px 22px; border-radius: var(--radius-md); }
 }
 
-/* Shell */
+/* Shell - sidebar mengapung gelap ala Ticketing POS */
 .pb-shell { display: flex; min-height: 100vh; }
 
 .pb-side {
-  width: 256px;
+  --side-w: 272px;
+  width: var(--side-w);
   flex: none;
   position: fixed;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  border-right: 1px solid var(--border);
-  background: var(--card);
+  top: 12px;
+  bottom: 12px;
+  left: 12px;
+  border: 1px solid #1e293b;
+  border-radius: 18px;
+  background: #0b1220;
+  color: #cbd5e1;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   scrollbar-gutter: stable;
   z-index: 100;
+  box-shadow: 0 20px 50px rgba(2, 6, 23, .28);
 }
+.pb-side::-webkit-scrollbar { width: 6px; }
+.pb-side::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 999px; }
 
-.pb-brand {
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--border-soft);
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.pb-side-header { padding: 18px 16px 12px; display: grid; gap: 12px; }
+.pb-side-brand { display: flex; align-items: center; gap: 10px; }
+.pb-brand-logo {
+  width: 34px; height: 34px; flex: none;
+  border-radius: 10px;
+  display: grid; place-items: center;
+  background: #0284c7;
+  color: #fff;
 }
+.pb-brand-logo svg { width: 18px; height: 18px; }
+.pb-brand-text { min-width: 0; }
 .pb-brand-name {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 17px;
+  font-size: 15px;
   letter-spacing: -.01em;
-  line-height: 1.15;
+  line-height: 1.2;
+  color: #f8fafc;
 }
+.pb-brand-badge {
+  margin-top: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.pb-brand-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+/* Metadata target + env aktif di bawah judul */
+.pb-side-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.pb-meta-label { color: #64748b; }
+.pb-meta-value { color: #e2e8f0; font-weight: 600; }
+.pb-meta-sep { color: #334155; }
+.pb-meta-env { text-transform: capitalize; color: #38bdf8; }
+
+/* Baris pill aksi cepat */
+.pb-side-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 14px;
+}
+.pb-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid #1e293b;
+  background: #0f172a;
+  color: #94a3b8;
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard);
+}
+.pb-pill-btn:hover { background: #1e293b; color: #f8fafc; border-color: #334155; }
+.pb-pill-btn.status { color: #34d399; border-color: rgba(52, 211, 153, .28); background: rgba(52, 211, 153, .1); }
+.pb-pill-btn.icon-only { padding: 0 8px; }
+.pb-pill-icon { width: 12px; height: 12px; flex: none; }
+.pb-status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, .18);
+  flex: none;
+}
+
+/* Navigasi kartu/pill */
+.pb-side-nav {
+  flex: 1;
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+.pb-nav-section { display: flex; flex-direction: column; gap: 6px; }
+.pb-nav-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #64748b;
+  padding: 4px 6px 2px;
+}
+.pb-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #1e293b;
+  background: rgba(30, 41, 59, .6);
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard),
+              border-color var(--motion-fast) var(--ease-standard);
+}
+.pb-nav-btn:hover { background: #1e293b; color: #f8fafc; border-color: #334155; }
+.pb-nav-btn.active {
+  background: #0284c7;
+  border-color: #0ea5e9;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(2, 132, 199, .3);
+}
+.pb-nav-icon { width: 16px; height: 16px; flex: none; }
+
 .pb-topbar-title {
   font-size: 16px;
   font-weight: 700;
@@ -232,110 +350,72 @@ button { cursor: pointer; }
   text-overflow: ellipsis;
 }
 .pb-topbar-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
-.pb-brand-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 
-.pb-nav { padding: 12px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
-.pb-nav-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--meta);
-  padding: 8px 10px 6px;
-}
-.pb-nav-label-gap { margin-top: 14px; }
-.pb-nav a {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 11px;
-  border-radius: var(--radius-sm);
-  color: var(--fg-2);
-  font-size: 13.5px;
-  font-weight: 500;
-  transition: background var(--motion-fast) var(--ease-standard),
-              color var(--motion-fast) var(--ease-standard);
-}
-.pb-nav a:hover { background: var(--surface-warm); color: var(--text); }
-.pb-nav a[aria-current="page"] {
-  background: var(--surface-warm);
-  color: var(--text);
-  font-weight: 600;
-  box-shadow: inset 3px 0 0 0 var(--accent);
-}
-
+/* Footer: kartu profil + segmented tema */
 .pb-side-foot {
   margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px;
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid #1e293b;
 }
-.pb-user-row { display: flex; align-items: center; gap: 10px; padding: 2px 4px; }
-.pb-avatar {
-  width: 30px; height: 30px;
-  border-radius: 50%;
-  display: grid; place-items: center;
-  background: var(--accent);
-  color: var(--accent-on);
-  font-size: 12px;
-  font-weight: 700;
-  flex: none;
-}
-.pb-user-meta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
-.pb-user-meta strong { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-.pb-user-meta span { font-size: 11px; color: var(--muted); text-transform: capitalize; }
-.pb-logout {
+.pb-user-card {
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 34px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  font-size: 12.5px;
-  text-align: left;
-  transition: background var(--motion-fast) var(--ease-standard),
-              color var(--motion-fast) var(--ease-standard);
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
 }
-.pb-logout svg { width: 15px; height: 15px; flex: none; }
-.pb-logout:hover { background: color-mix(in oklab, var(--text) 6%, transparent); color: var(--text); }
+.pb-user-avatar {
+  width: 30px; height: 30px; flex: none;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: #0284c7;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.pb-user-info { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.pb-user-info strong {
+  font-size: 12.5px; font-weight: 600; color: #f1f5f9;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pb-user-info span { font-size: 11px; color: #64748b; text-transform: capitalize; }
 .pb-theme {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 2px;
   padding: 3px;
-  background: var(--bg);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
 }
 .pb-theme button {
   height: 26px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
-  color: var(--meta);
+  color: #64748b;
   font-family: var(--font);
   font-size: 11.5px;
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-standard),
               color var(--motion-fast) var(--ease-standard);
 }
-.pb-theme button:hover { color: var(--text); }
+.pb-theme button:hover { color: #f8fafc; }
 .pb-theme button[aria-pressed="true"] {
-  background: var(--surface-warm);
-  color: var(--text);
+  background: #1e293b;
+  color: #f8fafc;
   font-weight: 600;
-  box-shadow: 0 0 0 1px var(--border);
 }
 
 /* Topbar + main */
 .pb-mainwrap {
-  margin-left: 256px;
+  /* Sidebar mengapung: 12px offset + 272px lebar + 16px jarak. */
+  margin-left: 300px;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -1107,18 +1187,22 @@ button { cursor: pointer; }
   /* .pb-shell default row; tanpa ini sidebar full-width mendesak mainwrap ke 0px. */
   .pb-shell { flex-direction: column; }
   .pb-side {
-    position: static; width: 100%; height: auto;
+    position: static; width: auto; height: auto; margin: 10px;
     flex-direction: row; flex-wrap: wrap; align-items: center;
-    border-right: 0; border-bottom: 1px solid var(--border);
+    border-radius: 16px; max-height: none;
   }
   .pb-mainwrap { margin-left: 0; }
-  .pb-brand { border-bottom: 0; padding: 12px 16px; width: auto; }
-  .pb-nav { flex-direction: row; flex-wrap: wrap; padding: 0 16px 10px; width: 100%; flex: none; }
-  .pb-nav-label { display: none; }
+  .pb-side-header { flex: 1 1 100%; padding: 14px 14px 8px; }
+  .pb-side-actions { flex: 1 1 100%; padding: 0 14px 10px; }
+  .pb-side-nav { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; padding: 0 14px 10px; overflow: visible; }
+  .pb-nav-section { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; }
+  .pb-nav-section-title { flex: 1 1 100%; padding: 2px 0; }
+  .pb-nav-btn { flex: 1 1 auto; }
   .pb-side-foot {
-    margin: 0; flex-direction: row; align-items: center; gap: 8px;
-    border-top: 0; padding: 0 16px 14px; width: 100%;
+    flex: 1 1 100%; margin: 0; flex-direction: row; align-items: center;
+    gap: 8px; border-top: 1px solid #1e293b; padding: 10px 14px; width: 100%;
   }
+  .pb-user-card { flex: 1 1 auto; }
   .pb-theme { width: 200px; }
   .pb-topbar { padding: 0 16px; height: 56px; }
   .pb-main { padding: 16px 16px 40px; }
@@ -1126,7 +1210,6 @@ button { cursor: pointer; }
   .pb-filters { margin-left: 0; }
   .pb-head h1 { font-size: 22px; }
 }
-
 @media (max-width: 620px) {
   .pb-grid.kpi { grid-template-columns: minmax(0, 1fr); }
   .pb-kpi { min-height: 104px; }
@@ -2029,12 +2112,12 @@ button { cursor: pointer; }
 /* Ringkas form Lighthouse: run + bahasa satu baris, kolom kiri lebih lebar. */
 .pb-lh-inline {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: 16px;
   align-items: start;
 }
 .pb-lh-inline .pb-field { min-width: 0; }
-.pb-lh-inline .pb-seg { flex-wrap: nowrap; }
+.pb-lh-inline .pb-seg { flex-wrap: wrap; }
 .pb-lh-inline .pb-seg button { flex: 1 1 auto; padding-left: 8px; padding-right: 8px; }
 .pb-lh-columns > .pb-lh-col:first-child { flex: 1.35 1 0 !important; }
 .pb-lh-columns > .pb-lh-col:last-child { flex: 1 1 0 !important; }
@@ -2051,16 +2134,18 @@ button { cursor: pointer; }
 .pb-lh-project-card > .pb-field:nth-child(2) { flex: 35 1 0% !important; }
 .pb-lh-project-card > .pb-lh-target { flex: 35 1 0% !important; grid-column: auto !important; }
 
-/* Kartu Project kecil (35%) di kiri, kartu Konfigurasi mengisi sisanya. */
+/* Kedua kartu mengikuti tinggi baris grid. */
 .pb-lh-top {
-  display: flex;
-  flex-flow: row nowrap;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
   gap: 16px;
   margin-bottom: 16px;
 }
-.pb-lh-top > .pb-lh-side { flex: 0 0 35%; min-width: 240px; margin-bottom: 0; }
-.pb-lh-top > .pb-lh-main { flex: 1 1 0; min-width: 0; margin-bottom: 0; }
+.pb-lh-top > .pb-card { min-width: 0; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; }
+@media (min-width: 1024px) {
+  .pb-lh-top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .pb-lh-project-card {
   display: flex !important;
   flex-direction: column !important;
@@ -2069,7 +2154,71 @@ button { cursor: pointer; }
   gap: 12px !important;
 }
 .pb-lh-project-card > .pb-field { flex: 0 0 auto !important; width: 100% !important; min-width: 0 !important; }
-@media (max-width: 900px) {
-  .pb-lh-top { flex-direction: column; }
-  .pb-lh-top > .pb-lh-side { flex: 0 0 auto; width: 100%; }
+
+
+/* Stepper jumlah run: preset 1/2/3 + input angka 1..MAX. */
+.pb-lh-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--card);
 }
+.pb-lh-step {
+  width: 24px; height: 24px;
+  border: 0; border-radius: 6px;
+  background: transparent; color: var(--meta);
+  font-size: 14px; line-height: 1;
+  display: grid; place-items: center;
+}
+.pb-lh-step:hover:not(:disabled) { background: var(--surface-warm); color: var(--text); }
+.pb-lh-step:disabled { opacity: .4; cursor: not-allowed; }
+.pb-lh-step-v {
+  width: 40px; height: 24px;
+  border: 0; background: transparent;
+  color: var(--text); text-align: center;
+  font-size: 12.5px; font-weight: 600;
+  padding: 0;
+  appearance: textfield;
+}
+.pb-lh-step-v::-webkit-outer-spin-button,
+.pb-lh-step-v::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Chip origin target di baris URL tambahan. */
+.pb-lh-url-origin {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-warm);
+  color: var(--meta);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pb-lh-url-line { display: flex; align-items: center; gap: 8px; }
+.pb-lh-url-line .pb-input { flex: 1 1 auto; min-width: 0; }
+
+/* Label kategori budget: dua baris pun tetap sejajar tengah. */
+.pb-lh-budget-label {
+  min-height: 2.6em;
+  display: grid;
+  place-items: center;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.pb-lh-budgets { align-items: center !important; }
+.pb-lh-budget { align-items: center !important; }
+
+/* Tinggi kartu kiri dan kanan pada baris atas disamakan. */
+.pb-lh-top { align-items: stretch !important; }
+.pb-lh-top > .pb-lh-side,
+.pb-lh-top > .pb-lh-main { display: flex; flex-direction: column; }

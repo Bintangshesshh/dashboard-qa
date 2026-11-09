@@ -41,13 +41,14 @@ export function ArtifactNote({ state, missing = "report hilang / belum siap" }: 
   return <span className="pb-muted" style={{ fontSize: 12 }}>{missing}</span>;
 }
 
-export function ArtifactLink({ href, children, className = "pb-btn sm", missing }: {
+export function ArtifactLink({ href, probeHref = href, children, className = "pb-btn sm", missing }: {
   href: string;
+  probeHref?: string;
   children: React.ReactNode;
   className?: string;
   missing?: string;
 }) {
-  const state = useProbe(href);
+  const state = useProbe(probeHref);
   if (state !== "ok") return <ArtifactNote state={state} missing={missing} />;
   return <a className={className} href={href} target="_blank" rel="noreferrer">{children}</a>;
 }

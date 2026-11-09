@@ -1,0 +1,93 @@
+.pb-shell .pb-side-toggle, .pb-shell .pb-menu-toggle {
+  display: grid; place-items: center; flex: none; width: 32px; height: 32px;
+  border: 1px solid #334155; border-radius: 9px; background: #1e293b; color: #f8fafc;
+  font-size: 21px; line-height: 1; cursor: pointer;
+}
+.pb-shell .pb-side-brand { justify-content: space-between; }
+.pb-shell .pb-drawer-close, .pb-shell .pb-menu-toggle { display: none; }
+.pb-shell .pb-nav-icon { object-fit: contain; }
+.pb-shell .pb-topbar { position: sticky; top: 0; }
+.pb-shell .pb-side-toggle:focus-visible, .pb-shell .pb-menu-toggle:focus-visible,
+.pb-shell .pb-nav-btn:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+
+@media (min-width: 1024px) {
+  .pb-shell-collapsed .pb-side { width: 68px; overflow: visible; scrollbar-gutter: auto; }
+  .pb-shell-collapsed .pb-mainwrap { margin-left: 96px; }
+  .pb-shell-collapsed .pb-side-header { padding: 14px; }
+  .pb-shell-collapsed .pb-brand-text, .pb-shell-collapsed .pb-side-meta,
+  .pb-shell-collapsed .pb-side-actions .pb-pill-btn:not(.icon-only), .pb-shell-collapsed .pb-nav-section-title,
+  .pb-shell-collapsed .pb-user-info { display: none; }
+  .pb-shell-collapsed .pb-side-actions { justify-content: center; padding: 0 8px 12px; }
+  .pb-shell-collapsed .pb-side-nav { overflow: visible; padding: 0 8px 12px; }
+  .pb-shell-collapsed .pb-nav-btn { position: relative; justify-content: center; padding: 12px; }
+  .pb-shell-collapsed .pb-nav-btn span { position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%); padding: 8px 12px; border-radius: 8px; background: #1e293b; color: #fff; white-space: nowrap; visibility: hidden; opacity: 0; pointer-events: none; }
+  .pb-shell-collapsed .pb-nav-btn:hover span, .pb-shell-collapsed .pb-nav-btn:focus-visible span { visibility: visible; opacity: 1; }
+  .pb-shell-collapsed .pb-side-foot { padding: 8px; }
+  .pb-shell-collapsed .pb-user-card { justify-content: center; padding: 6px; }
+  .pb-shell-collapsed .pb-theme { grid-template-columns: 1fr; }
+}
+@media (max-width: 1023px) {
+  .pb-shell { flex-direction: column; }
+  .pb-shell .pb-side { position: fixed; top: 12px; bottom: 12px; left: 12px; width: min(272px, calc(100vw - 48px)); height: auto; margin: 0; flex-direction: column; flex-wrap: nowrap; align-items: stretch; max-height: none; z-index: 201; transform: translateX(calc(-100% - 24px)); visibility: hidden; transition: transform .2s ease, visibility .2s; }
+  .pb-shell.pb-drawer-open .pb-side { transform: translateX(0); visibility: visible; }
+  .pb-shell .pb-side-header, .pb-shell .pb-side-actions, .pb-shell .pb-side-nav, .pb-shell .pb-nav-section { flex: none; }
+  .pb-shell .pb-side-nav { flex: 1; }
+  .pb-shell .pb-side-foot { flex: none; margin-top: auto; flex-direction: column; align-items: stretch; }
+  .pb-shell .pb-theme { width: auto; }
+  .pb-shell .pb-side-nav, .pb-shell .pb-nav-section { flex-direction: column; flex-wrap: nowrap; }
+  .pb-shell .pb-side-nav { overflow-y: auto; }
+  .pb-shell .pb-nav-btn { flex: none; }
+  .pb-shell .pb-mainwrap { margin-left: 0; width: 100%; }
+  .pb-shell .pb-collapse-toggle { display: none; }
+  .pb-shell .pb-drawer-close, .pb-shell .pb-menu-toggle { display: grid; }
+  .pb-shell .pb-menu-toggle { background: var(--card); color: var(--text); border-color: var(--border); font-size: 18px; }
+  .pb-drawer-backdrop { position: fixed; inset: 0; z-index: 200; background: rgba(2, 6, 23, .6); }
+  .pb-shell .pb-topbar { justify-content: flex-start; gap: 12px; }
+  .pb-shell .pb-topbar-right { margin-left: auto; flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .pb-shell .pb-side { transition: none; } }
+
+/* Floating panels mengikuti tema tanpa mengubah warna konten halaman. */
+.pb-shell .pb-side {
+  width: 260px;
+  background: rgba(226, 232, 240, .8);
+  border-color: rgba(203, 213, 225, .7);
+  color: #1e293b;
+  backdrop-filter: blur(24px);
+}
+.pb-shell .pb-brand-name, .pb-shell .pb-meta-value, .pb-shell .pb-user-info strong { color: #1e293b; }
+.pb-shell .pb-side-meta, .pb-shell .pb-pill-btn, .pb-shell .pb-user-card, .pb-shell .pb-theme { background: rgba(255, 255, 255, .55); border-color: #cbd5e1; color: #334155; }
+.pb-shell .pb-nav-btn { background: transparent; border-color: transparent; color: #334155; }
+.pb-shell .pb-nav-btn:hover { background: rgba(148, 163, 184, .3); color: #0f172a; }
+.pb-shell .pb-nav-btn.active { background: #0284c7; border-color: #0284c7; color: white; }
+.pb-shell .pb-side-foot { border-color: #cbd5e1; }
+.pb-shell .pb-theme button { color: #334155; }
+.pb-shell .pb-theme button[aria-pressed="true"] { background: #334155; color: white; }
+.pb-shell .pb-mainwrap { margin-left: 288px; }
+.pb-shell .pb-topbar {
+  top: 12px; z-index: 30; min-height: 56px; height: auto;
+  margin: 12px 12px 0 0; padding: 8px 16px;
+  border: 1px solid rgba(203, 213, 225, .7); border-radius: 16px;
+  background: rgba(226, 232, 240, .88); backdrop-filter: blur(24px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, .1);
+}
+[data-theme="dark"] .pb-shell .pb-side, [data-theme="dark"] .pb-shell .pb-topbar {
+  background: rgba(15, 23, 42, .9); border-color: rgba(255, 255, 255, .1); color: #f1f5f9;
+}
+[data-theme="dark"] .pb-shell .pb-brand-name, [data-theme="dark"] .pb-shell .pb-meta-value, [data-theme="dark"] .pb-shell .pb-user-info strong { color: #f1f5f9; }
+[data-theme="dark"] .pb-shell .pb-side-meta, [data-theme="dark"] .pb-shell .pb-pill-btn, [data-theme="dark"] .pb-shell .pb-user-card, [data-theme="dark"] .pb-shell .pb-theme { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+[data-theme="dark"] .pb-shell .pb-nav-btn { color: #e2e8f0; }
+[data-theme="dark"] .pb-shell .pb-nav-btn:hover { background: #334155; color: white; }
+[data-theme="dark"] .pb-shell .pb-nav-btn.active { background: #0284c7; color: white; }
+[data-theme="dark"] .pb-shell .pb-theme button { color: #cbd5e1; }
+[data-theme="dark"] .pb-shell .pb-theme button[aria-pressed="true"] { background: #475569; color: white; }
+@media (min-width: 1024px) {
+  .pb-shell.pb-shell-collapsed .pb-side { width: 72px; }
+  .pb-shell.pb-shell-collapsed .pb-mainwrap { margin-left: 100px; }
+}
+@media (max-width: 1023px) {
+  .pb-shell .pb-side { width: min(260px, calc(100vw - 48px)); }
+  .pb-shell .pb-mainwrap { margin-left: 0; }
+  .pb-shell .pb-topbar { margin-left: 12px; }
+  .pb-drawer-backdrop { backdrop-filter: blur(6px); }
+}

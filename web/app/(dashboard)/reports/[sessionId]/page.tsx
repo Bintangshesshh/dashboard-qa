@@ -456,7 +456,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
                 <td className="mono">{r.budget_failed ?? "-"}</td>
                 <td style={{ textAlign: "right" }}>
                   {r.report_path
-                    ? <ArtifactLink href={artifactUrl(run.id, r.report_path) + `#${r.form_factor === "desktop" ? "desktop" : "mobile"}`}>Report</ArtifactLink>
+                    ? <ArtifactLink probeHref={artifactUrl(run.id, r.report_path)} href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/reports/${encodeURIComponent(run.session_id)}/lh-report/?run=${encodeURIComponent(run.id)}&result=${encodeURIComponent(r.id)}`}>Report</ArtifactLink>
                     : <span className="pb-muted">-</span>}
                 </td>
               </tr>

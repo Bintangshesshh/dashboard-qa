@@ -34,6 +34,15 @@ export const parseLhConfig = (raw: string | null | undefined): LhConfig => {
   } catch { return {}; }
 };
 
+// Ubah sebagian config tanpa menyentuh isian lain; dipakai kontrol ringkas
+// (jumlah run, bahasa) yang juga tampil di kartu project halaman Lighthouse.
+export const patchLhConfig = (raw: string | null | undefined, patch: Partial<LhConfig>) =>
+  JSON.stringify({ ...parseLhConfig(raw), formFactor: "both", ...patch });
+
+const originOf = (v: string) => { try { return new URL(v).origin; } catch { return ""; } };
+// Baris URL tambahan hanya menampilkan path; origin target tampil sebagai chip.
+const pathOf = (v: string) => { try { const u = new URL(v); return u.pathname + u.search + u.hash; } catch { return v; } };
+
 const sameUrl = (a: string, b: string) => {
   try { return new URL(a).href === new URL(b).href; } catch { return a.trim() === b.trim(); }
 };
@@ -64,6 +73,14 @@ const isHttp = (u: string) => {
   try { const x = new URL(u); return x.protocol === "http:" || x.protocol === "https:"; } catch { return false; }
 };
 
+export const parseExtraUrl = (typed: string, current: string, target: string) => {
+  const value = typed.trim();
+  if (!value || isHttp(value)) return value;
+  const base = originOf(current) || originOf(target);
+  if (base && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")) return base + value;
+  return value;
+};
+
 // Pesan error pertama, atau "" kalau form sah. Dipakai sebelum simpan.
 export function lhConfigError(draft: {
   target: string; extra: string[]; runs: number; scores: Record<string, number>;
@@ -83,8 +100,62 @@ export function lhConfigError(draft: {
 // Perkiraan durasi: tiap audit ~90 dtk, ditambah 5 menit overhead; both = 2 device.
 export const lhEstimateMs = (urlCount: number, runs: number, devices = 1) => 300_000 + urlCount * runs * Math.max(1, devices) * 90_000;
 
+export function LhRunsLocale({
+  runs = 1,
+  locale = "id",
+  disabled,
+  onChange,
+}: {
+  runs?: number;
+  locale?: NonNullable<LhConfig["locale"]>;
+  disabled?: boolean;
+  onChange: (patch: { runs?: number; locale?: NonNullable<LhConfig["locale"]> }) => void;
+}) {
+  const clamp = (v: number) => Math.min(MAX_RUNS, Math.max(1, v));
+  return (
+    <div className="pb-lh-inline">
+      <div className="pb-field pb-lh-runs">
+        <span>Jumlah run per URL (1-{MAX_RUNS})</span>
+        <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
+          {[1, 2, 3].map(n => (
+            <button key={n} type="button" className={runs === n ? "active" : ""}
+              aria-pressed={runs === n} disabled={disabled}
+              onClick={() => onChange({ runs: n })}>{n}×</button>
+          ))}
+          <span className="pb-lh-stepper">
+            <button type="button" className="pb-lh-step" aria-label="Kurangi jumlah run"
+              disabled={disabled || runs <= 1}
+              onClick={() => onChange({ runs: clamp(runs - 1) })}>−</button>
+            <input className="pb-lh-step-v pb-mono" type="number" min={1} max={MAX_RUNS}
+              value={runs} disabled={disabled} aria-label="Jumlah run"
+              onChange={e => {
+                const v = Number(e.target.value);
+                if (Number.isInteger(v) && v >= 1 && v <= MAX_RUNS) onChange({ runs: v });
+              }} />
+            <button type="button" className="pb-lh-step" aria-label="Tambah jumlah run"
+              disabled={disabled || runs >= MAX_RUNS}
+              onClick={() => onChange({ runs: clamp(runs + 1) })}>+</button>
+          </span>
+        </div>
+      </div>
+
+      <div className="pb-field">
+        <span>Bahasa report</span>
+        <div className="pb-seg" role="group" aria-label="Bahasa report Lighthouse">
+          {([["id", "Indonesia"], ["en", "Inggris"]] as const).map(([value, label]) => (
+            <button key={value} type="button" className={locale === value ? "active" : ""}
+              aria-pressed={locale === value} disabled={disabled}
+              onClick={() => { onChange({ locale: value }); }}>{label}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LhConfigEditor({
   project, value, target, disabled, onChange, idPrefix = "lh", showTarget = true,
+  showRunsAndLocale = true,
 }: {
   project: Project;
   value: string | null;
@@ -94,6 +165,7 @@ export default function LhConfigEditor({
   idPrefix?: string;
   // Halaman Lighthouse sudah menampilkan target di kartu atas; jangan ulangi di form.
   showTarget?: boolean;
+  showRunsAndLocale?: boolean;
 }) {
   const cfg = parseLhConfig(value);
   const [extra, setExtra] = useState<string[]>(() => extraUrlsOf(cfg, project));
@@ -157,48 +229,32 @@ export default function LhConfigEditor({
             </div>
           )}
 
-          <div className="pb-lh-inline">
-            <div className="pb-field pb-lh-runs">
-              <span>Jumlah run per URL (1-{MAX_RUNS})</span>
-              <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
-                {[1, 2, 3, 5, 10].map(n => (
-                  <button key={n} type="button" className={runs === n ? "active" : ""}
-                    aria-pressed={runs === n} disabled={disabled}
-                    onClick={async () => {
-                      if (!(await confirmAction({
-                        icon: "question",
-                        title: `Ubah jumlah run ke ${n}×?`,
-                        text: "Config Lighthouse disimpan otomatis setelah perubahan.",
-                        confirmButtonText: "Ya, Ubah",
-                      }))) return;
-                      setRuns(n); emit({ runs: n });
-                      showInfoToast(`Jumlah run ${n}× dipilih.`);
-                    }}>{n}×</button>
-                ))}
-              </div>
-            </div>
-
-            <div className="pb-field">
-              <span>Bahasa report</span>
-              <div className="pb-seg" role="group" aria-label="Bahasa report Lighthouse">
-                {([["id", "Indonesia"], ["en", "Inggris"]] as const).map(([value, label]) => (
-                  <button key={value} type="button" className={locale === value ? "active" : ""}
-                    aria-pressed={locale === value} disabled={disabled}
-                    onClick={() => { setLocale(value); emit({ locale: value }); }}>{label}</button>
-                ))}
-              </div>
-            </div>
-          </div>
+          {showRunsAndLocale && (
+            <LhRunsLocale
+              runs={runs}
+              locale={locale}
+              disabled={disabled}
+              onChange={patch => {
+                if (patch.runs !== undefined) setRuns(patch.runs);
+                if (patch.locale !== undefined) setLocale(patch.locale);
+                emit(patch);
+              }}
+            />
+          )}
 
           <div className="pb-field">
             <span>URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
             <span className="pb-lh-urls">
               {extra.map((u, i) => (
                 <span className="pb-lh-url-line" key={i}>
-                  <input className="pb-input pb-mono" value={u} id={`${idPrefix}-url-${i}`}
-                    placeholder="https://contoh.test/halaman-lain" disabled={disabled}
+                  {(originOf(u) || originOf(target)) && (
+                    <span className="pb-lh-url-origin" title={originOf(u) || originOf(target)}>{originOf(u) || originOf(target)}</span>
+                  )}
+                  <input className="pb-input pb-mono" value={isHttp(u) ? pathOf(u) : u}
+                    id={`${idPrefix}-url-${i}`} placeholder="/halaman-lain" disabled={disabled}
+                    aria-label={`URL tambahan ${i + 1}`}
                     onChange={e => {
-                      const v = e.target.value;
+                      const v = parseExtraUrl(e.target.value, u, target);
                       const next = extra.map((x, j) => (j === i ? v : x));
                       setExtra(next); emit({ extra: next });
                     }} />

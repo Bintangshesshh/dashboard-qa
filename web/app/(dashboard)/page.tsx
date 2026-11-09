@@ -322,7 +322,7 @@ export default function OverviewPage() {
             <div>
               <h2>Run per hari</h2>
               <div className="pb-card-sub">
-                Jumlah run final per tanggal WIB, {range} hari terakhir. Hari tanpa run tetap ditampilkan sebagai nol.
+                Jumlah run final per tanggal WIB, {range} hari terakhir.
               </div>
             </div>
             <div className="pb-legend">
