@@ -7,6 +7,7 @@ const page = readFileSync(new URL('../web/app/(dashboard)/playwright/page.tsx', 
 const lh = readFileSync(new URL('../web/app/(dashboard)/lighthouse/page.tsx', import.meta.url), 'utf8');
 const panel = readFileSync(new URL('../web/app/(dashboard)/run-panel.tsx', import.meta.url), 'utf8');
 const editor = readFileSync(new URL('../web/app/(dashboard)/code-editor.tsx', import.meta.url), 'utf8');
+const lhEditor = readFileSync(new URL('../web/app/_components/lh-config-editor.tsx', import.meta.url), 'utf8');
 
 // 1) Editor satu lapisan: CodeMirror, bukan textarea transparan di atas <pre>.
 assert.ok(editor.includes('@uiw/react-codemirror'), 'editor harus CodeMirror');
@@ -33,10 +34,11 @@ assert.ok(panel.includes('className="pb-term"'), 'RunPanel tidak memakai pb-term
 assert.ok(panel.includes('data-stream={l.stream}'), 'log belum diberi data-stream');
 assert.ok(page.includes('<RunPanel') && lh.includes('<RunPanel'), 'pb-term tidak dipakai dua halaman');
 
-// 4) Form LH di .pb-panel, bg-2 didefinisikan di kedua tema.
-assert.ok(lh.includes('pb-panel pb-grid'), 'form LH belum dibungkus pb-panel');
+// 4) Form LH memakai card tema di dalam grid dua card, bg-2 didefinisikan di kedua tema.
+assert.ok(lh.includes('className="pb-lh-page-grid"'), 'grid card LH hilang');
+assert.ok(/id="lh-config-form" className="pb-card"/.test(lh), 'form LH belum memakai card tema');
 assert.equal((css.match(/--bg-2:/g) ?? []).length, 2, '--bg-2 harus ada di light & dark');
-assert.ok(lh.includes('pb-hint'), 'hint form LH hilang');
+assert.ok(lhEditor.includes('pb-lh-audit-total'), 'ringkasan total audit form LH hilang');
 
 // 5) Bug terminal: baris console/network JSON tidak boleh ikut ke tab Terminal.
 assert.ok(panel.includes('e.stream === "console"') && panel.includes('e.stream === "network"'), 'RunPanel belum memisah stream');

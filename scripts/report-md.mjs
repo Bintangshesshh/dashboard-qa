@@ -30,8 +30,8 @@ const scopeLabel = scope => (scope === 'both' ? 'Gabungan' : scope === 'pw' ? 'P
 function runBlock({ run, results }) {
   const out = [];
   const isPw = run.tool === 'pw';
-  out.push(`### ${isPw ? 'Playwright' : 'Lighthouse'} · ${cell(run.status)}`);
-  out.push(`Mulai ${date(run.started_at)} · selesai ${date(run.finished_at)} · durasi ${dur(run.duration_ms)} · exit ${cell(run.exit_code)}`);
+  out.push(`### ${isPw ? 'Playwright' : 'Lighthouse'} - ${cell(run.status)}`);
+  out.push(`Mulai ${date(run.started_at)} - selesai ${date(run.finished_at)} - durasi ${dur(run.duration_ms)} - exit ${cell(run.exit_code)}`);
   out.push('');
 
   if (isPw) {
@@ -139,7 +139,7 @@ export function renderReportMarkdown({ session, project, report, runs, position,
 
   out.push('---');
   out.push('');
-  out.push(`Dibangun ${date(new Date().toISOString())} · cakupan ${cell(report.scope)} · ${runs.length} run · run_ids: ${report.run_ids ?? '[]'}`);
+  out.push(`Dibangun ${date(new Date().toISOString())} - cakupan ${cell(report.scope)} - ${runs.length} run - run_ids: ${report.run_ids ?? '[]'}`);
   return out.join('\n');
 }
 

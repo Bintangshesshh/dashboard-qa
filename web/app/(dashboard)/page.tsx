@@ -152,7 +152,7 @@ export default function OverviewPage() {
     // B11: range awal ikut settings `range_default_days`; viewer 403 → tetap 14.
     api.settings()
       .then(s => { const d = Number(s.range_default_days); if (d > 0) setRange(d); })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Polling 5 dtk; tab tersembunyi 15 dtk supaya hemat request.
@@ -279,7 +279,7 @@ export default function OverviewPage() {
           <div className="pb-kpi-label">Total sesi</div>
           <div>
             <div className="pb-kpi-val">{stats?.sessions ?? "-"}</div>
-            <div className="pb-kpi-foot"><span className="dot" /><strong>{projectId ? 1 : projects.length} project</strong> · {stats?.runs ?? 0} run</div>
+            <div className="pb-kpi-foot"><span className="dot" /><strong>{projectId ? 1 : projects.length} project</strong> - {stats?.runs ?? 0} run</div>
           </div>
         </article>
 
@@ -310,7 +310,7 @@ export default function OverviewPage() {
             <div className="pb-kpi-val">{stats?.failedRuns ?? "-"}</div>
             <div className="pb-kpi-foot">
               <span className="dot bad" />{stats?.failedSessions ?? 0} sesi terdampak
-              {!!stats?.activeRuns && <> · <strong>{stats.activeRuns} berjalan</strong></>}
+              {!!stats?.activeRuns && <> - <strong>{stats.activeRuns} berjalan</strong></>}
             </div>
           </div>
         </article>
@@ -433,7 +433,7 @@ export default function OverviewPage() {
             <span><i className="pb-swatch" />{totalPassed} lulus</span>
             <span><i className="pb-swatch bad" />{totalFailed} gagal</span>
             <span>Tingkat lulus run <strong>{passRate == null ? "-" : `${passRate}%`}</strong></span>
-            {hasDailyRuns && <span>Puncak <strong>{peak.total}</strong> run · {peak.day.slice(5)}</span>}
+            {hasDailyRuns && <span>Puncak <strong>{peak.total}</strong> run - {peak.day.slice(5)}</span>}
           </div>
         </section>
 
@@ -454,7 +454,7 @@ export default function OverviewPage() {
                   <span className="pb-fail-dot" />
                   <span>
                     <span className="pb-fail-title">{f.project_name} - {f.tool === "pw" ? "Playwright" : "Lighthouse"}</span>
-                    <span className="pb-fail-meta">{f.session_label} · {f.env} · {fmtDate(f.finished_at)}</span>
+                    <span className="pb-fail-meta">{f.session_label} - {f.env} - {fmtDate(f.finished_at)}</span>
                     <span className="pb-fail-msg">{f.error ?? "tanpa pesan error"}</span>
                   </span>
                   <span className="pb-fail-arrow" aria-hidden="true">
@@ -488,7 +488,7 @@ export default function OverviewPage() {
                 <span className={`pb-badge ${r.status}`}>{runStatusLabel(r.status)}</span>
                 <span className="pb-run-what">
                   <span className="pb-run-title">
-                    {r.project_name} · {r.tool === "pw" ? "Playwright" : "Lighthouse"}
+                    {r.project_name} - {r.tool === "pw" ? "Playwright" : "Lighthouse"}
                   </span>
                   <span className="pb-run-meta">
                     <span className="pb-run-by">{r.run_by}</span>

@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
-import LhConfigEditor, { LH_CATEGORIES, LhRunsLocale, extraUrlsOf, lhConfigError, parseLhConfig, patchLhConfig } from "../../_components/lh-config-editor";
+import LhConfigEditor, { LH_CATEGORIES, LhRunsLocale, extraUrlsOf, lhConfigError, parseLhConfig, patchLhConfig, validateExtraUrl } from "../../_components/lh-config-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, fmtTime, groupProjects, pct, readLastEnv, readLastProject, rememberEnv, rememberProject, runStatusLabel,
+  api, artifactUrl, fmtDate, fmtTime, groupProjects, pct, readLastEnv, readLastProject, rememberEnv, rememberProject, runStatusLabel,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
 import { confirmAction, showErrorAlert, showSuccessToast } from "../../../lib/alerts";
@@ -40,6 +40,9 @@ export default function LighthousePage() {
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [runTab, setRunTab] = useState<"log" | "console" | "network">("log");
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -55,6 +58,7 @@ export default function LighthousePage() {
     restored.current = runId;
     api.run(runId).catch(() => {
       sessionStorage.removeItem(`lh-run:${projectId}`);
+      sessionStorage.removeItem(`lh-run-focus:${projectId}`);
       setRunId(null); setLogs([]);
     });
   }, [runId, projectId]);
@@ -113,20 +117,72 @@ export default function LighthousePage() {
     return () => { alive = false; clearTimeout(timer); };
   }, [runId]);
 
+  // Ringkasan project ikut run terbaru tanpa perlu reload halaman.
+  useEffect(() => {
+    if (!run || !FINAL.includes(run.status)) return;
+    setProjects(prev => prev.map(p => p.id === projectId
+      ? { ...p, lastRunAt: run.finished_at ?? p.lastRunAt, lastRunStatus: run.status }
+      : p));
+  }, [run, projectId]);
+
+  // Dari toast "run selesai": langsung arahkan ke card hasil/terminal run,
+  // supaya tidak perlu scroll melewati card konfigurasi yang tinggi.
+  useEffect(() => {
+    if (!projectId || !runId || !run) return;
+    const key = `lh-run-focus:${projectId}`;
+    let flagged = false;
+    try { flagged = sessionStorage.getItem(key) === "1"; } catch { /* storage diblokir */ }
+    if (!flagged) return;
+    const el = run.results?.length ? resultsRef.current : terminalRef.current;
+    if (!el) return;
+    try { sessionStorage.removeItem(key); } catch { /* storage diblokir */ }
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const frame = window.requestAnimationFrame(() =>
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [projectId, runId, run]);
+
+  // Toast diklik saat halaman Lighthouse sudah terbuka: pindah ke run itu dan
+  // gulir ke card hasil/terminal tanpa reload halaman.
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const detail = (event as CustomEvent<{ tool?: string; projectId?: string; runId?: string }>).detail;
+      if (!detail || detail.tool !== "lh" || !detail.runId) return;
+      try { sessionStorage.removeItem(`lh-run-focus:${detail.projectId ?? projectId}`); } catch { /* storage diblokir */ }
+      if (detail.projectId) setProjectId(detail.projectId);
+      setRunId(detail.runId);
+      const el = run?.results?.length ? resultsRef.current : terminalRef.current;
+      if (!el) return;
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.requestAnimationFrame(() =>
+        el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }));
+    };
+    window.addEventListener("pb-run-open", onOpen);
+    return () => window.removeEventListener("pb-run-open", onOpen);
+  }, [projectId, run]);
+
   const dirty = !!selected && config !== (selected.config ?? "");
 
   // Validasi client sebelum simpan: server tetap memeriksa hal yang sama.
   const validate = () => {
     if (!project) return "Project tidak ditemukan.";
     const cfg = parseLhConfig(config);
-    return lhConfigError({
+    const extra = extraUrlsOf(cfg, project);
+    const basic = lhConfigError({
       target,
-      extra: extraUrlsOf(cfg, project),
+      extra,
       runs: cfg.numberOfRuns ?? 1,
       scores: Object.fromEntries(LH_CATEGORIES.map(c => [
         c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100),
       ])),
     });
+    if (basic) return basic;
+    // Config lama juga tidak boleh menyimpan origin di luar allowlist project.
+    for (const url of extra) {
+      const checked = validateExtraUrl(url, target, project, []);
+      if (checked.error) return checked.error;
+    }
+    return "";
   };
 
   const saveConfig = async () => {
@@ -213,8 +269,17 @@ export default function LighthousePage() {
     catch (e) { setError((e as Error).message); return false; }
   };
 
+  const scrollToTerminal = () => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    terminalRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  };
+
   const runNow = async () => {
-    if (await start()) showSuccessToast("Audit Lighthouse dimulai.");
+    if (!(await start())) return;
+    // Terminal adalah tempat progres run; aktifkan tabnya lalu arahkan layar.
+    setRunTab("log");
+    window.requestAnimationFrame(scrollToTerminal);
+    showSuccessToast("Audit Lighthouse dimulai.");
   };
 
   const stopWithConfirm = async () => {
@@ -234,9 +299,9 @@ export default function LighthousePage() {
     <>
       {error && <div className="pb-err" role="alert">{error}</div>}
 
-      <div className="pb-lh-top">
-      <section className="pb-card pb-lh-side">
-        <div className="pb-lh-project-card">
+      <div className="pb-lh-page-grid">
+      <section className="pb-card pb-lh-project-panel" style={{ marginBottom: 0 }}>
+        <div className="pb-lh-selectors">
           <label className="pb-field">
             Project
             <select className="pb-select" value={projectId}
@@ -258,65 +323,88 @@ export default function LighthousePage() {
               {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
-          <label className="pb-field pb-lh-target">
+          <label className="pb-field">
             Target {env}
             <input className="pb-input pb-mono" value={target} readOnly
               placeholder="belum diisi di project" aria-label={`Target ${env}`} />
           </label>
-          <LhRunsLocale
-            runs={runs}
-            locale={locale}
-            disabled={running || !selected}
-            onChange={patch => {
-              const nextPatch: Parameters<typeof patchLhConfig>[1] = {};
-              if (patch.runs !== undefined) nextPatch.numberOfRuns = patch.runs;
-              if (patch.locale !== undefined) nextPatch.locale = patch.locale;
-              setConfig(patchLhConfig(config, nextPatch));
-            }}
-          />
+        </div>
+        <div className="pb-lh-project-info">
+          <div className="pb-card-sub">Ringkasan project</div>
+          <div className="pb-kv">
+            <div className="pb-kv-row"><span>Grup</span><strong>{project?.group_name ?? "Tanpa grup"}</strong></div>
+            <div className="pb-kv-row"><span>Run terakhir</span><strong>{project?.lastRunAt ? fmtDate(project.lastRunAt) : "Belum pernah"}</strong></div>
+            <div className="pb-kv-row">
+              <span>Status</span>
+              {project?.lastRunStatus
+                ? <span className={`pb-badge ${project.lastRunStatus}`}>
+                  {project.lastRunStatus === "passed" ? "Berhasil" : runStatusLabel(project.lastRunStatus)}
+                </span>
+                : <strong className="pb-muted">Belum ada</strong>}
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="pb-card pb-lh-main">
-        <div className="pb-card-head" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <form id="lh-config-form" className="pb-card" style={{ marginBottom: 0 }}
+        onSubmit={e => { e.preventDefault(); void runNow(); }}>
+        <div className="pb-card-head" style={{ alignItems: "center", flexWrap: "wrap" }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 15 }}>Konfigurasi</h2>
-            <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada konfigurasi"}</div>
+            <div className="pb-row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <h2 style={{ margin: 0, fontSize: 15 }}>Konfigurasi Audit</h2>
+              <span className={`pb-save-state${dirty ? " dirty" : ""}`} aria-live="polite"> {saveState}</span>
+            </div>
           </div>
           <div className="pb-row" style={{ gap: 8, alignItems: "center" }}>
-            <span className="pb-save-state" aria-live="polite">{saveState}</span>
-            <button className="pb-btn primary" onClick={runNow}
+            <button type="submit" className="pb-btn primary pb-lh-run-button"
               disabled={starting || running || !selected || !target || productionBlocked}>
               {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
             </button>
-            {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
+            {running && <button type="button" className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
           </div>
         </div>
         {selected && project ? (
-          <LhConfigEditor project={project} value={config} target={target}
-            showTarget={false}
-            showRunsAndLocale={false}
-            disabled={running} onChange={setConfig} idPrefix="lh-page" />
+          <>
+            <LhRunsLocale
+              runs={runs}
+              locale={locale}
+              disabled={running}
+              onChange={patch => {
+                const nextPatch: Parameters<typeof patchLhConfig>[1] = {};
+                if (patch.runs !== undefined) nextPatch.numberOfRuns = patch.runs;
+                if (patch.locale !== undefined) nextPatch.locale = patch.locale;
+                setConfig(patchLhConfig(config, nextPatch));
+              }}
+            />
+            <LhConfigEditor project={project} value={config} target={target}
+              showTarget={false}
+              showRunsAndLocale={false}
+              disabled={running} onChange={setConfig} idPrefix="lh-page" />
+          </>
         ) : (
           <div className="pb-empty">
             <p style={{ margin: 0 }}>Project ini belum punya konfigurasi Lighthouse.</p>
-            <button className="pb-btn sm primary" style={{ marginTop: 10 }}
+            <button type="button" className="pb-btn sm primary" style={{ marginTop: 10 }}
               onClick={addConfig} disabled={!project || saving}>
               {saving ? "Membuat…" : "Buat config"}
             </button>
           </div>
         )}
-      </section>
+      </form>
       </div>
 
-      <RunPanel
-        logs={logs}
-        run={run}
-        live={running}
-        downloadHref={runId ? `/api/runs/${runId}/logs/download` : null}
-      />
+      <div id="run-terminal" ref={terminalRef}>
+        <RunPanel
+          logs={logs}
+          run={run}
+          live={running}
+          activeTab={runTab}
+          onTabChange={setRunTab}
+          downloadHref={runId ? `/api/runs/${runId}/logs/download` : null}
+        />
+      </div>
       {done && run && (
-        <section className="pb-card">
+        <section className="pb-card" ref={resultsRef}>
           <div className="pb-card-head">
             <div>
               <h2>Hasil audit</h2>

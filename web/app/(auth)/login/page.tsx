@@ -49,12 +49,12 @@ function LoginForm() {
       <div className="pb-login-stage">
         <aside className="pb-login-aside">
           <h1>Playbook</h1>
-          <p className="pb-login-tagline">QA dashboard Eureka Group.</p>
+          <p className="pb-login-tagline">Dashboard QA Eureka Group</p>
           <ul className="pb-login-points">
             {[
-              "Playwright & Lighthouse dalam satu tempat",
-              "Terminal, console, dan network live per project",
-              "Laporan sesi siap dibagikan",
+              "Tools Playwright & Lighthouse",
+              "Live terminal, console, dan network",
+              "Laporan siap dibagikan",
             ].map((text, i) => (
               <li key={text} style={taskStyle(i)}>
                 <span className="pb-task-box" aria-hidden="true" />
@@ -69,7 +69,6 @@ function LoginForm() {
             <span className="brand-name">Masuk</span>
             <span className="brand-sub">Playbook</span>
           </div>
-          <p className="pb-login-sub">Gunakan akun dashboard untuk melanjutkan.</p>
 
           <form onSubmit={submit} style={{ marginTop: 22 }}>
             <div className="pb-grid" style={{ gap: 13 }}>

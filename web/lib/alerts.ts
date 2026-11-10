@@ -32,6 +32,31 @@ export const showInfoToast = (message: string) =>
     timerProgressBar: true,
   });
 
+// Toast run selesai: gaya yang sama dengan toast aksi lain (kanan atas), tapi
+// tampil lebih lama dan bisa diklik untuk membuka halaman tool terkait.
+export const showRunToast = (opts: {
+  title: string; text: string; icon: "success" | "error" | "warning" | "info";
+  onClick?: () => void; duration?: number;
+}) =>
+  Swal.fire({
+    ...base(),
+    toast: true,
+    position: "top-end",
+    icon: opts.icon,
+    title: opts.title,
+    text: opts.text,
+    showConfirmButton: false,
+    timer: opts.duration ?? 10000,
+    timerProgressBar: true,
+    didOpen: toast => {
+      toast.style.cursor = "pointer";
+      toast.addEventListener("click", () => {
+        void Swal.close();
+        opts.onClick?.();
+      });
+    },
+  });
+
 export const showErrorAlert = (title: string, message: string) =>
   Swal.fire({
     ...base(),

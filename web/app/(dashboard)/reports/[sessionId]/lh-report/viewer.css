@@ -1,12 +1,29 @@
-.lh-viewer { display: flex; flex-direction: column; min-height: calc(100vh - 100px); }
-.lh-viewer-header { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 12px 16px; min-width: 0; background: #0c1427; color: white; }
+.lh-viewer { display: flex; flex-direction: column; min-height: 100vh; background: #0c1427; }
+.lh-viewer-header { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 14px 16px; min-width: 0; background: #0c1427; color: white; }
 .lh-viewer-header h1 { margin: 0; font-size: 1.25rem; }
-.lh-viewer-tabs { display: flex; padding: 4px; gap: 4px; border-radius: 999px; background: #e2e8f0; }
-.lh-viewer-tabs button { border: 0; border-radius: 999px; padding: 8px 18px; background: transparent; color: #334155; cursor: pointer; }
-.lh-viewer-tabs button[aria-pressed="true"] { background: #0284c7; color: white; }
+.lh-viewer-tabs { display: flex; gap: 4px; }
+.lh-viewer-tabs button {
+  border: 1px solid rgba(51, 65, 85, .6);
+  border-radius: 9px;
+  padding: 6px 16px;
+  background: rgba(30, 41, 59, .8);
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.lh-viewer-tabs button:hover:not(:disabled) { background: #334155; }
+.lh-viewer-tabs button[aria-pressed="true"] {
+  border-color: #64748b;
+  background: #334155;
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
+}
 .lh-viewer-tabs button:disabled { opacity: .45; cursor: not-allowed; }
-.lh-viewer-tabs button:focus-visible { outline: 2px solid #0f172a; outline-offset: 2px; }
-.lh-viewer-header label { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; max-width: 100%; }
-.lh-viewer-header select { max-width: min(100%, 480px); }
-.lh-viewer-url { margin: 0; max-width: 100%; overflow-wrap: anywhere; color: #67e8f9; font: 12px var(--mono, monospace); }
+.lh-viewer-tabs button:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
+.lh-viewer-url-select { max-width: min(100%, 480px); }
+.lh-viewer-header select { max-width: 100%; }
+.lh-viewer-url { margin: 0; max-width: 100%; overflow-wrap: anywhere; color: rgba(56, 189, 248, .8); font: 12px var(--mono, monospace); }
 .lh-viewer iframe { flex: 1; width: 100%; min-height: 75vh; border: 0; background: white; }

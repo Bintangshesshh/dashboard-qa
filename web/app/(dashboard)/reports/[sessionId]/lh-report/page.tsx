@@ -46,16 +46,14 @@ export default function LighthouseReport() {
     <header className="lh-viewer-header">
       <h1>Report Lighthouse</h1>
       {result && <>
-        <div className="lh-viewer-tabs" role="group" aria-label="Perangkat">
-          {(["mobile", "desktop"] as const).map(device => <button key={device} type="button"
-            aria-pressed={result.form_factor === device} disabled={!results.some(r => r.url === result.url && r.form_factor === device)}
-            onClick={() => selectDevice(device)}>{device === "mobile" ? "Mobile" : "Desktop"}</button>)}
-        </div>
-        {urls.length > 1 ? <label>URL <select value={result.url} onChange={e => {
-          const next = results.find(r => r.url === e.target.value && r.form_factor === result.form_factor)
-            ?? results.find(r => r.url === e.target.value);
-          if (next) setSelected(next.id);
-        }}>{urls.map(item => <option key={item} value={item}>{item}</option>)}</select></label> : <p className="lh-viewer-url">{result.url}</p>}
+        <p className="lh-viewer-url">{result.url}</p>
+        {urls.length > 1 && <label className="lh-viewer-url-select">
+          <select aria-label="Pilih URL report" value={result.url} onChange={e => {
+            const next = results.find(r => r.url === e.target.value && r.form_factor === result.form_factor)
+              ?? results.find(r => r.url === e.target.value);
+            if (next) setSelected(next.id);
+          }}>{urls.map(item => <option key={item} value={item}>{item}</option>)}</select>
+        </label>}
       </>}
     </header>
     {error ? <p role="alert">{error}</p> : !run ? <p>Memuat report…</p> : state !== "ok" ? <ArtifactNote state={state} /> :

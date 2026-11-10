@@ -142,7 +142,10 @@ export class Store {
   // includeArchived dipakai report/breadcrumb/Pengaturan: `active=0` = arsip.
   listProjects({ includeArchived = false } = {}) {
     return this.db.prepare(`SELECT p.*, g.name AS group_name,
-      (SELECT MAX(r.finished_at) FROM runs r JOIN sessions s2 ON s2.id = r.session_id WHERE s2.project_id = p.id) AS lastRunAt
+      (SELECT MAX(r.finished_at) FROM runs r JOIN sessions s2 ON s2.id = r.session_id WHERE s2.project_id = p.id) AS lastRunAt,
+      (SELECT r.status FROM runs r JOIN sessions s2 ON s2.id = r.session_id
+        WHERE s2.project_id = p.id AND r.finished_at IS NOT NULL
+        ORDER BY r.finished_at DESC LIMIT 1) AS lastRunStatus
       FROM projects p LEFT JOIN project_groups g ON g.id = p.group_id
       ${includeArchived ? '' : 'WHERE p.active=1'} ORDER BY p.name`).all().map(parseOrigins);
   }
@@ -333,7 +336,7 @@ export class Store {
   listRunsBySession(sessionId) { return this.db.prepare('SELECT * FROM runs WHERE session_id=? ORDER BY queued_at').all(sessionId); }
   listRuns({ projectId, tool, limit = 10 } = {}) {
     // Username pemilik sesi ikut dipilih untuk feed "Run terakhir".
-    let sql = `SELECT r.*, s.label AS session_label, s.env AS env, p.name AS project_name,
+    let sql = `SELECT r.*, s.project_id AS project_id, s.label AS session_label, s.env AS env, p.name AS project_name,
       COALESCE(u.username, 'sistem') AS run_by,
       EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.kind=(CASE r.tool WHEN 'lh' THEN 'lh-html' ELSE 'pw-html' END)) AS has_html
       FROM runs r JOIN sessions s ON s.id=r.session_id JOIN projects p ON p.id=s.project_id

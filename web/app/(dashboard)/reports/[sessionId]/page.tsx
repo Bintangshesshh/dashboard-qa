@@ -27,6 +27,13 @@ const publishNote = (rep: Report) =>
   rep.status === "failed" ? "gagal - build ulang" : rep.status === "stale" ? "folder report hilang" : "menunggu build selesai";
 
 // Report Playwright/Lighthouse ada di index.html; screenshot HTML tidak boleh menang.
+function lhViewerHref(run: Run, resultId?: string) {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const query = new URLSearchParams({ run: run.id });
+  if (resultId) query.set("result", resultId);
+  return `${basePath}/reports/${encodeURIComponent(run.session_id)}/lh-report?${query}`;
+}
+
 function pickReportArtifacts(run: Run) {
   const arts = run.artifacts ?? [];
   const html = arts.find(a => a.kind === "pw-html" || a.kind === "lh-html")
@@ -51,7 +58,7 @@ export default function SessionDetail() {
   const [retention, setRetention] = useState(7);
 
   useEffect(() => {
-    api.publicSettings().then(s => setRetention(Number(s.artifact_retention_days) || 7)).catch(() => {});
+    api.publicSettings().then(s => setRetention(Number(s.artifact_retention_days) || 7)).catch(() => { });
   }, []);
 
   const load = useCallback(() => {
@@ -101,7 +108,7 @@ export default function SessionDetail() {
     if (!openRun) return;
     if (!["queued", "running", "uploading"].includes(openRun.status)) return;
     const t = setTimeout(() => {
-      api.run(openRun.id).then(setOpenRun).catch(() => {});
+      api.run(openRun.id).then(setOpenRun).catch(() => { });
     }, 2000);
     return () => clearTimeout(t);
   }, [openRun]);
@@ -306,7 +313,7 @@ export default function SessionDetail() {
                     <div className="pb-runrow-title">{r.tool === "pw" ? "Playwright" : "Lighthouse"}</div>
                     <div className="pb-runrow-sub pb-row" style={{ gap: 6 }}>
                       <RunClock run={r} />
-                      <span className="mono">{fmtDate(r.finalized_at ?? r.started_at ?? r.queued_at)} · exit {r.exit_code ?? "-"}</span>
+                      <span className="mono">{fmtDate(r.finalized_at ?? r.started_at ?? r.queued_at)} - exit {r.exit_code ?? "-"}</span>
                     </div>
                   </div>
                   <span className={`pb-badge ${r.status}`}>{runStatusLabel(r.status)}</span>
@@ -374,7 +381,7 @@ export default function SessionDetail() {
                     <div className="pb-repcard-act">
                       {canOpen
                         ? <ArtifactLink className="pb-btn sm primary" href={reportUrl(rep.id)}
-                            missing="report hilang - perbarui laporan">Buka HTML</ArtifactLink>
+                          missing="report hilang - perbarui laporan">Buka HTML</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>{publishNote(rep)}</span>}
                       {rep.status === "ready" && (
                         <ArtifactLink href={reportUrl(rep.id, "report.md")}
@@ -411,7 +418,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
     <section className="pb-card pb-runpanel" id="hasil-run" tabIndex={-1}>
       <div className="pb-runpanel-head">
         <ToolMark tool={run.tool} />
-        <h2>Hasil run · {isPw ? "Playwright" : "Lighthouse"}</h2>
+        <h2>Hasil run - {isPw ? "Playwright" : "Lighthouse"}</h2>
         <span className={`pb-badge ${run.status}`}>{runStatusLabel(run.status)}</span>
         <span className="pb-spacer" />
         <RunClock run={run} />
@@ -456,7 +463,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
                 <td className="mono">{r.budget_failed ?? "-"}</td>
                 <td style={{ textAlign: "right" }}>
                   {r.report_path
-                    ? <ArtifactLink probeHref={artifactUrl(run.id, r.report_path)} href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/reports/${encodeURIComponent(run.session_id)}/lh-report/?run=${encodeURIComponent(run.id)}&result=${encodeURIComponent(r.id)}`}>Report</ArtifactLink>
+                    ? <ArtifactLink probeHref={artifactUrl(run.id, r.report_path)} href={lhViewerHref(run, r.id)}>Report</ArtifactLink>
                     : <span className="pb-muted">-</span>}
                 </td>
               </tr>
@@ -469,7 +476,11 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
 
       {html && (
         <p style={{ marginTop: 14 }}>
-          <NativeReportLink runId={run.id} path={html.path} label={`Report asli ${isPw ? "Playwright" : "Lighthouse"}`} />
+          {isPw
+            ? <NativeReportLink runId={run.id} path={html.path} label="Report asli Playwright" />
+            : <Link className="pb-btn sm" href={lhViewerHref(run, (results as LighthouseResult[]).find(r => r.report_path)?.id)}>
+                Report asli Lighthouse
+              </Link>}
           {report?.path && <ArtifactLink href={artifactUrl(run.id, report.path)}>JSON mentah</ArtifactLink>}
         </p>
       )}

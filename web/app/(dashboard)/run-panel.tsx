@@ -19,13 +19,19 @@ const shortUrl = (u: string) => {
   try { const x = new URL(u); return x.pathname + x.search; } catch { return u; }
 };
 
-export function RunPanel({ logs, run, live, downloadHref }: {
+type RunTab = "log" | "console" | "network";
+
+export function RunPanel({ logs, run, live, downloadHref, activeTab, onTabChange }: {
   logs: LogEntry[];
   run: Run | null;
   live?: boolean;
   downloadHref?: string | null;
+  // Opsional: halaman run bisa memaksa tab Terminal aktif saat run dimulai.
+  activeTab?: RunTab;
+  onTabChange?: (tab: RunTab) => void;
 }) {
-  const [tab, setTab] = useState<"log" | "console" | "network">("log");
+  const [innerTab, setInnerTab] = useState<RunTab>("log");
+  const tab = activeTab ?? innerTab;
   const [chip, setChip] = useState<"all" | "error" | "warn">("all");
   const [cQuery, setCQuery] = useState("");
   const [nQuery, setNQuery] = useState("");
@@ -57,11 +63,14 @@ export function RunPanel({ logs, run, live, downloadHref }: {
     return { term, cons, net };
   }, [logs]);
 
-  // Auto-scroll saat live untuk tab yang sedang dibuka.
+  // Auto-follow saat live: selalu tempel ke output terbaru, seperti terminal.
+  // rAF memastikan scroll dihitung setelah baris baru selesai dirender.
   useEffect(() => {
     if (!live) return;
     const el = tab === "log" ? box.current : tab === "console" ? consBox.current : netBox.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    const frame = window.requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    return () => window.cancelAnimationFrame(frame);
   }, [term.length, cons.length, net.length, live, tab]);
 
   const errors = cons.filter(c => badType(c.type)).length;
@@ -79,7 +88,10 @@ export function RunPanel({ logs, run, live, downloadHref }: {
   const maxMs = Math.max(1, ...netView.map(n => n.ms ?? 0));
 
   // Tab & filter murni UI: langsung ganti, tanpa dialog.
-  const pickTab = (next: "log" | "console" | "network") => setTab(next);
+  const pickTab = (next: RunTab) => {
+    setInnerTab(next);
+    onTabChange?.(next);
+  };
   const pickChip = (next: "all" | "error" | "warn") => setChip(next);
 
   return (
@@ -99,7 +111,7 @@ export function RunPanel({ logs, run, live, downloadHref }: {
         <span className="pb-row" style={{ gap: 8, fontSize: 12 }}>
           {run && <RunClock run={run} />}
           <span className="pb-live-state">
-            {live ? "berjalan" : run ? "selesai" : "menunggu"} · {term.length} baris
+            {live ? "berjalan" : run ? "selesai" : "menunggu"} - {term.length} baris
           </span>
           {downloadHref && <a className="pb-btn sm" href={downloadHref}>Unduh log</a>}
         </span>
@@ -143,7 +155,7 @@ export function RunPanel({ logs, run, live, downloadHref }: {
         <>
           <div className="pb-subbar">
             <span className="pb-muted" style={{ fontSize: 11.5 }}>
-              {netView.length} dari {net.length} request · {badNet} gagal
+              {netView.length} dari {net.length} request - {badNet} gagal
             </span>
             <input className="pb-search" placeholder="Saring URL" value={nQuery}
               onChange={e => setNQuery(e.target.value)} aria-label="Saring URL" />

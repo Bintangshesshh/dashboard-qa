@@ -6,7 +6,7 @@
 // halaman menulis bentuk yang sama dan autosave tidak menimpa nilai custom.
 import { useEffect, useRef, useState } from "react";
 import type { Project } from "../../lib/playbook";
-import { confirmAction, showInfoToast } from "../../lib/alerts";
+import { confirmAction, showErrorAlert, showInfoToast } from "../../lib/alerts";
 
 // Sama dengan batas server: target sesi memakai 1 slot dari 5 URL.
 export const MAX_EXTRA_URLS = 4;
@@ -79,6 +79,43 @@ export const parseExtraUrl = (typed: string, current: string, target: string) =>
   const base = originOf(current) || originOf(target);
   if (base && value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")) return base + value;
   return value;
+};
+
+// Origin yang boleh dipakai URL tambahan: allowlist project + URL env project.
+export const allowedOriginsOf = (project: Project, target: string) => {
+  const list = [
+    ...(project.origins ?? []),
+    project.base_url, project.staging_url, project.local_url, target,
+  ];
+  return new Set(list.map(v => v ? originOf(v) : "").filter(Boolean));
+};
+
+// Validasi ketat sebelum URL masuk ke chip: path wajib diawali "/" dan URL
+// penuh harus memakai origin yang terdaftar pada project.
+export type ExtraUrlReason = "empty" | "format" | "origin" | "duplicate";
+
+export const validateExtraUrl = (
+  typed: string, target: string, project: Project, existing: string[],
+): { value: string; error: string; reason?: ExtraUrlReason; origin?: string; allowed?: string[] } => {
+  const value = parseExtraUrl(typed, target, target);
+  if (!value) return { value, error: "URL tidak boleh kosong.", reason: "empty" };
+  if (!isHttp(value)) {
+    return {
+      value, reason: "format",
+      error: "Path harus diawali dengan / atau berupa URL lengkap yang valid.",
+    };
+  }
+  const allowed = allowedOriginsOf(project, target);
+  if (!allowed.has(originOf(value))) {
+    return {
+      value, reason: "origin", origin: originOf(value), allowed: [...allowed],
+      error: "Origin atau path URL tidak diizinkan untuk project ini!",
+    };
+  }
+  if (existing.some(u => sameUrl(u, value))) {
+    return { value, reason: "duplicate", error: "URL ini sudah ada di daftar." };
+  }
+  return { value, error: "" };
 };
 
 // Pesan error pertama, atau "" kalau form sah. Dipakai sebelum simpan.
@@ -174,6 +211,35 @@ export default function LhConfigEditor({
     Object.fromEntries(LH_CATEGORIES.map(c => [c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100)])),
   );
   const [locale, setLocale] = useState<NonNullable<LhConfig["locale"]>>(cfg.locale ?? "id");
+  const [urlInput, setUrlInput] = useState("");
+  const urlInputRef = useRef<HTMLInputElement>(null);
+
+  const addExtraUrl = () => {
+    if (disabled || extra.length >= MAX_EXTRA_URLS) return;
+    const result = validateExtraUrl(urlInput, target, project, extra);
+    if (result.error) {
+      let title = "URL Tidak Valid";
+      let message = result.error;
+      if (result.reason === "origin") {
+        title = "Domain Tidak Diizinkan";
+        message = `Origin "${result.origin ?? "-"}" tidak sesuai dengan project ini. `
+          + `Gunakan origin: ${(result.allowed ?? []).join(", ") || "belum tersedia"}.`;
+      } else if (result.reason === "duplicate") {
+        title = "URL Sudah Ada";
+        message = "Path atau URL ini sudah terdaftar. Gunakan URL yang berbeda.";
+      } else if (result.reason === "format") {
+        title = "Format URL Tidak Valid";
+        message = "Path harus diawali dengan / (contoh /kategori) atau berupa URL lengkap yang valid.";
+      }
+      setUrlInput("");
+      urlInputRef.current?.focus();
+      void showErrorAlert(title, message);
+      return;
+    }
+    const next = [...extra, result.value];
+    setExtra(next); emit({ extra: next }); setUrlInput("");
+    showInfoToast("URL tambahan ditambahkan.");
+  };
 
   // Nilai dari luar (config dimuat belakangan / diganti di tab lain) disalin ke
   // form, tapi hasil emit sendiri diabaikan supaya autosave tidak mereset input.
@@ -244,43 +310,26 @@ export default function LhConfigEditor({
 
           <div className="pb-field">
             <span>URL tambahan ({clean.length}/{MAX_EXTRA_URLS})</span>
-            <span className="pb-lh-urls">
-              {extra.map((u, i) => (
-                <span className="pb-lh-url-line" key={i}>
-                  {(originOf(u) || originOf(target)) && (
-                    <span className="pb-lh-url-origin" title={originOf(u) || originOf(target)}>{originOf(u) || originOf(target)}</span>
-                  )}
-                  <input className="pb-input pb-mono" value={isHttp(u) ? pathOf(u) : u}
-                    id={`${idPrefix}-url-${i}`} placeholder="/halaman-lain" disabled={disabled}
-                    aria-label={`URL tambahan ${i + 1}`}
-                    onChange={e => {
-                      const v = parseExtraUrl(e.target.value, u, target);
-                      const next = extra.map((x, j) => (j === i ? v : x));
-                      setExtra(next); emit({ extra: next });
-                    }} />
-                  <button type="button" className="pb-btn sm danger" disabled={disabled}
-                    aria-label={"Hapus URL " + (i + 1)}
-                    onClick={async () => {
-                      if (!(await confirmAction({
-                        icon: "warning",
-                        title: "Hapus URL tambahan?",
-                        text: `URL ke-${i + 1} akan dihapus dari config.`,
-                        confirmButtonText: "Ya, Hapus",
-                      }))) return;
-                      const next = extra.filter((_, j) => j !== i);
-                      setExtra(next); emit({ extra: next });
-                      showInfoToast("URL tambahan dihapus.");
-                    }}>Hapus</button>
-                </span>
-              ))}
-            </span>
-            {extra.length < MAX_EXTRA_URLS && (
-              <button type="button" className="pb-btn sm pb-lh-add-url" disabled={disabled}
-                onClick={() => {
-                  setExtra(list => [...list, ""]);
-                  showInfoToast("Kolom URL ditambahkan.");
-                }}>+ Tambah URL</button>
-            )}
+            <div className="pb-lh-url-add">
+              <input ref={urlInputRef} className="pb-input pb-mono" value={urlInput}
+                disabled={disabled || extra.length >= MAX_EXTRA_URLS}
+                aria-label="URL tambahan baru"
+                onChange={e => setUrlInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addExtraUrl(); } }} />
+              <button type="button" className="pb-btn sm primary" disabled={disabled || !urlInput.trim() || extra.length >= MAX_EXTRA_URLS}
+                onClick={addExtraUrl}>+</button>
+            </div>
+            <div className="pb-lh-url-chips">
+              {clean.map((u, i) => <div className="pb-lh-url-chip" key={`${u}-${i}`}>
+                <span title={u}>{pathOf(u)}</span>
+                <button type="button" aria-label={`Hapus URL ${i + 1}`} disabled={disabled}
+                  onClick={async () => {
+                    if (!(await confirmAction({ icon: "warning", title: "Hapus URL tambahan?", text: `URL ke-${i + 1} akan dihapus dari config.`, confirmButtonText: "Ya, Hapus" }))) return;
+                    const next = extra.filter((_, j) => j !== i);
+                    setExtra(next); emit({ extra: next }); showInfoToast("URL tambahan dihapus.");
+                  }}>✕</button>
+              </div>)}
+            </div>
           </div>
         </div>
 
@@ -292,8 +341,7 @@ export default function LhConfigEditor({
                 <label className="pb-lh-budget" key={c.key}>
                   <span className="pb-lh-budget-label">{c.label}</span>
                   <input type="range" min={0} max={100} step={5} disabled={disabled}
-                    className="pb-lh-range-v" value={scores[c.key] ?? 60}
-                    style={{ writingMode: "vertical-lr", direction: "rtl", height: 96 }}
+                    className="pb-lh-range pb-lh-range-v" value={scores[c.key] ?? 60}
                     aria-label={"Skor minimum " + c.label}
                     onChange={e => {
                       const v = Number(e.target.value);
@@ -309,8 +357,8 @@ export default function LhConfigEditor({
       </div>
 
       <div className="pb-lh-audit-total">
-        <span className="pb-muted" style={{ fontSize: 12 }}>
-          Total audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} device` : ""})
+        <span className="pb-badge pb-lh-summary-pill">
+          Total Audit: {totalAudits} ({totalUrls} URL × {runs} run{devices > 1 ? ` × ${devices} Device` : ""})
         </span>
         {totalAudits > 20 && (
           <span className="pb-badge warn">

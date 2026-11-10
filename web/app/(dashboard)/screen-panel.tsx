@@ -110,9 +110,9 @@ export function ScreenPanel({ runId, run, live }: {
               <span className="pb-row" style={{ gap: 6, marginLeft: "auto" }}>
                 {mode === "pause"
                   ? <>
-                      <button className="pb-btn sm" disabled={busy} onClick={() => control("step")}>Step</button>
-                      <button className="pb-btn sm" disabled={busy} onClick={() => control("skip")}>Lewati TC</button>
-                    </>
+                    <button className="pb-btn sm" disabled={busy} onClick={() => control("step")}>Step</button>
+                    <button className="pb-btn sm" disabled={busy} onClick={() => control("skip")}>Lewati TC</button>
+                  </>
                   : mode === "skip"
                     ? null
                     : <button className="pb-btn sm" disabled={busy || !live} onClick={() => control("pause")}>Jeda</button>}
@@ -129,14 +129,14 @@ export function ScreenPanel({ runId, run, live }: {
               <span className="pb-frame-empty">
                 {!runId ? "Mulai run untuk melihat layar bot."
                   : live ? "Menunggu frame pertama…"
-                  : "Tidak ada frame terekam untuk run ini."}
+                    : "Tidak ada frame terekam untuk run ini."}
               </span>
             )}
           </div>
 
           <div className="pb-row" style={{ justifyContent: "space-between", gap: 8, marginTop: 8 }}>
             <span className="pb-muted" style={{ fontSize: 11.5 }}>
-              {frames.length ? `${frames.length} frame · ${frame ? fmtTime(frame.at) : "-"}` : "1 frame/detik"}
+              {frames.length ? `${frames.length} frame - ${frame ? fmtTime(frame.at) : "-"}` : "1 frame/detik"}
             </span>
             <span className="pb-row" style={{ gap: 6 }}>
               {picked !== null && <button className="pb-btn sm" onClick={() => setPicked(null)}>Langsung</button>}
@@ -155,36 +155,36 @@ export function ScreenPanel({ runId, run, live }: {
       {tab === "rekaman" && (
         videos.length === 0
           ? <p className="pb-empty">
-              {live ? "Video tersedia setelah run selesai."
-                : "Run ini tidak merekam video. Centang “Rekam video” sebelum Run."}
-            </p>
+            {live ? "Video tersedia setelah run selesai."
+              : "Run ini tidak merekam video. Centang “Rekam video” sebelum Run."}
+          </p>
           : <div className="pb-videos">
-              {videos.map(v => (
-                <figure key={v.id} className="pb-video">
-                  <video controls preload="metadata" src={artifactUrl(run!.id, v.path)} />
-                  <figcaption>
-                    <span className="pb-mono" title={v.path}>{v.path}</span>
-                    <a className="pb-btn sm" href={artifactUrl(run!.id, v.path)} download>Unduh</a>
-                  </figcaption>
-                </figure>
-              ))}
-            </div>
+            {videos.map(v => (
+              <figure key={v.id} className="pb-video">
+                <video controls preload="metadata" src={artifactUrl(run!.id, v.path)} />
+                <figcaption>
+                  <span className="pb-mono" title={v.path}>{v.path}</span>
+                  <a className="pb-btn sm" href={artifactUrl(run!.id, v.path)} download>Unduh</a>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
       )}
 
       {tab === "trace" && (
         traces.length === 0
           ? <p className="pb-empty">
-              Trace hanya disimpan saat run gagal atau mode Debug.
-              Buka lewat <span className="pb-mono">npx playwright show-trace file.zip</span>.
-            </p>
+            Trace hanya disimpan saat run gagal atau mode Debug.
+            Buka lewat <span className="pb-mono">npx playwright show-trace file.zip</span>.
+          </p>
           : <div className="pb-videos">
-              {traces.map(t => (
-                <div key={t.id} className="pb-trace">
-                  <span className="pb-mono" title={t.path}>{t.path}</span>
-                  <a className="pb-btn sm" href={artifactUrl(run!.id, t.path)} download>Unduh trace</a>
-                </div>
-              ))}
-            </div>
+            {traces.map(t => (
+              <div key={t.id} className="pb-trace">
+                <span className="pb-mono" title={t.path}>{t.path}</span>
+                <a className="pb-btn sm" href={artifactUrl(run!.id, t.path)} download>Unduh trace</a>
+              </div>
+            ))}
+          </div>
       )}
 
       {error && <div className="pb-err" role="alert" style={{ marginTop: 8 }}>{error}</div>}

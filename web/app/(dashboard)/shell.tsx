@@ -4,9 +4,15 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import "./shell.css";
-import { api, ApiError, type Project, type User } from "../../lib/playbook";
-import { confirmAction, showLogoutConfirm, showSuccessToast } from "../../lib/alerts";
+import { api, ApiError, rememberProject, runStatusLabel, type Project, type User } from "../../lib/playbook";
+import { confirmAction, showLogoutConfirm, showRunToast, showSuccessToast } from "../../lib/alerts";
 import { readLastProject, readLastEnv } from "../../lib/playbook";
+
+const FINAL_RUN = new Set(["passed", "failed", "cancelled", "interrupted"]);
+type RunNotif = {
+  id: string; runId: string; projectId: string; tool: "pw" | "lh";
+  title: string; text: string;
+};
 
 const NAV = [
   { href: "/", label: "Ringkasan", icon: "home" },
@@ -73,6 +79,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // Breadcrumb butuh nama project + label sesi.
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessionInfo, setSessionInfo] = useState<{ label: string; projectId: string } | null>(null);
+  const seenRuns = useRef<Set<string> | null>(null);
 
   const ping = useCallback(async () => {
     try {
@@ -91,6 +98,64 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   // Project arsip tetap perlu namanya untuk breadcrumb.
   useEffect(() => { api.projects({ all: true }).then(setProjects).catch(() => { }); }, []);
+
+  // Notifikasi ringan saat run Playwright/Lighthouse selesai. Polling ini juga
+  // menangkap run yang dimulai dari halaman lain. Memakai toast SweetAlert yang
+  // sama dengan notifikasi aksi lain (kanan atas), bukan komponen kustom.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    seenRuns.current = null;
+    const openRun = (notif: RunNotif) => {
+      rememberProject(notif.projectId);
+      try {
+        sessionStorage.setItem(`${notif.tool}-run:${notif.projectId}`, notif.runId);
+        // Lighthouse langsung diarahkan ke card run, bukan ke atas halaman.
+        if (notif.tool === "lh") sessionStorage.setItem(`lh-run-focus:${notif.projectId}`, "1");
+      } catch { /* storage diblokir */ }
+      router.push(notif.tool === "lh" ? "/lighthouse" : "/playwright");
+      // Kalau halaman tujuan sudah terbuka, event ini membuatnya pindah ke run
+      // tersebut tanpa perlu remount.
+      window.dispatchEvent(new CustomEvent("pb-run-open", {
+        detail: { tool: notif.tool, projectId: notif.projectId, runId: notif.runId },
+      }));
+    };
+    const tick = async () => {
+      try {
+        const rows = await api.runs({ limit: 30 });
+        if (!alive) return;
+        if (!seenRuns.current) {
+          // Baseline: run final yang sudah ada saat halaman dibuka tidak perlu
+          // dinotifikasi. Run yang masih berjalan sengaja tidak ditandai.
+          seenRuns.current = new Set(rows.filter(r => FINAL_RUN.has(r.status)).map(r => r.id));
+          return;
+        }
+        const seen = seenRuns.current;
+        const finished = rows.filter(r => FINAL_RUN.has(r.status) && !seen.has(r.id));
+        for (const r of finished) seen.add(r.id);
+        if (!finished.length) return;
+        // Tampilkan yang paling baru lebih dulu jika satu polling menemukan banyak.
+        for (const r of finished) {
+          const notif: RunNotif = {
+            id: r.id, runId: r.id, projectId: r.project_id, tool: r.tool,
+            title: `${r.tool === "lh" ? "Lighthouse" : "Playwright"} selesai`,
+            text: `${r.project_name} - ${r.env} - ${r.status === "passed" ? "Berhasil" : runStatusLabel(r.status)}`,
+          };
+          const passed = r.status === "passed";
+          void showRunToast({
+            title: notif.title,
+            text: notif.text,
+            icon: passed ? "success" : r.status === "failed" ? "error" : "warning",
+            duration: 12000,
+            onClick: () => openRun(notif),
+          });
+        }
+      } catch { /* polling gagal sesaat: coba lagi di interval berikutnya */ }
+    };
+    void tick();
+    const timer = window.setInterval(tick, 4000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [user?.id]);
 
   const seg = path.split("/").filter(Boolean);
   const isSession = seg[0] === "reports" && seg[1] && seg[1] !== "project";
@@ -163,8 +228,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
     </Link>
   );
 
+  const isLhViewer = seg[0] === "reports" && seg[2] === "lh-report";
+
   return (
-    <div className={`pb-shell ${collapsed ? "pb-shell-collapsed" : ""} ${drawerOpen ? "pb-drawer-open" : ""}`}>
+    <div className={`pb-shell ${collapsed ? "pb-shell-collapsed" : ""} ${drawerOpen ? "pb-drawer-open" : ""} ${isLhViewer ? "pb-shell-lh-viewer" : ""}`}>
       {drawerOpen && <div className="pb-drawer-backdrop" aria-hidden="true" onClick={() => setDrawerOpen(false)} />}
       <aside id="pb-sidebar" ref={drawerRef} className="pb-side" aria-label="Sidebar" {...(drawerOpen ? { role: "dialog", "aria-modal": true } : {})}>
         {/* Header Section - Playbook QA branding + metadata */}
@@ -220,7 +287,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="pb-mainwrap">
-        <header className="pb-topbar">
+        {!isLhViewer && <header className="pb-topbar">
           <button ref={menuRef} className="pb-menu-toggle" type="button" onClick={() => setDrawerOpen(true)} aria-label="Buka menu" aria-expanded={drawerOpen} aria-controls="pb-sidebar">☰</button>
           <div style={{ minWidth: 0 }}>
             <div className="pb-topbar-title">{screen}</div>
@@ -244,7 +311,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
               </nav>
             )}
           </div>
-        </header>
+        </header>}
 
         <main className="pb-main">
           {down && (

@@ -26,22 +26,22 @@ function playwrightSection(run, results, logs) {
   const slow = [...results].sort((a, b) => (Number(b.duration_ms) || 0) - (Number(a.duration_ms) || 0)).slice(0, 5);
   const diag = `<div class="diagnosis"><div class="diag-grid">
 <div class="diag"><span class="diag-label">Durasi run</span><span class="diag-value">${dur(run.duration_ms)}</span><span class="diag-sub">dari mulai sampai selesai</span></div>
-<div class="diag"><span class="diag-label">Total test</span><span class="diag-value">${dur(totalTest)}</span><span class="diag-sub">${results.length} test · ${retries} retry</span></div>
+<div class="diag"><span class="diag-label">Total test</span><span class="diag-value">${dur(totalTest)}</span><span class="diag-sub">${results.length} test - ${retries} retry</span></div>
 <div class="diag"><span class="diag-label">Tes terlama</span><span class="diag-value">${dur(slow[0]?.duration_ms)}</span><span class="diag-sub">${esc(slow[0]?.title || '-')}</span></div>
 <div class="diag"><span class="diag-label">Gagal / flaky</span><span class="diag-value">${failed} / ${flaky}</span><span class="diag-sub">${passed} lulus</span></div>
 </div>
 ${slow.length ? `<h3>Tes terlama</h3><ol class="slow-list">${slow.map(r => `<li class="slow-row">
 <div class="slow-head"><span class="slow-name">${esc(r.title)}</span><span class="slow-ms">${dur(r.duration_ms)}</span></div>
 <div class="slow-bar" aria-hidden="true"><span style="width:${Math.max(2, Math.round((Number(r.duration_ms) || 0) / Math.max(1, Number(slow[0]?.duration_ms) || 1) * 100))}%"></span></div>
-<div class="slow-meta">${esc(r.file || '-')} · ${totalTest ? Math.round((Number(r.duration_ms) || 0) / totalTest * 100) : 0}% total test</div></li>`).join('')}</ol>` : ''}</div>`;
+<div class="slow-meta">${esc(r.file || '-')} - ${totalTest ? Math.round((Number(r.duration_ms) || 0) / totalTest * 100) : 0}% total test</div></li>`).join('')}</ol>` : ''}</div>`;
   const rows = results.map(r => `<tr>
       <td class="mono">${esc(n(r.tc_id))}</td><td>${esc(r.title)}</td><td class="mono">${esc(r.file)}</td>
       <td>${statusBadge(r.status)}</td><td class="mono dur"><span class="dur-cell"><span class="dur-bar" style="width:${Math.max(2, Math.round(((Number(r.duration_ms) || 0) / maxDuration) * 100))}%"></span><span>${dur(r.duration_ms)}</span></span></td><td class="mono">${r.retry || 0}</td></tr>`).join('');
   const errors = results.filter(r => r.error).map(r => `<h3>${esc(r.tc_id ?? r.title)}</h3><p class="mono mut">${esc(r.file)}</p><pre>${esc(r.error)}</pre>`).join('');
   return `${tiles([['Lulus', String(passed), 'test case passed', passed && !failed ? 'success' : ''],
-    ['Gagal', String(failed), 'perlu diperiksa', failed ? 'danger' : ''],
-    ['Flaky', String(flaky), 'tidak dihitung lulus', flaky ? 'warn' : ''],
-    ['Durasi', dur(run.duration_ms), `exit ${n(run.exit_code)}`]])}
+  ['Gagal', String(failed), 'perlu diperiksa', failed ? 'danger' : ''],
+  ['Flaky', String(flaky), 'tidak dihitung lulus', flaky ? 'warn' : ''],
+  ['Durasi', dur(run.duration_ms), `exit ${n(run.exit_code)}`]])}
     ${diag}
     <div class="tbl"><table><thead><tr><th>TC</th><th>Judul</th><th>File</th><th>Status</th><th>Durasi</th><th>Retry</th></tr></thead><tbody>${rows}</tbody></table></div>
     ${errors}
@@ -87,7 +87,7 @@ async function lighthouseSection(run, rows, logs) {
     const lhr = await readFile(join(dir, file), 'utf8').then(JSON.parse).catch(() => null);
     for (const [id, a] of Object.entries(lhr?.audits ?? {})) {
       if (a.score == null || a.score >= 1 || a.scoreDisplayMode === 'notApplicable') continue;
-      audits.push(`${r.url} · ${a.title ?? id}${a.displayValue ? ` - ${a.displayValue}` : ''}`);
+      audits.push(`${r.url} - ${a.title ?? id}${a.displayValue ? ` - ${a.displayValue}` : ''}`);
     }
   }
   const warns = rows.flatMap(r => {
@@ -109,13 +109,13 @@ function verdict(runs) {
   const parts = [];
   if (pw) parts.push(`Playwright: ${pw.status}`);
   if (lh) parts.push(`Lighthouse: ${lh.status}`);
-  return `<span class="b ${failed.length ? 'bad' : 'ok'}">${failed.length ? 'Gagal' : 'Lulus'}</span> <span class="mut">${esc(parts.join(' · '))}</span>`;
+  return `<span class="b ${failed.length ? 'bad' : 'ok'}">${failed.length ? 'Gagal' : 'Lulus'}</span> <span class="mut">${esc(parts.join(' - '))}</span>`;
 }
 
 // Header sesi: identitas + verdict + jumlah run. Dipasang di dalam hero oleh pemanggil.
 function sessionIntro(session, project, runs) {
   const baris = [project?.name, session?.env, session?.target_url, date(session?.created_at)]
-    .filter(Boolean).map(v => esc(v)).join(' · ');
+    .filter(Boolean).map(v => esc(v)).join(' - ');
   return `<div class="eyebrow">Laporan sesi</div>
 <h1>${esc(session?.label ?? 'Laporan')}</h1>
 <p class="lead">${baris}</p>
@@ -130,9 +130,9 @@ async function runSection(run, results, logs) {
     ? playwrightSection(run, results, logs)
     : await lighthouseSection(run, results, logs);
   const head = `<h2><span class="tool ${run.tool === 'pw' ? 'pw' : 'lh'}">${run.tool === 'pw' ? 'Playwright' : 'Lighthouse'}</span> ${statusBadge(run.status)}</h2>
-<p>Mulai ${date(run.started_at)} · selesai ${date(run.finished_at)} · durasi ${dur(run.duration_ms)} · exit ${n(run.exit_code)}</p>`;
+<p>Mulai ${date(run.started_at)} - selesai ${date(run.finished_at)} - durasi ${dur(run.duration_ms)} - exit ${n(run.exit_code)}</p>`;
   return panel(head, `${run.error ? `<p class="b bad">${esc(run.error)}</p>` : ''}${body}
-    <p class="mut">${[files.length ? files.join(' · ') : '', link(`/api/runs/${run.id}/logs/download`, 'unduh log penuh')].filter(Boolean).join(' · ')}</p>`);
+    <p class="mut">${[files.length ? files.join(' - ') : '', link(`/api/runs/${run.id}/logs/download`, 'unduh log penuh')].filter(Boolean).join(' - ')}</p>`);
 }
 
 export async function buildSessionReport(store, reportId) {
@@ -157,10 +157,10 @@ export async function buildSessionReport(store, reportId) {
     const html = doc({
       title: `${session?.label ?? 'Laporan'} - Playbook`,
       brand: session?.label ?? 'Laporan',
-      sub: [project?.name, session?.env].filter(Boolean).join(' · '),
+      sub: [project?.name, session?.env].filter(Boolean).join(' - '),
       actions: verdict(usedRuns),
       hero: `<section class="hero">${sessionIntro(session, project, usedRuns)}</section>`,
-      body: sections.join('\n') + `<p class="doc-footer">Dibangun ${date(new Date().toISOString())} · cakupan ${esc(report.scope)} · ${runIds.length} run</p>`,
+      body: sections.join('\n') + `<p class="doc-footer">Dibangun ${date(new Date().toISOString())} - cakupan ${esc(report.scope)} - ${runIds.length} run</p>`,
     });
     await mkdir(outDir, { recursive: true });
 
@@ -185,7 +185,7 @@ export async function buildSessionReport(store, reportId) {
         exitCode: run.exit_code ?? null,
         error: run.error ?? null,
       };
-      await writeFile(file, JSON.stringify(meta, null, 2)).catch(() => {});
+      await writeFile(file, JSON.stringify(meta, null, 2)).catch(() => { });
     }
     let mode = 'docs';
     let fallbackError = null;
@@ -209,7 +209,7 @@ export async function buildSessionReport(store, reportId) {
     store.patchReport(reportId, { status: 'ready', path: 'index.html', mode, error: fallbackError, built_at: new Date().toISOString() });
     return { ok: true, dir: outDir, mode };
   } catch (error) {
-    await rm(outDir, { recursive: true, force: true }).catch(() => {});
+    await rm(outDir, { recursive: true, force: true }).catch(() => { });
     store.patchReport(reportId, { status: 'failed', error: error.message, built_at: new Date().toISOString() });
     throw error;
   }

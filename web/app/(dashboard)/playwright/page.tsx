@@ -389,7 +389,7 @@ export default function PlaywrightPage() {
               onChange={e => pickFile(e.target.value)} disabled={saving || files.length === 0}>
               {files.length === 0 && <option value="">belum ada spec</option>}
               {files.map(f => (
-                <option key={f.id} value={f.id}>{f.label} · {f.path}</option>
+                <option key={f.id} value={f.id}>{f.label} - {f.path}</option>
               ))}
             </select>
           </label>
@@ -409,8 +409,8 @@ export default function PlaywrightPage() {
             <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
               {session.closed_at ? "Sesi terakhir sudah ditutup" : "Sesi terbuka"}
               {" sejak "}<span className="pb-mono">{fmtTime(session.created_at)}</span>
-              {session.closed_at ? "" : ` · idle ${sessionAge} menit`}
-              {stale ? ` · lewat batas reuse ${reuseMinutes} menit, pakai Sesi baru` : ""}
+              {session.closed_at ? "" : ` - idle ${sessionAge} menit`}
+              {stale ? ` - lewat batas reuse ${reuseMinutes} menit, pakai Sesi baru` : ""}
             </p>
           )}
         </div>
@@ -505,7 +505,7 @@ export default function PlaywrightPage() {
             <div>
               <h2>Hasil run</h2>
               <div className="pb-card-sub">
-                {passed} lulus · {failed} gagal · {results.length} test case
+                {passed} lulus - {failed} gagal - {results.length} test case
               </div>
             </div>
             <span className={`pb-badge ${run.status}`}>{run.status}</span>
@@ -520,7 +520,7 @@ export default function PlaywrightPage() {
                   <span className="pb-fail-dot" />
                   <span>
                     <span className="pb-fail-title">{r.title}</span>
-                    <span className="pb-fail-meta">{r.file} · {fmtDur(r.duration_ms)}</span>
+                    <span className="pb-fail-meta">{r.file} - {fmtDur(r.duration_ms)}</span>
                     <span className="pb-fail-msg">{r.error ?? "tanpa pesan error"}</span>
                   </span>
                 </div>

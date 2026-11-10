@@ -112,8 +112,8 @@ export default function ProjectReports() {
                     {s.run_count ? (
                       <span title={`${s.pw_count ?? 0} Playwright, ${s.lh_count ?? 0} Lighthouse`}>
                         {s.run_count} run
-                        {(s.pw_count ?? 0) > 0 && <span className="pb-muted"> · pw {s.pw_count}</span>}
-                        {(s.lh_count ?? 0) > 0 && <span className="pb-muted"> · lh {s.lh_count}</span>}
+                        {(s.pw_count ?? 0) > 0 && <span className="pb-muted"> - pw {s.pw_count}</span>}
+                        {(s.lh_count ?? 0) > 0 && <span className="pb-muted"> - lh {s.lh_count}</span>}
                         {(s.failed_count ?? 0) > 0 && <span className="pb-badge failed" style={{ marginLeft: 6 }}>{s.failed_count}</span>}
                         {(s.active_count ?? 0) > 0 && <span className="pb-badge running" style={{ marginLeft: 6 }}>jalan</span>}
                       </span>
@@ -128,10 +128,10 @@ export default function ProjectReports() {
                         // ArtifactLink mengecek file dulu; report yang kena retensi jadi teks, bukan 404.
                         return canOpen
                           ? <span key={rep.id} style={{ marginRight: 6 }} title={title}>
-                              <ArtifactLink href={reportUrl(rep.id)} missing={`${rep.scope} report hilang`}>{rep.scope}</ArtifactLink>
-                            </span>
+                            <ArtifactLink href={reportUrl(rep.id)} missing={`${rep.scope} report hilang`}>{rep.scope}</ArtifactLink>
+                          </span>
                           : <span key={rep.id} className="pb-muted mono" title={title}
-                              style={{ marginRight: 6, fontSize: 11 }}>{rep.scope} {rep.status}</span>;
+                            style={{ marginRight: 6, fontSize: 11 }}>{rep.scope} {rep.status}</span>;
                       })}
                   </td>
                   <td className="mono">{fmtDate(s.created_at)}</td>

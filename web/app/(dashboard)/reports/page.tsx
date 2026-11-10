@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, fmtDate, groupProjects, type Project, type Stats } from "../../../lib/playbook";
 import { RunBar } from "../../_components/run-bar";
 
@@ -11,6 +11,20 @@ export default function ReportsPage() {
   const [stats, setStats] = useState<Record<string, Stats>>({});
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
+  const [shortcut, setShortcut] = useState("Ctrl+K");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setShortcut(/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K");
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     // all=true: report project arsip harus tetap bisa dibuka.
@@ -32,11 +46,15 @@ export default function ReportsPage() {
 
   return (
     <>
-      <div className="pb-head">
-        <div className="pb-filters">
-          <input className="pb-input" style={{ minWidth: 260 }} value={q}
+      <div className="pb-head" style={{ justifyContent: "flex-end", marginBottom: 20 }}>
+        <div className="pb-reports-search">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+          </svg>
+          <input ref={searchRef} className="pb-input" value={q}
             onChange={e => setQ(e.target.value)} placeholder="Cari grup atau project"
             aria-label="Cari grup atau project" />
+          <kbd>{shortcut}</kbd>
         </div>
       </div>
 
@@ -68,8 +86,8 @@ export default function ReportsPage() {
                       <div>
                         <h3>{p.name}{!p.active && <span className="pb-badge closed">Arsip</span>}</h3>
                         <div className="pb-pcard-meta">
-                          {s?.sessions ?? 0} sesi · {s?.runs ?? 0} run
-                          {failedRuns > 0 && ` · ${failedRuns} gagal`}
+                          {s?.sessions ?? 0} sesi - {s?.runs ?? 0} run
+                          {failedRuns > 0 && ` - ${failedRuns} gagal`}
                         </div>
                       </div>
                       <span

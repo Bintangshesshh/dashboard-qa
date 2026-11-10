@@ -94,12 +94,12 @@ const SECTIONS: SettingSection[] = [
     id: "sesi",
     tab: "report",
     title: "Pembagian sesi",
-    desc: "Sesi baru dibuat setelah idle selama ini, jadi run berjauhan tidak menumpuk di satu laporan.",
+    desc: "Pembagian sesi dibagi perberapa menit.",
     fields: [
       {
         key: "session_reuse_minutes", label: "Reuse sesi", suffix: "menit",
         min: 1, max: 10080,
-        help: "Idle dihitung dari run terakhir. Lebih pendek = laporan lebih ringkas per sesi.",
+        help: "Idle dihitung dari run terakhir.",
         format: fmtMinutes,
       },
     ],
@@ -108,12 +108,12 @@ const SECTIONS: SettingSection[] = [
     id: "upload",
     tab: "report",
     title: "Upload artifact",
-    desc: "Batas ukuran satu upload artifact dari runner.",
+    desc: "Batas ukuran satu upload dari runner.",
     fields: [
       {
         key: "max_upload_mb", label: "Batas upload artifact", suffix: "MB",
         min: 1, max: 1024,
-        help: "Ukuran maksimum satu upload artifact dari runner.",
+        help: "Ukuran maksimum satu upload dari runner.",
         format: value => `${num(value).toLocaleString("id-ID")} MB`,
       },
     ],
@@ -122,12 +122,12 @@ const SECTIONS: SettingSection[] = [
     id: "retensi",
     tab: "report",
     title: "Retensi",
-    desc: "Berapa lama data disimpan sebelum dibersihkan otomatis.",
+    desc: "Berapa lama data disimpan.",
     fields: [
       {
         key: "artifact_retention_days", label: "Artifact", suffix: "hari",
         min: 1, max: 365,
-        help: "Screenshot, trace, dan file hasil test dihapus setelah umur ini.",
+        help: "Screenshot, trace, dan file hasil test dihapus setelah retensi.",
         format: fmtDays,
       },
       {
@@ -139,7 +139,7 @@ const SECTIONS: SettingSection[] = [
       {
         key: "log_retention_days", label: "Log run", suffix: "hari",
         min: 1, max: 365,
-        help: "Teks log runner disimpan selama ini sebelum dipangkas.",
+        help: "Teks log runner disimpan selama ini.",
         format: fmtDays,
       },
     ],
@@ -148,12 +148,12 @@ const SECTIONS: SettingSection[] = [
     id: "tampilan",
     tab: "report",
     title: "Tampilan ringkasan",
-    desc: "Rentang hari yang dipakai Overview saat pertama dibuka.",
+    desc: "Rentang hari yang dipakai Overview.",
     fields: [
       {
         key: "range_default_days", label: "Range default", suffix: "hari",
         min: 1, max: 365,
-        help: "Rentang hari yang dipilih otomatis saat Ringkasan pertama dibuka.",
+        help: "Rentang hari yang dipilih.",
         format: fmtDays,
       },
     ],
@@ -182,9 +182,9 @@ export default function SettingsPage() {
   const load = () => {
     api.settings().then(s => { setSettings(s); setDraft({}); setSavedAt({}); })
       .catch(e => setError(e.message));
-    api.projects({ all: true }).then(setProjects).catch(() => {});
-    api.projectGroups().then(setGroups).catch(() => {});
-    api.testFiles({ all: true }).then(setFiles).catch(() => {});
+    api.projects({ all: true }).then(setProjects).catch(() => { });
+    api.projectGroups().then(setGroups).catch(() => { });
+    api.testFiles({ all: true }).then(setFiles).catch(() => { });
   };
 
   useEffect(load, []);
@@ -426,7 +426,6 @@ export default function SettingsPage() {
             <label className="pb-set-field" key={field.key}>
               <span className="pb-set-field-top">
                 <span className="pb-set-label">{field.label}</span>
-                <span className="pb-set-current">sekarang {field.format(settings[field.key])}</span>
               </span>
               <span className="pb-input-unit">
                 <input
@@ -472,12 +471,6 @@ export default function SettingsPage() {
 
   return (
     <>
-      <div className="pb-head">
-        <div>
-          <h1>Pengaturan.</h1>
-          <p className="pb-lead">Kelola preferensi, project, runner, dan dokumentasi.</p>
-        </div>
-      </div>
       {error && <div className="pb-err" role="alert">{error}</div>}
       {notice && <div className="pb-note flash">{notice}</div>}
 
@@ -492,7 +485,7 @@ export default function SettingsPage() {
                 </select>
               </label>
               <div className="pb-tabs" role="tablist" aria-label="Runner QA">
-                {([ ["pw", "Playwright"], ["lh", "Lighthouse"] ] as const).map(([id, label]) => <button key={id} className={`pb-tab ${qaTab === id ? "active" : ""}`} role="tab" aria-selected={qaTab === id} onClick={() => setQaTab(id)}>{label}</button>)}
+                {([["pw", "Playwright"], ["lh", "Lighthouse"]] as const).map(([id, label]) => <button key={id} className={`pb-tab ${qaTab === id ? "active" : ""}`} role="tab" aria-selected={qaTab === id} onClick={() => setQaTab(id)}>{label}</button>)}
               </div>
             </div>
           </>
@@ -602,20 +595,6 @@ export default function SettingsPage() {
         {mainTab === "general" && (
           <>
             {tabSections("report")}
-            <section className="pb-card">
-              <div className="pb-card-head">
-                <div>
-                  <h2>Isi report</h2>
-                  <div className="pb-card-sub">
-                    Report sesi memuat log runner, daftar artifact, dan skor Lighthouse terakhir.
-                  </div>
-                </div>
-                <Link className="pb-link-muted" href="/reports">Buka Reports</Link>
-              </div>
-              <p className="pb-hint">
-                Retensi di atas menentukan berapa lama file report di disk masih bisa dibuka.
-              </p>
-            </section>
           </>
         )}
 
@@ -651,7 +630,7 @@ export default function SettingsPage() {
                   + Project
                 </button>
                 <span className="pb-spacer" />
-                <span className="pb-set-status">{projects.length} project · {groups.length} grup</span>
+                <span className="pb-set-status">{projects.length} project - {groups.length} grup</span>
               </div>
 
               {addPanel === "group" && (
@@ -670,13 +649,6 @@ export default function SettingsPage() {
                     onCreate={async body => { await createProject(body); setAddPanel(null); }} />
                 </div>
               )}
-
-              <div className="pb-note" style={{ marginTop: 14 }}>
-                <p className="pb-note-title">Env local dijalankan dari mesin server dashboard</p>
-                Kalau dashboard dihosting, isi <code>local_url</code> dengan URL tunnel
-                (cloudflared/ngrok) ke web lokal, bukan 127.0.0.1. Origin-nya wajib terdaftar
-                di origins project atau <code>TARGET_ALLOWLIST</code>.
-              </div>
 
               {groups.length === 0 && orphans.length === 0 && (
                 <p className="pb-empty">

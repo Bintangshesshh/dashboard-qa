@@ -122,12 +122,12 @@ export function SpecGenerator({
       const saved = existingFile
         ? await api.patchTestFile(existingFile.id, { code: result.code, force: true })
         : await api.createTestFile({
-            projectId,
-            tool: "pw",
-            path,
-            label: `${projectName || projectSlug || "Project"} Playwright (${journey ? "journey" : "generated"})`,
-            code: result.code,
-          });
+          projectId,
+          tool: "pw",
+          path,
+          label: `${projectName || projectSlug || "Project"} Playwright (${journey ? "journey" : "generated"})`,
+          code: result.code,
+        });
       setNotice(`Tersimpan ke ${saved.path}. Spec langsung bisa dijalankan.`);
       showSuccessToast(`Spec tersimpan ke ${saved.path}.`);
       onSaved?.(saved);
@@ -139,7 +139,7 @@ export function SpecGenerator({
   };
 
   const summary = result
-    ? `${result.pages.length} halaman · ${result.pages.reduce((n, p) => n + p.inputs, 0)} input · ${result.pages.reduce((n, p) => n + p.buttons, 0)} tombol${(result as any).journey ? " · journey mode" : ""}`
+    ? `${result.pages.length} halaman - ${result.pages.reduce((n, p) => n + p.inputs, 0)} input - ${result.pages.reduce((n, p) => n + p.buttons, 0)} tombol${(result as any).journey ? " - journey mode" : ""}`
     : "";
 
   return (

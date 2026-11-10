@@ -10,6 +10,7 @@ export type Project = {
   origins: string[]; allow_production: number; active: number;
   group_id: string | null; group_name: string | null;
   lastRunAt: string | null;
+  lastRunStatus?: string | null;
 };
 export type TestFile = {
   id: string; project_id: string; tool: "pw" | "lh"; path: string;
@@ -32,6 +33,7 @@ export type Run = {
   network?: { seq: number; at: string; url: string; status: number | null; method: string | null; failure: string | null; ms: number | null }[];
 };
 export type RunRow = Run & {
+  project_id: string;
   session_label: string; env: string; project_name: string; has_html: number;
   // Username pemilik sesi; 'sistem' kalau pembuatnya sudah dihapus.
   run_by: string;
@@ -231,7 +233,8 @@ export const api = {
 
   // `all` ikutkan project arsip; hanya dipakai Pengaturan dan halaman arsip (PRD FR-03).
   projects: (q: { all?: boolean } = {}) =>
-    request<Project[]>("/api/projects" + (q.all ? "?all=1" : "")),
+    // no-store: status & run terakhir harus segar setiap halaman dibuka.
+    request<Project[]>("/api/projects" + (q.all ? "?all=1" : ""), { cache: "no-store" }),
   createProject: (body: {
     name: string; base_url: string; staging_url?: string | null;
     local_url?: string | null; origins?: string[]; allow_production?: number;
