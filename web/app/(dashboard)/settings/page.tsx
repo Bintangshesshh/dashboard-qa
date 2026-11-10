@@ -12,6 +12,7 @@ import { confirmAction, confirmRun, promptText, showErrorAlert, showInfoToast, s
 import { SpecGenerator } from "../spec-generator";
 import { LhciCard, NewGroupForm, NewProjectForm, ProjectRow, PwCard } from "./project-panels";
 import { Bantuan } from "./bantuan";
+import { SettingsLayout } from "./SettingsLayout";
 
 const num = (value: string) => Number(value) || 0;
 
@@ -30,14 +31,13 @@ const fmtMinutes = (value: string) => {
 };
 
 type TabId = "project" | "pw" | "lh" | "report" | "bantuan";
+type MainTab = "general" | "projects" | "qa" | "system";
 
-// Urutan tab mengikuti alur kerja: siapkan project dulu, baru pengaturan per tool.
-const TABS: { id: TabId; label: string }[] = [
-  { id: "project", label: "Project" },
-  { id: "pw", label: "Playwright" },
-  { id: "lh", label: "Lighthouse CI" },
-  { id: "report", label: "Report" },
-  { id: "bantuan", label: "Bantuan" },
+const TABS: { id: MainTab; label: string }[] = [
+  { id: "general", label: "Umum & Retensi" },
+  { id: "projects", label: "Kelola Project" },
+  { id: "qa", label: "Konfigurasi QA" },
+  { id: "system", label: "System & Dokumentasi" },
 ];
 
 const TAB_HINT: Record<TabId, string> = {
@@ -161,7 +161,9 @@ const SECTIONS: SettingSection[] = [
 ];
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<TabId>("pw");
+  const [tab, setTab] = useState<MainTab>("qa");
+  const [qaTab, setQaTab] = useState<"pw" | "lh">("pw");
+  const [qaProjectId, setQaProjectId] = useState("");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Partial<Record<keyof Settings, string>>>({});
   const [savedAt, setSavedAt] = useState<Record<string, string>>({});
@@ -199,6 +201,7 @@ export default function SettingsPage() {
 
   const sectionDirty = (section: SettingSection) =>
     section.fields.some(f => draft[f.key] !== undefined && draft[f.key] !== settings?.[f.key]);
+  const settingsDirty = Object.entries(draft).some(([key, value]) => value !== undefined && value !== String(settings?.[key as keyof Settings]));
 
   const fieldInvalid = (field: SettingField) => {
     const raw = draft[field.key];
@@ -233,6 +236,19 @@ export default function SettingsPage() {
       setSavedAt(current => ({ ...current, [section.id]: new Date().toISOString() }));
       showSuccessToast(`${section.title} tersimpan.`);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+
+  const saveAllSettings = async () => {
+    if (!settings || Object.values(draft).some(v => v === "")) return;
+    const body: Partial<Record<keyof Settings, number>> = {};
+    for (const section of SECTIONS) for (const field of section.fields) {
+      const value = draft[field.key];
+      if (value !== undefined && Number(value) !== Number(settings[field.key])) body[field.key] = Number(value);
+    }
+    if (!Object.keys(body).length) return;
+    setBusy(true); setError("");
+    try { setSettings(await api.patchSettings(body)); setDraft({}); showSuccessToast("Semua pengaturan tersimpan."); }
+    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
 
   const resetSection = async (section: SettingSection) => {
@@ -432,22 +448,13 @@ export default function SettingsPage() {
             </label>
           ))}
         </div>
-        <div className="pb-set-foot">
-          <button className="pb-btn primary" onClick={() => saveSection(section)}
-            disabled={busy || !dirty || section.fields.some(fieldInvalid)}
-            title={section.fields.some(fieldInvalid) ? "Ada nilai di luar rentang." : undefined}>
-            Simpan
-          </button>
-          <button className="pb-btn" onClick={() => resetSection(section)}
-            disabled={busy || !dirty}>Reset</button>
-          <span className="pb-spacer" />
-          <span className="pb-set-status">Berlaku untuk run berikutnya.</span>
-        </div>
+        <div className="pb-set-foot"><span className="pb-set-status">Berlaku untuk run berikutnya.</span></div>
       </section>
     );
   };
 
   const tabSections = (id: TabId) => SECTIONS.filter(s => s.tab === id).map(renderSection);
+  const mainTab = tab;
   const visibleProjects = showArchived ? projects : projects.filter(p => p.active);
   const byGroup = (id: string | null) =>
     visibleProjects.filter(p => (p.group_id ?? null) === id)
@@ -457,6 +464,7 @@ export default function SettingsPage() {
     .sort((a, b) => a.name.localeCompare(b.name));
   const pwFiles = files.filter(f => f.tool === "pw");
   const lhFiles = files.filter(f => f.tool === "lh");
+  const selectedProject = activeProjects.find(p => p.id === qaProjectId) ?? activeProjects[0] ?? null;
   const genProjects = activeProjects.map(p => ({ id: p.id, name: p.name }));
   const genProject = activeProjects.find(p => p.id === genProjectId) ?? null;
   const genFile = genProject ? pwFiles.find(f => f.project_id === genProject.id) ?? null : null;
@@ -467,24 +475,29 @@ export default function SettingsPage() {
       <div className="pb-head">
         <div>
           <h1>Pengaturan.</h1>
-          <p className="pb-lead">{TAB_HINT[tab]}</p>
+          <p className="pb-lead">Kelola preferensi, project, runner, dan dokumentasi.</p>
         </div>
       </div>
       {error && <div className="pb-err" role="alert">{error}</div>}
       {notice && <div className="pb-note flash">{notice}</div>}
 
-      <div className="pb-tabs pb-set-tabbar" role="tablist" aria-label="Bagian pengaturan">
-        {TABS.map(t => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id}
-            className={`pb-tab ${tab === t.id ? "active" : ""}`}
-            onClick={() => { setTab(t.id); setNotice(""); }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SettingsLayout tabs={TABS} activeTab={mainTab} onSelect={id => { const next = id as MainTab; setTab(next); setNotice(""); }}>
 
-      <div className="pb-set-tab-body">
-        {tab === "pw" && (
+        {mainTab === "qa" && (
+          <>
+            <div className="pb-set-toolbar">
+              <label className="pb-field">Project konfigurasi
+                <select className="pb-select" value={selectedProject?.id ?? ""} onChange={e => setQaProjectId(e.target.value)}>
+                  {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+              <div className="pb-tabs" role="tablist" aria-label="Runner QA">
+                {([ ["pw", "Playwright"], ["lh", "Lighthouse"] ] as const).map(([id, label]) => <button key={id} className={`pb-tab ${qaTab === id ? "active" : ""}`} role="tab" aria-selected={qaTab === id} onClick={() => setQaTab(id)}>{label}</button>)}
+              </div>
+            </div>
+          </>
+        )}
+        {mainTab === "qa" && qaTab === "pw" && (
           <>
             <SpecGenerator
               projectOptions={genProjects}
@@ -554,11 +567,8 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              {activeProjects.map(p => (
-                <PwCard key={p.id} project={p}
-                  file={pwFiles.find(f => f.project_id === p.id) ?? null}
-                  onSave={saveTestFile} />
-              ))}
+              {selectedProject && <PwCard key={selectedProject.id} project={selectedProject}
+                file={pwFiles.find(f => f.project_id === selectedProject.id) ?? null} onSave={saveTestFile} />}
               {activeProjects.length === 0 && (
                 <p className="pb-empty">Belum ada project aktif.</p>
               )}
@@ -566,7 +576,7 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "lh" && (
+        {mainTab === "qa" && qaTab === "lh" && (
           <>
             <section className="pb-card">
               <div className="pb-card-head">
@@ -578,13 +588,9 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              {activeProjects.map(p => {
-                const file = lhFiles.find(f => f.project_id === p.id) ?? null;
-                return (
-                  <LhciCard key={p.id} project={p} file={file}
-                    onSave={saveTestFile} onAddFile={addTestFile} />
-                );
-              })}
+              {selectedProject && <LhciCard key={selectedProject.id} project={selectedProject}
+                file={lhFiles.find(f => f.project_id === selectedProject.id) ?? null}
+                onSave={saveTestFile} onAddFile={addTestFile} />}
               {activeProjects.length === 0 && (
                 <p className="pb-empty">Belum ada project aktif.</p>
               )}
@@ -593,7 +599,7 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "report" && (
+        {mainTab === "general" && (
           <>
             {tabSections("report")}
             <section className="pb-card">
@@ -613,7 +619,7 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "project" && (
+        {mainTab === "projects" && (
           <>
             <section className="pb-card">
               <div className="pb-card-head">
@@ -752,9 +758,14 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "bantuan" && <Bantuan />}
+        {mainTab === "system" && <Bantuan />}
 
-      </div>
+      </SettingsLayout>
+      {settingsDirty && <div className="settings-savebar" role="status">
+        <span>Ada perubahan yang belum disimpan</span>
+        <button className="pb-btn" disabled={busy} onClick={() => setDraft({})}>Batal / Reset</button>
+        <button className="pb-btn primary" disabled={busy || SECTIONS.some(s => s.fields.some(fieldInvalid))} onClick={saveAllSettings}>{busy ? "Menyimpan…" : "Simpan Semua"}</button>
+      </div>}
     </>
   );
 }

@@ -57,18 +57,11 @@ export function Bantuan() {
             </div>
           </div>
         </div>
-        {help ? (
-          <div className="pb-kv">
-            {rows.map(r => (
-              <div className="pb-kv-row" key={r.label}>
-                <span>{r.label}</span>
-                <code className="pb-mono">{r.value ?? "tidak diketahui"}</code>
-              </div>
-            ))}
-          </div>
-        ) : <p className="pb-empty sm">Memuat versi…</p>}
+        {help ? <div className="system-status-grid">
+          {rows.map(r => <div className="system-status" key={r.label}><span>{r.label}</span><code className="pb-mono">{r.value ?? "tidak diketahui"}</code></div>)}
+          <UpdateTools />
+        </div> : <p className="pb-empty sm">Memuat versi…</p>}
 
-        <UpdateTools />
 
         {help && (
           <div className="pb-lh-field pb-proj-foot">
@@ -150,7 +143,7 @@ function UpdateTools() {
     <div className="pb-lh-field pb-proj-foot">
       <div className="pb-row" style={{ gap: 8, alignItems: "center" }}>
         <button className="pb-btn sm primary" onClick={run} disabled={busy}>
-          {busy ? "Memperbarui…" : "Perbarui tools"}
+          {busy ? "Memperbarui…" : "Update All Tools"}
         </button>
         <span className="pb-set-help">
           @playwright/test dan @lhci/cli ke versi terbaru, lalu npx playwright install.
