@@ -3,12 +3,12 @@
 // Semua endpoint settings butuh admin; viewer kena 403 dan hanya melihat pesan galat.
 // Tab: Project, Playwright, Lighthouse, Report, Akses, Bantuan.
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api, fmtDate, fmtTime, readLastProject, rememberProject,
   type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
-import { confirmAction, confirmRun, promptText, showErrorAlert, showInfoToast, showSuccessToast } from "../../../lib/alerts";
+import { confirmAction, confirmRun, showErrorAlert, showInfoToast, showSuccessToast } from "../../../lib/alerts";
 import { SpecGenerator } from "../spec-generator";
 import { LhciCard, NewGroupForm, NewProjectForm, ProjectRow, PwCard } from "./project-panels";
 import { Bantuan } from "./bantuan";
@@ -178,6 +178,14 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  // Draft config QA (PwCard/LhciCard) ikut satu savebar dengan setelan umum.
+  const [qaDirty, setQaDirty] = useState(false);
+  const [qaResetKey, setQaResetKey] = useState(0);
+  const qaSaveRef = useRef<(() => Promise<boolean>) | null>(null);
+  const handleQaDirtyChange = useCallback((dirty: boolean) => setQaDirty(dirty), []);
+  const registerQaSave = useCallback((save: (() => Promise<boolean>) | null) => {
+    qaSaveRef.current = save;
+  }, []);
 
   const load = () => {
     api.settings().then(s => { setSettings(s); setDraft({}); setSavedAt({}); })
@@ -202,6 +210,10 @@ export default function SettingsPage() {
   const sectionDirty = (section: SettingSection) =>
     section.fields.some(f => draft[f.key] !== undefined && draft[f.key] !== settings?.[f.key]);
   const settingsDirty = Object.entries(draft).some(([key, value]) => value !== undefined && value !== String(settings?.[key as keyof Settings]));
+  // QA dihitung satu kelompok: card hanya mengirim status dirty, bukan daftar field.
+  const settingsChangeCount = SECTIONS.reduce((total, section) => total + section.fields.filter(
+    f => draft[f.key] !== undefined && draft[f.key] !== String(settings?.[f.key])).length, 0);
+  const changeCount = settingsChangeCount + (qaDirty ? 1 : 0);
 
   const fieldInvalid = (field: SettingField) => {
     const raw = draft[field.key];
@@ -210,66 +222,47 @@ export default function SettingsPage() {
     return raw === "" || !Number.isSafeInteger(n) || n < field.min || n > field.max;
   };
 
-  const saveSection = async (section: SettingSection) => {
-    if (!settings) return;
-    const body: Partial<Record<keyof Settings, number>> = {};
-    for (const field of section.fields) {
-      const value = draft[field.key];
-      if (value !== undefined && value !== "" && value !== settings[field.key]) {
-        body[field.key] = Number(value);
-      }
-    }
-    if (!Object.keys(body).length) { setNotice("Tidak ada perubahan di bagian ini."); return; }
-    if (!(await confirmAction({
-      title: `Simpan ${section.title}?`,
-      text: "Nilai baru berlaku untuk run berikutnya.",
-      confirmButtonText: "Ya, Simpan",
-    }))) return;
-    setBusy(true); setError(""); setNotice("");
-    try {
-      setSettings(await api.patchSettings(body));
-      setDraft(current => {
-        const next = { ...current };
-        for (const key of Object.keys(body)) delete next[key as keyof Settings];
-        return next;
-      });
-      setSavedAt(current => ({ ...current, [section.id]: new Date().toISOString() }));
-      showSuccessToast(`${section.title} tersimpan.`);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-  };
-
   const saveAllSettings = async () => {
-    if (!settings || Object.values(draft).some(v => v === "")) return;
+    if (!settings) return;
+    if (SECTIONS.some(s => s.fields.some(fieldInvalid))) return;
     const body: Partial<Record<keyof Settings, number>> = {};
     for (const section of SECTIONS) for (const field of section.fields) {
       const value = draft[field.key];
       if (value !== undefined && Number(value) !== Number(settings[field.key])) body[field.key] = Number(value);
     }
-    if (!Object.keys(body).length) return;
+    const hasSettings = Object.keys(body).length > 0;
+    if (!hasSettings && !qaDirty) return;
     setBusy(true); setError("");
-    try { setSettings(await api.patchSettings(body)); setDraft({}); showSuccessToast("Semua pengaturan tersimpan."); }
-    catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try {
+      // Draft QA disimpan dulu: kalau validasi/server menolak, setelan umum tidak ikut berubah.
+      if (qaDirty && qaSaveRef.current) {
+        const ok = await qaSaveRef.current();
+        if (!ok) return;
+      }
+      if (hasSettings) {
+        setSettings(await api.patchSettings(body));
+        setDraft({});
+        const now = new Date().toISOString();
+        setSavedAt(current => {
+          const next = { ...current };
+          for (const section of SECTIONS) {
+            if (section.fields.some(f => f.key in body)) next[section.id] = now;
+          }
+          return next;
+        });
+      }
+      showSuccessToast("Semua pengaturan tersimpan.");
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
 
-  const resetSection = async (section: SettingSection) => {
-    if (!(await confirmAction({
-      icon: "question",
-      title: `Reset ${section.title}?`,
-      text: "Perubahan yang belum disimpan akan dibuang.",
-      confirmButtonText: "Ya, Reset",
-    }))) return;
-    setDraft(current => {
-      const next = { ...current };
-      for (const field of section.fields) delete next[field.key];
-      return next;
-    });
-    setSavedAt(current => {
-      if (!current[section.id]) return current;
-      const next = { ...current };
-      delete next[section.id];
-      return next;
-    });
-    showInfoToast(`${section.title} direset.`);
+  // Satu tombol batal untuk kedua sumber draft: setelan umum dan config QA.
+  const resetAllSettings = () => {
+    setDraft({});
+    setSavedAt({});
+    setQaResetKey(key => key + 1);
+    qaSaveRef.current = null;
+    setQaDirty(false);
+    showInfoToast("Perubahan yang belum disimpan dibuang.");
   };
 
   // Error diteruskan ke form: isian tidak boleh hilang saat gagal.
@@ -340,14 +333,22 @@ export default function SettingsPage() {
     } catch (e) { setError((e as Error).message); }
   };
 
-  const saveTestFile = async (file: TestFile, patch: Parameters<typeof api.patchTestFile>[1]) => {
+  const saveTestFile = async (
+    file: TestFile,
+    patch: Parameters<typeof api.patchTestFile>[1],
+    { silent = false }: { silent?: boolean } = {},
+  ) => {
     setError(""); setNotice("");
     try {
       const updated = await api.patchTestFile(file.id, patch);
       setFiles(prev => prev.map(x => (x.id === file.id ? updated : x)));
       setNotice(`${file.label} disimpan.`);
-      showSuccessToast(`${file.label} disimpan.`);
-    } catch (e) { setError((e as Error).message); }
+      if (!silent) showSuccessToast(`${file.label} disimpan.`);
+    } catch (e) {
+      setError((e as Error).message);
+      // Card QA butuh tahu gagal supaya draft tidak dianggap tersimpan.
+      throw e;
+    }
   };
 
   // Test file milik project. Error diteruskan ke form supaya isian tidak hilang.
@@ -389,17 +390,12 @@ export default function SettingsPage() {
 
   // Hapus permanen: project berriwayat ikut menghapus sesi, run, dan report.
   const deleteProject = async (p: Project) => {
-    const typed = await promptText({
+    if (!(await confirmAction({
       icon: "warning",
       title: `Hapus permanen ${p.name}?`,
-      text: `Ketik nama project untuk konfirmasi. Semua sesi, run, dan laporan project ini ikut terhapus dan tidak bisa dikembalikan.`,
+      text: "Semua sesi, run, dan laporan project ini ikut terhapus dan tidak bisa dikembalikan.",
       confirmButtonText: "Hapus permanen",
-    });
-    if (typed == null) return;
-    if (typed.trim() !== p.name) {
-      showErrorAlert("Nama tidak cocok", `Ketik persis "${p.name}" untuk menghapus.`);
-      return;
-    }
+    }))) return;
     setError(""); setNotice("");
     try {
       await api.deleteProject(p.id, true);
@@ -545,7 +541,7 @@ export default function SettingsPage() {
                     {own.map(f => (
                       <label className="pb-spec-row" key={f.id}>
                         <input type="checkbox" checked={!!f.enabled}
-                          onChange={e => saveTestFile(f, { enabled: e.target.checked ? 1 : 0 })} />
+                          onChange={e => { void saveTestFile(f, { enabled: e.target.checked ? 1 : 0 }).catch(() => {}); }} />
                         <span className="pb-spec-name">{f.label}</span>
                         <span className="pb-spec-path">{f.path}</span>
                         <span className={`pb-badge ${f.enabled ? "passed" : "closed"}`}>
@@ -570,8 +566,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              {selectedProject && <PwCard key={selectedProject.id} project={selectedProject}
-                file={pwFiles.find(f => f.project_id === selectedProject.id) ?? null} onSave={saveTestFile} />}
+              {selectedProject && <PwCard key={`${selectedProject.id}-${qaResetKey}`} project={selectedProject}
+                file={pwFiles.find(f => f.project_id === selectedProject.id) ?? null}
+                onSave={(f, patch) => saveTestFile(f, patch, { silent: true })}
+                onDirtyChange={handleQaDirtyChange} registerSave={registerQaSave} />}
               {activeProjects.length === 0 && (
                 <p className="pb-empty">Belum ada project aktif.</p>
               )}
@@ -591,9 +589,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              {selectedProject && <LhciCard key={selectedProject.id} project={selectedProject}
+              {selectedProject && <LhciCard key={`${selectedProject.id}-${qaResetKey}`} project={selectedProject}
                 file={lhFiles.find(f => f.project_id === selectedProject.id) ?? null}
-                onSave={saveTestFile} onAddFile={addTestFile} />}
+                onSave={(f, patch) => saveTestFile(f, patch, { silent: true })} onAddFile={addTestFile}
+                onDirtyChange={handleQaDirtyChange} registerSave={registerQaSave} />}
               {activeProjects.length === 0 && (
                 <p className="pb-empty">Belum ada project aktif.</p>
               )}
@@ -743,9 +742,13 @@ export default function SettingsPage() {
         {mainTab === "system" && <Bantuan />}
 
       </SettingsLayout>
-      {settingsDirty && <div className="settings-savebar" role="status">
-        <span>Ada perubahan yang belum disimpan</span>
-        <button className="pb-btn" disabled={busy} onClick={() => setDraft({})}>Batal / Reset</button>
+      {(settingsDirty || qaDirty) && <div className="settings-savebar" role="status">
+        <span className="settings-savebar-text">
+          <strong>{changeCount} perubahan belum disimpan</strong>
+          <span className="pb-muted">Berlaku untuk run berikutnya.</span>
+        </span>
+        <span className="pb-spacer" />
+        <button className="pb-btn" disabled={busy} onClick={resetAllSettings}>Batal</button>
         <button className="pb-btn primary" disabled={busy || SECTIONS.some(s => s.fields.some(fieldInvalid))} onClick={saveAllSettings}>{busy ? "Menyimpan…" : "Simpan Semua"}</button>
       </div>}
     </>

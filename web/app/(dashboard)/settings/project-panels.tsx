@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, type Project, type ProjectGroup, type TestFile } from "../../../lib/playbook";
 import { confirmAction, confirmRun, showInfoToast } from "../../../lib/alerts";
 import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig } from "../../_components/lh-config-editor";
@@ -27,11 +27,13 @@ const lhDefaultBody = (project: Project) => ({
 });
 
 // Editor config lhci per project; bentuk JSON sama dengan /lighthouse (PRD T09).
-export function LhciCard({ project, file, onSave, onAddFile }: {
+export function LhciCard({ project, file, onSave, onAddFile, onDirtyChange, registerSave }: {
   project: Project;
   file: TestFile | null;
   onSave: SaveFile;
   onAddFile: AddFile;
+  onDirtyChange: (dirty: boolean) => void;
+  registerSave: (save: (() => Promise<boolean>) | null) => void;
 }) {
   const target = project.base_url || "";
   const [config, setConfig] = useState(file?.config ?? "");
@@ -39,8 +41,8 @@ export function LhciCard({ project, file, onSave, onAddFile }: {
   const [error, setError] = useState("");
   const dirty = !!file && config !== (file.config ?? "");
 
-  const save = async () => {
-    if (!file) return;
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!file) return false;
     const cfg = parseLhConfig(config);
     const msg = lhConfigError({
       target, extra: extraUrlsOf(cfg, project),
@@ -49,17 +51,20 @@ export function LhciCard({ project, file, onSave, onAddFile }: {
         c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100),
       ])),
     });
-    if (msg) { setError(msg); return; }
-    if (!(await confirmAction({
-      title: "Simpan config Lighthouse?",
-      text: `${project.name}: config baru dipakai saat lhci digenerate.`,
-      confirmButtonText: "Ya, Simpan",
-    }))) return;
+    if (msg) { setError(msg); return false; }
     setSaving(true); setError("");
-    try { await onSave(file, { config }); }
-    catch (e) { setError((e as Error).message); }
+    try { await onSave(file, { config }); return true; }
+    catch (e) { setError((e as Error).message); return false; }
     finally { setSaving(false); }
-  };
+  }, [config, file, onSave, project, target]);
+
+  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => {
+    registerSave(dirty ? save : null);
+    return () => registerSave(null);
+  }, [dirty, registerSave, save]);
+  // Draft ikut hilang saat card dilepas; jangan biarkan status global tertinggal.
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   // Config default dari URL project.
   const create = async () => {
@@ -102,19 +107,18 @@ export function LhciCard({ project, file, onSave, onAddFile }: {
 
       <div className="pb-row pb-proj-foot">
         <span className="pb-set-status">
-          {!file ? "Belum ada config" : dirty ? "Belum disimpan" : "Tersimpan"}
+          {!file ? "Belum ada config" : saving ? "Menyimpan…" : dirty ? "Belum disimpan" : "Tersimpan"}
         </span>
         <span className="pb-spacer" />
-        {file ? (
-          <button className="pb-btn sm primary" onClick={save}
-            disabled={saving || !dirty || !target.trim()}>
-            Simpan config
-          </button>
-        ) : (
+        {!file ? (
           <button className="pb-btn sm primary" onClick={create}
             disabled={saving || !target.trim()}>
             Buat config default
           </button>
+        ) : (
+          <span className="pb-muted" style={{ fontSize: 12 }}>
+            {dirty ? "Perubahan ikut tombol Simpan Semua." : "Nilai aktif."}
+          </span>
         )}
       </div>
     </div>
@@ -124,10 +128,12 @@ export function LhciCard({ project, file, onSave, onAddFile }: {
 // Setelan Playwright per project (PRD S03), disimpan di config spec pertama.
 type PwCfg = { env?: string; timeout?: number; workers?: number; retries?: number };
 
-export function PwCard({ project, file, onSave }: {
+export function PwCard({ project, file, onSave, onDirtyChange, registerSave }: {
   project: Project;
   file: TestFile | null;
   onSave: SaveFile;
+  onDirtyChange: (dirty: boolean) => void;
+  registerSave: (save: (() => Promise<boolean>) | null) => void;
 }) {
   const parsed = (() => {
     try { return (JSON.parse(file?.config ?? "{}") ?? {}) as PwCfg; } catch { return {} as PwCfg; }
@@ -140,19 +146,38 @@ export function PwCard({ project, file, onSave }: {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const dirty = !!file && (pw.env !== (parsed.env ?? "local")
+    || pw.timeout !== (parsed.timeout ?? 120000)
+    || pw.workers !== (parsed.workers ?? 1)
+    || pw.retries !== (parsed.retries ?? 0));
 
-  const save = async () => {
-    if (!file) return;
-    if (!(await confirmAction({
-      title: "Simpan setelan Playwright?",
-      text: `${project.name}: timeout, worker, retry, dan env.`,
-      confirmButtonText: "Ya, Simpan",
-    }))) return;
+  const save = useCallback(async (): Promise<boolean> => {
+    if (!file) return false;
+    const timeout = pw.timeout ?? 120000;
+    const workers = pw.workers ?? 1;
+    const retries = pw.retries ?? 0;
+    if (!Number.isSafeInteger(timeout) || timeout < 10000 || timeout > 900000) {
+      setError("Timeout harus 10.000-900.000 ms."); return false;
+    }
+    if (!Number.isSafeInteger(workers) || workers < 1 || workers > 8) {
+      setError("Workers harus 1-8."); return false;
+    }
+    if (!Number.isSafeInteger(retries) || retries < 0 || retries > 3) {
+      setError("Retries harus 0-3."); return false;
+    }
     setSaving(true); setError("");
-    try { await onSave(file, { config: JSON.stringify({ ...parsed, ...pw }) }); }
-    catch (e) { setError((e as Error).message); }
+    try { await onSave(file, { config: JSON.stringify({ ...parsed, ...pw }) }); return true; }
+    catch (e) { setError((e as Error).message); return false; }
     finally { setSaving(false); }
-  };
+  }, [file, onSave, parsed, pw]);
+
+  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => {
+    registerSave(dirty ? save : null);
+    return () => registerSave(null);
+  }, [dirty, registerSave, save]);
+  // Draft ikut hilang saat card dilepas; jangan biarkan status global tertinggal.
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   return (
     <div className="pb-proj-card">
@@ -206,10 +231,13 @@ export function PwCard({ project, file, onSave }: {
       )}
       {error && <div className="pb-err" role="alert">{error}</div>}
       <div className="pb-row pb-proj-foot">
+        <span className="pb-set-status">
+          {!file ? "Belum ada spec" : saving ? "Menyimpan…" : dirty ? "Belum disimpan" : "Tersimpan"}
+        </span>
         <span className="pb-spacer" />
-        <button className="pb-btn sm primary" onClick={save} disabled={saving || !file}>
-          Simpan setelan
-        </button>
+        <span className="pb-muted" style={{ fontSize: 12 }}>
+          {dirty ? "Perubahan ikut tombol Simpan Semua." : "Nilai aktif."}
+        </span>
       </div>
     </div>
   );
