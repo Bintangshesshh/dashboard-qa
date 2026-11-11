@@ -348,6 +348,8 @@ export function ProjectRow({ project, groups, files, onSave, onAddFile, onRemove
         <button className="pb-btn sm" onClick={() => onSave(project, { active: archived ? 1 : 0 })}>
           {archived ? "Pulihkan" : "Arsipkan"}
         </button>
+        <button className="pb-btn sm danger" title="Hapus permanen project"
+          onClick={() => onDelete(project)}>Hapus</button>
       </div>
       {open && (
         <ProjectDetail project={project} files={files} onSave={onSave}

@@ -1507,7 +1507,7 @@ test('T02: CRUD grup — buat, rename, hapus kosong, nama duplikat 409', async t
   assert.ok(actions.includes('delete_group'));
 });
 
-test('T02: hapus grup berisi project (aktif atau arsip) ditolak 409', async t => {
+test('T02: hapus grup berisi project memindahkan project ke Tanpa grup', async t => {
   const { call, login, store } = await fixture(t);
   const cookie = await login();
 
@@ -1518,12 +1518,18 @@ test('T02: hapus grup berisi project (aktif atau arsip) ditolak 409', async t =>
   assert.equal(r.body[0].project_count, 1);
 
   r = await call(`/api/project-groups/${group.id}`, { method: 'DELETE', cookie });
-  assert.equal(r.status, 409);
+  assert.equal(r.status, 204);
+  assert.equal(store.getProjectGroup(group.id), undefined);
+  assert.equal(store.getProject('p1').group_id, null);
 
-  // Project arsip juga dihitung
+  // Project arsip juga tetap ada dan tidak terhapus.
   store.db.prepare('UPDATE projects SET active=0 WHERE id=?').run('p1');
-  r = await call(`/api/project-groups/${group.id}`, { method: 'DELETE', cookie });
-  assert.equal(r.status, 409);
+  const other = (await call('/api/project-groups', { method: 'POST', cookie, body: { name: 'Arsip' } })).body;
+  store.db.prepare('UPDATE projects SET group_id=? WHERE id=?').run(other.id, 'p1');
+  r = await call(`/api/project-groups/${other.id}`, { method: 'DELETE', cookie });
+  assert.equal(r.status, 204);
+  assert.equal(store.getProject('p1').group_id, null);
+  assert.equal(store.getProject('p1').active, 0);
 });
 
 test('T02: viewer tidak boleh menulis grup', async t => {

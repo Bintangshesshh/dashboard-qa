@@ -137,6 +137,10 @@ export class Store {
     return this.getProjectGroup(id);
   }
   deleteProjectGroup(id) { return this.db.prepare('DELETE FROM project_groups WHERE id=?').run(id).changes > 0; }
+  // Project tidak ikut terhapus saat grupnya dihapus; hanya kehilangan grup.
+  detachProjectsFromGroup(groupId) {
+    return this.db.prepare('UPDATE projects SET group_id=NULL WHERE group_id=?').run(groupId).changes;
+  }
 
   // ─── Projects ────────────────────────────────────────────────────────────
   // includeArchived dipakai report/breadcrumb/Pengaturan: `active=0` = arsip.

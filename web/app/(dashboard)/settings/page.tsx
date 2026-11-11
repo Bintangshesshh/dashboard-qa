@@ -308,17 +308,24 @@ export default function SettingsPage() {
   };
 
   const removeGroup = async (g: ProjectGroup) => {
+    const count = projects.filter(p => p.group_id === g.id).length;
     if (!(await confirmAction({
       icon: "warning",
       title: `Hapus grup "${g.name}"?`,
-      text: "Project di dalamnya harus dipindahkan dulu.",
+      text: count
+        ? `${count} project di grup ini akan dipindah ke Tanpa grup. Project, riwayat, dan laporannya tidak ikut terhapus.`
+        : "Grup kosong akan dihapus.",
       confirmButtonText: "Ya, Hapus",
     }))) return;
     setError(""); setNotice("");
     try {
       await api.deleteProjectGroup(g.id);
       setGroups(prev => prev.filter(x => x.id !== g.id));
-      showSuccessToast(`Grup ${g.name} dihapus.`);
+      setProjects(prev => prev.map(p =>
+        p.group_id === g.id ? { ...p, group_id: null, group_name: null } : p));
+      showSuccessToast(count
+        ? `Grup ${g.name} dihapus; ${count} project dipindah ke Tanpa grup.`
+        : `Grup ${g.name} dihapus.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -698,8 +705,8 @@ export default function SettingsPage() {
                             })}>
                             Ganti nama
                           </button>
-                          <button className="pb-btn sm danger" disabled={own.length > 0}
-                            title={own.length > 0 ? "Pindahkan project dulu" : undefined}
+                          <button className="pb-btn sm danger"
+                            title={own.length > 0 ? "Project akan dipindah ke Tanpa grup" : undefined}
                             onClick={() => removeGroup(g)}>Hapus grup</button>
                         </>
                       )}

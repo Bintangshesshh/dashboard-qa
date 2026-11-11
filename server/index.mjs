@@ -237,10 +237,16 @@ export function createApp({ store, runner, origins }) {
   app.delete('/api/project-groups/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const group = store.getProjectGroup(id(req.params.id));
     if (!group) fail('Data tidak ditemukan', 404);
-    // Grup kosong saja; project arsip juga dihitung.
-    if (store.countProjectsInGroup(group.id) > 0) fail('Grup masih berisi project', 409);
-    store.deleteProjectGroup(group.id);
-    store.audit({ userId: req.user.id, action: 'delete_group', entity: 'project_groups', entityId: group.id });
+    // Project dan riwayatnya tetap aman; project di grup ini menjadi "Tanpa grup".
+    const detached = store.tx(() => {
+      const count = store.detachProjectsFromGroup(group.id);
+      store.deleteProjectGroup(group.id);
+      return count;
+    });
+    store.audit({
+      userId: req.user.id, action: 'delete_group', entity: 'project_groups', entityId: group.id,
+      detail: JSON.stringify({ detachedProjects: detached }),
+    });
     res.sendStatus(204);
   }));
 
