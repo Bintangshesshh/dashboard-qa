@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api, type Project, type ProjectGroup, type TestFile } from "../../../lib/playbook";
-import { confirmAction, confirmRun, showInfoToast } from "../../../lib/alerts";
+import { confirmAction } from "../../../lib/alerts";
 import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig } from "../../_components/lh-config-editor";
 
 type SaveProject = (p: Project, patch: Parameters<typeof api.patchProject>[1]) => Promise<void>;
@@ -458,13 +458,7 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onTogg
 
   const fileActions = (
     <>
-      <button className="pb-btn sm" onClick={() => confirmRun({
-        title: addOpen ? "Batal tambah spec?" : "Buka form spec Playwright?",
-        confirmButtonText: addOpen ? "Ya, Batal" : "Buka",
-      }, () => {
-        setAddOpen(o => !o);
-        showInfoToast(addOpen ? "Tambah spec dibatalkan." : "Form spec dibuka.");
-      })} disabled={busy}>
+      <button className="pb-btn sm" onClick={() => setAddOpen(o => !o)} disabled={busy}>
         {addOpen ? "Batal" : "+ Spec Playwright"}
       </button>
       {!hasLh && (
@@ -481,7 +475,7 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onTogg
         <label className="pb-field">nama
           <input className="pb-input" value={name} onChange={e => setName(e.target.value)} />
         </label>
-        <label className="pb-field">slug (tidak bisa diubah)
+        <label className="pb-field">slug
           <input className="pb-input pb-mono" value={project.slug} readOnly />
         </label>
         <label className="pb-field">base_url
@@ -493,7 +487,7 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onTogg
         <label className="pb-field">local_url
           <input className="pb-input" value={local} onChange={e => setLocal(e.target.value)} />
         </label>
-        <label className="pb-field">origins (pisah koma)
+        <label className="pb-field">origins
           <input className="pb-input" value={origins} onChange={e => setOrigins(e.target.value)} />
         </label>
       </div>
@@ -559,20 +553,8 @@ function ProjectDetail({ project, files, onSave, onAddFile, onRemoveFile, onTogg
             </div>
           </div>
         )}
-
-        {!deletable && (
-          <p className="pb-hint">
-            Project ini punya riwayat. Hapus permanen akan ikut menghapus semua sesi, run, dan laporan. Pakai Arsipkan kalau report masih mau dibuka.
-          </p>
-        )}
-        <div className="pb-row pb-proj-foot">
-          <button className="pb-btn sm danger" onClick={() => onDelete(project)}>
-            Hapus permanen
-          </button>
-        </div>
         {err && <div className="pb-err" role="alert">{err}</div>}
       </div>
     </div>
   );
 }
-

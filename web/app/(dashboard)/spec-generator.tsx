@@ -64,11 +64,6 @@ export function SpecGenerator({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (loading || !url.trim()) return;
-    if (!(await confirmAction({
-      title: "Generate template spec?",
-      text: `Crawl ${url.trim()} dari mesin server.`,
-      confirmButtonText: "Ya, Generate",
-    }))) return;
     setLoading(true);
     setError("");
     setNotice("");
@@ -84,10 +79,6 @@ export function SpecGenerator({
 
   const download = async () => {
     if (!result) return;
-    if (!(await confirmAction({
-      title: "Download generated-flow.spec.ts?",
-      confirmButtonText: "Ya, Download",
-    }))) return;
     const blob = new Blob([result.code], { type: "text/typescript;charset=utf-8" });
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -109,11 +100,6 @@ export function SpecGenerator({
       title: "Timpa spec yang ada?",
       text: `${existingFile.path} akan diganti dengan hasil generate ini.`,
       confirmButtonText: "Ya, Timpa",
-    }))) return;
-    if (!existingFile && !(await confirmAction({
-      title: "Simpan spec ke project?",
-      text: `${path} akan dibuat dari hasil generate ini.`,
-      confirmButtonText: "Ya, Simpan",
     }))) return;
     setSaving(true);
     setError("");

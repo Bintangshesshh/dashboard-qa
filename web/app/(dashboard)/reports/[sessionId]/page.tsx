@@ -514,11 +514,6 @@ function NativeReportLink({ runId, path, label }: { runId: string; path: string;
 function CopyRingkas({ reportId, runIds }: { reportId: string; runIds: string[] }) {
   const [label, setLabel] = useState("Salin markdown");
   const copy = async () => {
-    if (!(await confirmAction({
-      icon: "question",
-      title: "Salin markdown laporan?",
-      confirmButtonText: "Ya, Salin",
-    }))) return;
     try {
       // ringkas.txt ada per run; gabungkan semua run di report ini.
       const parts = await Promise.all(runIds.map(async id => {

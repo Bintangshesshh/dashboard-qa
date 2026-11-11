@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import "./shell.css";
 import { api, ApiError, rememberProject, runStatusLabel, type Project, type User } from "../../lib/playbook";
-import { confirmAction, showLogoutConfirm, showRunToast, showSuccessToast } from "../../lib/alerts";
+import { showLogoutConfirm, showRunToast, showSuccessToast } from "../../lib/alerts";
 import { readLastProject, readLastEnv } from "../../lib/playbook";
 
 const FINAL_RUN = new Set(["passed", "failed", "cancelled", "interrupted"]);
@@ -176,12 +176,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   };
 
   const retryPing = async () => {
-    if (!(await confirmAction({
-      icon: "question",
-      title: "Coba lagi?",
-      text: "Periksa koneksi ke backend.",
-      confirmButtonText: "Ya, Coba",
-    }))) return;
     if (await ping()) showSuccessToast("Backend tersambung kembali.");
   };
 

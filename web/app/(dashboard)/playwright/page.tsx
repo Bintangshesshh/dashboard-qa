@@ -217,11 +217,6 @@ export default function PlaywrightPage() {
   const addSpec = async () => {
     if (!project || saving) return;
     const path = `tests/${project.slug}.spec.ts`;
-    if (!(await confirmAction({
-      title: "Buat spec Playwright?",
-      text: `${path} untuk ${project.name}.`,
-      confirmButtonText: "Ya, Buat",
-    }))) return;
     setSaving(true); setError("");
     try {
       const fallback = resolvedUrl(project, env) || project.base_url || "";
@@ -245,11 +240,6 @@ export default function PlaywrightPage() {
   // Generate template dari target env terpilih, lalu simpan sebagai spec project.
   const generateSpecFile = async () => {
     if (!project || !target || generating || saving) return;
-    if (!(await confirmAction({
-      title: "Generate spec Playwright?",
-      text: `Crawl ${target} dari mesin server.`,
-      confirmButtonText: "Ya, Generate",
-    }))) return;
     setGenerating(true); setError("");
     try {
       const result = await api.generateSpec(target, projectId);
@@ -279,12 +269,6 @@ export default function PlaywrightPage() {
   // Arah sebaliknya: ambil versi disk (mis. habis pull dari git).
   const reload = async () => {
     if (!selected) return;
-    if (!(await confirmAction({
-      icon: "warning",
-      title: "Muat ulang dari disk?",
-      text: "Perubahan yang belum disimpan akan hilang.",
-      confirmButtonText: "Ya, Muat Ulang",
-    }))) return;
     setSaving(true); setError("");
     try {
       const updated = await api.reloadTestFile(selected.id);
