@@ -13,13 +13,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Kenapa waktu tampil WIB?",
-    a: "Semua timestamp disimpan UTC dan ditampilkan dalam WIB agar jadwal run tim tidak beda-beda.",
-  },
-  {
-    q: "Bagaimana token CLI dipakai?",
-    a: "Token hanya untuk playbook CLI di laptop, bukan login dashboard. Setiap user "
-      + "punya tokennya sendiri, dibuat otomatis saat playbook login. Cabut dari tab "
-      + "Akses kalau perangkat hilang; password tidak perlu diganti.",
+    a: "Semua timestamp disimpan UTC dan ditampilkan dalam WIB agar jadwal run tidak beda-beda.",
   },
   {
     q: "Kenapa config Lighthouse ditolak?",
@@ -51,24 +45,13 @@ export function Bantuan() {
         <div className="pb-card-head">
           <div>
             <h2>Versi & update</h2>
-            <div className="pb-card-sub">
-              Tombol Perbarui tools menjalankan npm di mesin server. Hanya admin, hanya saat
-              diklik, dan output-nya tampil di bawah.
-            </div>
           </div>
         </div>
-        {help ? (
-          <div className="pb-kv">
-            {rows.map(r => (
-              <div className="pb-kv-row" key={r.label}>
-                <span>{r.label}</span>
-                <code className="pb-mono">{r.value ?? "tidak diketahui"}</code>
-              </div>
-            ))}
-          </div>
-        ) : <p className="pb-empty sm">Memuat versi…</p>}
+        {help ? <div className="system-status-grid">
+          {rows.map(r => <div className="system-status" key={r.label}><span>{r.label}</span><code className="pb-mono">{r.value ?? "tidak diketahui"}</code></div>)}
+          <UpdateTools />
+        </div> : <p className="pb-empty sm">Memuat versi…</p>}
 
-        <UpdateTools />
 
         {help && (
           <div className="pb-lh-field pb-proj-foot">
@@ -103,24 +86,7 @@ export function Bantuan() {
           </details>
         ))}
       </section>
-
-      <section className="pb-card">
-        <div className="pb-card-head">
-          <div>
-            <h2>Masukan</h2>
-            <div className="pb-card-sub">Laporan bug dan permintaan fitur.</div>
-          </div>
-        </div>
-        {help?.feedback_url
-          ? <a className="pb-link" href={help.feedback_url} target="_blank" rel="noreferrer">
-            Buka form masukan
-          </a>
-          : <p className="pb-hint">
-            Belum ada tautan masukan. Hubungi admin dashboard untuk mengaktifkan
-            tombol masukan.
-          </p>}
-      </section>
-    </>
+</>
   );
 }
 
@@ -150,12 +116,8 @@ function UpdateTools() {
     <div className="pb-lh-field pb-proj-foot">
       <div className="pb-row" style={{ gap: 8, alignItems: "center" }}>
         <button className="pb-btn sm primary" onClick={run} disabled={busy}>
-          {busy ? "Memperbarui…" : "Perbarui tools"}
+          {busy ? "Memperbarui…" : "Update All Tools"}
         </button>
-        <span className="pb-set-help">
-          @playwright/test dan @lhci/cli ke versi terbaru, lalu npx playwright install.
-          Restart server setelah selesai.
-        </span>
       </div>
       {out && <pre className="pb-mono pb-tools-out">{out}</pre>}
     </div>

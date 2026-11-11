@@ -61,19 +61,21 @@ const LIVE_FRAMES_KEPT = 60;
 const MIN_LH_TIMEOUT_MS = 900_000;
 const LH_TIMEOUT_CAP_MS = 120 * 60_000;
 
-// timeout = max(15 menit, 5 menit + URL x run x 90 detik), cap 120 menit; flat 900 dtk tidak proporsional untuk 5 URL x 10 run.
-export function lhTimeout(urlCount, runsPerUrl = 1) {
+// timeout = max(15 menit, 5 menit + URL x run x device x 90 detik), cap 120 menit;
+// flat 900 dtk tidak proporsional untuk 5 URL x 10 run, apalagi mode both (2 device).
+export function lhTimeout(urlCount, runsPerUrl = 1, devices = 1) {
   const urls = Math.max(1, Number(urlCount) || 1);
   const runs = Math.max(1, Number(runsPerUrl) || 1);
-  const dynamic = 5 * 60_000 + urls * runs * 90_000;
+  const dev = Math.max(1, Number(devices) || 1);
+  const dynamic = 5 * 60_000 + urls * runs * dev * 90_000;
   return Math.min(Math.max(MIN_LH_TIMEOUT_MS, dynamic), LH_TIMEOUT_CAP_MS);
 }
 
-// Jumlah audit untuk timeout: URL sesi ikut dihitung, duplikat dibuang.
+// Jumlah audit untuk timeout: URL sesi ikut dihitung, duplikat dibuang; satu run selalu 2 device.
 export function lhAuditShape(testFile, targetUrl) {
   const cfg = (() => { try { return JSON.parse(testFile?.config ?? 'null'); } catch { return null; } })();
   const urls = lhUrls(cfg, targetUrl);
-  return [urls.length || 1, cfg?.numberOfRuns ?? 1];
+  return [urls.length || 1, cfg?.numberOfRuns ?? 1, 2];
 }
 
 // URL config bisa ditulis pada host env mana pun (production paling umum).
@@ -98,7 +100,7 @@ export function lhUrls(cfg, targetUrl, projectUrls = []) {
 const isLoopback = h => h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h.endsWith('.localhost');
 const localHttps = urls => urls.some(u => { try { const x = new URL(u); return x.protocol === 'https:' && isLoopback(x.hostname); } catch { return false; } });
 
-export function lhConfig(cfg, targetUrl, outDir, { allowedOrigins = [], projectUrls = [] } = {}) {
+export function lhConfig(cfg, targetUrl, outDir, { allowedOrigins = [], projectUrls = [], device } = {}) {
   const urls = lhUrls(cfg, targetUrl, projectUrls);
   if (!urls.length) throw new Error('Tidak ada URL untuk diaudit: sesi tanpa targetUrl dan config tanpa urls');
   if (urls.length > MAX_LH_URLS) throw new Error(`Maksimal ${MAX_LH_URLS} URL per run Lighthouse (diminta ${urls.length})`);
@@ -118,13 +120,14 @@ export function lhConfig(cfg, targetUrl, outDir, { allowedOrigins = [], projectU
   const assertions = Object.fromEntries(
     Object.entries(cfg?.budgets ?? {}).map(([k, v]) => [k, ['error', { minScore: v?.minScore ?? 0.6 }]]),
   );
+  const formFactor = device ?? (cfg?.formFactor === 'desktop' ? 'desktop' : 'mobile');
+  const settings = { locale: cfg?.locale === 'en' ? 'en' : 'id' };
+  if (formFactor === 'desktop') settings.preset = 'desktop';
+  // Loopback HTTPS saja yang dilewati cek sertifikat.
+  if (localHttps(urls)) settings.chromeFlags = ['--ignore-certificate-errors'];
   return `module.exports = ${JSON.stringify({
     ci: {
-      collect: {
-        numberOfRuns: runs,
-        url: urls,
-        ...(localHttps(urls) ? { settings: { chromeFlags: ['--ignore-certificate-errors'] } } : {}),
-      },
+      collect: { numberOfRuns: runs, url: urls, settings },
       assert: { assertions },
       upload: { target: 'filesystem', outputDir: String(outDir).replaceAll('\\', '/') },
     },
@@ -147,6 +150,49 @@ export function warningLines(results) {
 function parseJsonArray(raw) {
   if (!raw) return [];
   try { const v = JSON.parse(raw); return Array.isArray(v) ? v : [v]; } catch { return []; }
+}
+
+// Halaman pemilih device untuk mode both. Statis, tanpa dependency; hash #mobile/#desktop memilih tab awal.
+export function lighthouseDeviceReport(rows, locale = 'id') {
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const devices = ['mobile', 'desktop'];
+  const tab = (name, label) => `<button type="button" data-tab="${name}">${label}</button>`;
+  const panels = devices.map(name => {
+    const items = (rows ?? []).filter(r => r.formFactor === name && r.reportPath);
+    const options = items.map(r => `<option value="${esc(r.reportPath)}">${esc(r.url)}</option>`).join('');
+    const src = items[0]?.reportPath ?? 'about:blank';
+    return `<section class="panel" data-panel="${name}">
+  ${items.length > 1 ? `<label>URL <select data-src>${options}</select></label>` : `<p class="url">${esc(items[0]?.url ?? 'Report tidak tersedia')}</p>`}
+  <iframe title="Report ${name}" src="${esc(src)}" loading="lazy"></iframe>
+</section>`;
+  }).join('');
+  return `<!doctype html><html lang="${locale === 'en' ? 'en' : 'id'}"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Report Lighthouse</title>
+<style>
+:root{color-scheme:light dark}body{margin:0;font:14px/1.4 system-ui,sans-serif;background:#0f172a;color:#e2e8f0}
+.tabs{display:flex;gap:4px;padding:8px 10px;background:#1e293b}.tabs button{border:0;border-radius:6px;padding:8px 14px;background:transparent;color:#cbd5e1;font:inherit;cursor:pointer}.tabs button.active{background:#38bdf8;color:#082f49;font-weight:600}
+.panel{display:none}.panel.active{display:block}.panel label{display:flex;gap:8px;align-items:center;padding:8px 12px}.panel .url{padding:8px 12px;margin:0;color:#cbd5e1;overflow-wrap:anywhere}
+iframe{display:block;width:100%;height:calc(100vh - 58px);border:0;background:#fff}
+</style></head><body>
+<nav class="tabs" role="tablist">${tab('mobile', 'Mobile')}${tab('desktop', 'Desktop')}</nav>
+${panels}
+<script>
+const panels = [...document.querySelectorAll('[data-panel]')];
+const tabs = [...document.querySelectorAll('[data-tab]')];
+function show(name) {
+  const active = name === 'desktop' ? 'desktop' : 'mobile';
+  for (const panel of panels) panel.classList.toggle('active', panel.dataset.panel === active);
+  for (const button of tabs) button.classList.toggle('active', button.dataset.tab === active);
+  if (location.hash.slice(1) !== active) history.replaceState(null, '', '#' + active);
+}
+for (const button of tabs) button.addEventListener('click', () => show(button.dataset.tab));
+for (const select of document.querySelectorAll('select[data-src]')) select.addEventListener('change', () => {
+  select.closest('[data-panel]').querySelector('iframe').src = select.value;
+});
+addEventListener('hashchange', () => show(location.hash.slice(1)));
+show(location.hash.slice(1) || 'mobile');
+</script></body></html>`;
 }
 
 // Ambil baris JSONL lengkap sejak `offset`; baris terakhir tanpa newline ditinggal agar write terpotong tidak terbaca.
@@ -208,7 +254,9 @@ export class Runner extends EventEmitter {
     const run = this.store.getRun(runId);
     if (!run) throw Object.assign(new Error('Data tidak ditemukan'), { status: 404 });
     if (run.status !== 'running') throw Object.assign(new Error('Run tidak sedang berjalan'), { status: 409 });
-    const mode = action === 'resume' ? 'run' : action === 'pause' || action === 'step' ? action : null;
+    const mode = action === 'resume' ? 'run'
+      : action === 'pause' || action === 'step' || action === 'skip' ? action
+      : null;
     if (!mode) throw Object.assign(new Error('Aksi kontrol tidak dikenal'), { status: 400 });
     // Run yang sedang berjalan sudah punya folder, tapi mkdir membuat kontrol
     // tetap aman kalau dipanggil tepat saat run baru mulai.
@@ -462,45 +510,82 @@ export class Runner extends EventEmitter {
     const { runId, testFile, targetUrl } = state;
     const dir = this.directory(runId);
     await this.log(state, 'system', `[runner] Menjalankan Lighthouse CI ${testFile.path}\n`);
-    const outDir = join(dir, 'artifacts');
-    await mkdir(outDir, { recursive: true });
+    const artifactsRoot = join(dir, 'artifacts');
+    await mkdir(artifactsRoot, { recursive: true });
     // Config digenerate dari test_files.config (PRD §8.3); tanpa ini env local/staging tetap menembak URL produksi di file repo.
     const cfg = (() => { try { return JSON.parse(testFile.config ?? 'null'); } catch { return null; } })();
-    let configPath = isAbsolute(testFile.path) ? testFile.path : join(root, testFile.path);
-    if (cfg) {
-      configPath = join(dir, 'lighthouserc.cjs');
-      // Origin URL tambahan divalidasi di sini juga: config bisa ditulis CLI.
-      const allowed = this.allowedOriginsFor(state);
-      const projectUrls = this.projectUrlsFor(state);
-      await writeFile(configPath, lhConfig(cfg, targetUrl, outDir, { allowedOrigins: allowed, projectUrls }));
-      const audited = lhUrls(cfg, targetUrl, projectUrls);
-      await this.log(state, 'system', `[runner] Config LH digenerate (${cfg.numberOfRuns ?? 1}x, ${audited.length} URL)\n`);
-    }
-    // cwd = dir: lhci menulis .lighthouseci/ relatif cwd, tiap run terisolasi; console/network LH muncul setelah audit selesai.
+    // UI tidak lagi menyediakan pilihan device: setiap run Lighthouse mengaudit mobile lalu desktop.
+    const formFactor = 'both';
+    const devices = ['mobile', 'desktop'];
+    const allowed = this.allowedOriginsFor(state);
+    const projectUrls = this.projectUrlsFor(state);
+    // Origin URL tambahan divalidasi sebelum spawn: config bisa ditulis CLI.
+    const lhConfigs = devices.map(device => {
+      if (!cfg) return null;
+      const workspace = formFactor === 'both' ? join(dir, 'lh', device) : dir;
+      const outDir = formFactor === 'both' ? join(artifactsRoot, device) : artifactsRoot;
+      return { device, workspace, outDir, body: lhConfig(cfg, targetUrl, outDir, { allowedOrigins: allowed, projectUrls, device }) };
+    });
+    const audited = lhUrls(cfg, targetUrl, projectUrls);
+    await this.log(state, 'system', `[runner] Config LH ${devices.join(' + ')} (${cfg?.numberOfRuns ?? 1}x, ${audited.length} URL)\n`);
+    // cwd terisolasi per device: lhci menulis .lighthouseci/ relatif cwd, console/network LH muncul setelah audit selesai.
     await this.log(state, 'system', '[runner] Console & network Lighthouse diambil dari LHR dan muncul setelah audit selesai.\n');
-    const child = spawn(process.execPath, [lhciBin, 'autorun', '--config=' + configPath, '--upload.target=filesystem', '--upload.outputDir=' + outDir], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
-    state.child = child;
-    child.stdout.on('data', d => this.log(state, 'stdout', d));
-    child.stderr.on('data', d => this.log(state, 'stderr', d));
-    const code = await new Promise(res => { child.on('close', res); child.on('error', e => { this.log(state, 'stderr', e.message + '\n'); res(1); }); });
-    state.child = null;
-    await state.chain;
 
-    const results = await this.parseLighthouse(dir, state);
-    const status = state.cancelled ? 'cancelled' : state.timedOut ? 'failed' : !results.length ? 'failed' : code === 0 ? 'passed' : 'failed';
+    const specs = [];
+    let exitCode = 0;
+    for (const device of devices) {
+      if (state.cancelled || state.timedOut) break;
+      const generated = lhConfigs.find(c => c?.device === device);
+      const workspace = generated?.workspace ?? dir;
+      const outDir = generated?.outDir ?? artifactsRoot;
+      await mkdir(workspace, { recursive: true });
+      await mkdir(outDir, { recursive: true });
+      let configPath = isAbsolute(testFile.path) ? testFile.path : join(root, testFile.path);
+      if (generated) {
+        configPath = join(workspace, 'lighthouserc.cjs');
+        await writeFile(configPath, generated.body);
+      }
+      specs.push({ formFactor: device, artifactsDir: outDir, lhciDir: join(workspace, '.lighthouseci'), reportRoot: artifactsRoot });
+      await this.log(state, 'system', `[runner] Lighthouse ${device} dimulai\n`);
+
+      let code = 1;
+      try {
+        const child = spawn(process.execPath, [lhciBin, 'autorun', '--config=' + configPath, '--upload.target=filesystem', '--upload.outputDir=' + outDir], { cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'] });
+        state.child = child;
+        child.stdout.on('data', d => this.log(state, 'stdout', d));
+        child.stderr.on('data', d => this.log(state, 'stderr', d));
+        code = await new Promise(res => { child.on('close', res); child.on('error', e => { this.log(state, 'stderr', e.message + '\n'); res(1); }); });
+      } catch (error) {
+        await this.log(state, 'stderr', error.message + '\n');
+      }
+      state.child = null;
+      await state.chain;
+      if (code !== 0) exitCode = code || 1;
+      await this.log(state, 'system', `[runner] Lighthouse ${device} selesai (exit ${code})\n`);
+    }
+
+    const results = await this.parseLighthouse(dir, state, specs);
+    // Mode both: satu halaman pemilih device; hash #mobile/#desktop dipasang UI.
+    if (formFactor === 'both' && results.length) {
+      const page = lighthouseDeviceReport(results, cfg?.locale);
+      const reportPath = 'lh-report.html';
+      const ok = await writeFile(join(artifactsRoot, reportPath), page).then(() => true).catch(() => false);
+      if (ok) for (const r of results) r.reportPath = reportPath;
+    }
+    const status = state.cancelled ? 'cancelled' : state.timedOut ? 'failed' : !results.length ? 'failed' : exitCode === 0 ? 'passed' : 'failed';
     const error = state.timedOut ? 'timeout' : !results.length && !state.cancelled ? 'JSON Lighthouse tidak ditemukan' : null;
     if (results.length) await this.store.addLighthouseResults(runId, results);
     // PRD §8.8: runWarnings LH juga tampil di terminal, bukan cuma kolom warnings.
     for (const line of warningLines(results)) await this.log(state, 'system', line);
     await this.collectArtifacts(runId, dir, 'lh');
     const finishedAt = new Date().toISOString();
-    await this.writeRunJson(state, dir, { status, exitCode: code, error, mode: 'lh', finishedAt });
+    await this.writeRunJson(state, dir, { status, exitCode, error, mode: 'lh', finishedAt });
     // Sama seperti Playwright: artifact dulu, status final terakhir.
     await this.store.patchRun(runId, {
       status,
       error,
       finished_at: finishedAt,
-      exit_code: code,
+      exit_code: exitCode,
       duration_ms: Date.now() - state.startTime,
       finalized_at: finishedAt,
     });
@@ -613,9 +698,24 @@ export class Runner extends EventEmitter {
   }
 
   // Baca LHR/report dari `.lighthouseci/` juga: upload filesystem menyalin belakangan, jadi skor tetap ada saat run dibunuh sebelum upload.
-  async parseLighthouse(dir, state = null) {
-    const artifactsDir = join(dir, 'artifacts');
-    const lhciDir = join(dir, '.lighthouseci');
+  // `devices` kosong = layout lama (artifacts/ + .lighthouseci/ di root run). Mode both memakai satu entri per device.
+  async parseLighthouse(dir, state = null, devices = null) {
+    const rootArtifacts = join(dir, 'artifacts');
+    const list = devices ?? [{
+      formFactor: 'mobile',
+      artifactsDir: rootArtifacts,
+      lhciDir: join(dir, '.lighthouseci'),
+      reportRoot: rootArtifacts,
+    }];
+    const out = [];
+    for (const device of list) {
+      const rows = await this.parseLighthouseDevice(state, device);
+      for (const row of rows) out.push({ ...row, formFactor: device.formFactor });
+    }
+    return out;
+  }
+
+  async parseLighthouseDevice(state, { artifactsDir, lhciDir, reportRoot }) {
     const files = await filesBelow(artifactsDir).catch(() => []);
     const out = new Map();
 
@@ -632,7 +732,7 @@ export class Runner extends EventEmitter {
     const manifest = parseJsonArray(await readFile(join(artifactsDir, 'manifest.json'), 'utf8').catch(() => null));
     const htmlByUrl = new Map();
     for (const m of manifest) {
-      if (m.url && m.htmlPath) htmlByUrl.set(m.url, relative(artifactsDir, m.htmlPath).replaceAll('\\', '/'));
+      if (m.url && m.htmlPath) htmlByUrl.set(m.url, relative(reportRoot, m.htmlPath).replaceAll('\\', '/'));
     }
 
     let lhrFiles = files.filter(f => f.endsWith('.json') && f !== 'manifest.json');
@@ -679,8 +779,9 @@ export class Runner extends EventEmitter {
       delete row.at;
       if (row.reportPath) continue;
       const name = basename(fileByUrl.get(url) ?? '').replace(/\.json$/, '.html');
-      const ok = await copyFile(join(lhrDir, name), join(artifactsDir, 'lh-' + name)).then(() => true).catch(() => false);
-      if (ok) row.reportPath = 'lh-' + name;
+      const dest = join(artifactsDir, 'lh-' + name);
+      const ok = await copyFile(join(lhrDir, name), dest).then(() => true).catch(() => false);
+      if (ok) row.reportPath = relative(reportRoot, dest).replaceAll('\\', '/');
     }
     return [...out.values()];
   }

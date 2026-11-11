@@ -237,10 +237,16 @@ export function createApp({ store, runner, origins }) {
   app.delete('/api/project-groups/:id', requireAuth, requireAdmin, route(async (req, res) => {
     const group = store.getProjectGroup(id(req.params.id));
     if (!group) fail('Data tidak ditemukan', 404);
-    // Grup kosong saja; project arsip juga dihitung.
-    if (store.countProjectsInGroup(group.id) > 0) fail('Grup masih berisi project', 409);
-    store.deleteProjectGroup(group.id);
-    store.audit({ userId: req.user.id, action: 'delete_group', entity: 'project_groups', entityId: group.id });
+    // Project dan riwayatnya tetap aman; project di grup ini menjadi "Tanpa grup".
+    const detached = store.tx(() => {
+      const count = store.detachProjectsFromGroup(group.id);
+      store.deleteProjectGroup(group.id);
+      return count;
+    });
+    store.audit({
+      userId: req.user.id, action: 'delete_group', entity: 'project_groups', entityId: group.id,
+      detail: JSON.stringify({ detachedProjects: detached }),
+    });
     res.sendStatus(204);
   }));
 
@@ -262,7 +268,7 @@ export function createApp({ store, runner, origins }) {
   const publicProject = p => ({
     id: p.id, slug: p.slug, name: p.name, group_id: p.group_id, group_name: p.group_name,
     base_url: p.base_url, active: p.active, allow_production: p.allow_production,
-    created_at: p.created_at, lastRunAt: p.lastRunAt,
+    created_at: p.created_at, lastRunAt: p.lastRunAt, lastRunStatus: p.lastRunStatus ?? null,
   });
   app.get('/api/projects', requireAuth, route(async (req, res) => {
     const all = req.query.all === '1';
@@ -486,7 +492,6 @@ export function createApp({ store, runner, origins }) {
     if (!targetUrl) fail(`Project ini belum punya URL untuk env ${e}`, 400);
     if (e === 'production') {
       if (!project.allow_production) fail('Run production diblokir untuk project ini', 403);
-      if (req.body?.confirm !== project.name) fail('Ketik ulang nama project untuk konfirmasi production', 400);
     }
     return { e, targetUrl };
   };
@@ -894,7 +899,7 @@ export function createApp({ store, runner, origins }) {
     // Checkpoint memperpanjang timeout; tanpa mode debug, pause akan dibunuh
     // timeout normal 2 menit, jadi tolak di depan daripada gagal membingungkan.
     if (!runner.active || runner.active.runId !== run.id) fail('Run belum berjalan di runner', 409);
-    if (!runner.active.options?.debug) fail('Pause/step hanya aktif saat run memakai mode Debug', 409);
+    if (!runner.active.options?.debug) fail('Pause/step/skip hanya aktif saat run memakai mode Debug', 409);
     const out = await runner.control(run.id, String(req.body?.action ?? ''));
     store.audit({ userId: req.user.id, action: 'control_run', entity: 'runs', entityId: run.id, detail: JSON.stringify(out) });
     res.json(out);

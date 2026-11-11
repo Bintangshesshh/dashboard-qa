@@ -137,12 +137,19 @@ export class Store {
     return this.getProjectGroup(id);
   }
   deleteProjectGroup(id) { return this.db.prepare('DELETE FROM project_groups WHERE id=?').run(id).changes > 0; }
+  // Project tidak ikut terhapus saat grupnya dihapus; hanya kehilangan grup.
+  detachProjectsFromGroup(groupId) {
+    return this.db.prepare('UPDATE projects SET group_id=NULL WHERE group_id=?').run(groupId).changes;
+  }
 
   // ─── Projects ────────────────────────────────────────────────────────────
   // includeArchived dipakai report/breadcrumb/Pengaturan: `active=0` = arsip.
   listProjects({ includeArchived = false } = {}) {
     return this.db.prepare(`SELECT p.*, g.name AS group_name,
-      (SELECT MAX(r.finished_at) FROM runs r JOIN sessions s2 ON s2.id = r.session_id WHERE s2.project_id = p.id) AS lastRunAt
+      (SELECT MAX(r.finished_at) FROM runs r JOIN sessions s2 ON s2.id = r.session_id WHERE s2.project_id = p.id) AS lastRunAt,
+      (SELECT r.status FROM runs r JOIN sessions s2 ON s2.id = r.session_id
+        WHERE s2.project_id = p.id AND r.finished_at IS NOT NULL
+        ORDER BY r.finished_at DESC LIMIT 1) AS lastRunStatus
       FROM projects p LEFT JOIN project_groups g ON g.id = p.group_id
       ${includeArchived ? '' : 'WHERE p.active=1'} ORDER BY p.name`).all().map(parseOrigins);
   }
@@ -255,6 +262,7 @@ export class Store {
     // status adalah alias, bukan kolom: saring di query luar agar LIMIT membatasi baris yang cocok.
     const rows = this.db.prepare(
       'SELECT * FROM (SELECT s.*, ' + SESSION_STATUS_SQL + ' AS status,' +
+      ' (SELECT MAX(COALESCE(finished_at, started_at, queued_at)) FROM runs WHERE session_id=s.id) AS last_run_at,' +
       ' coalesce(c.run_count, 0) AS run_count,' +
       ' coalesce(c.pw_count, 0) AS pw_count,' +
       ' coalesce(c.lh_count, 0) AS lh_count,' +
@@ -333,7 +341,7 @@ export class Store {
   listRunsBySession(sessionId) { return this.db.prepare('SELECT * FROM runs WHERE session_id=? ORDER BY queued_at').all(sessionId); }
   listRuns({ projectId, tool, limit = 10 } = {}) {
     // Username pemilik sesi ikut dipilih untuk feed "Run terakhir".
-    let sql = `SELECT r.*, s.label AS session_label, s.env AS env, p.name AS project_name,
+    let sql = `SELECT r.*, s.project_id AS project_id, s.label AS session_label, s.env AS env, p.name AS project_name,
       COALESCE(u.username, 'sistem') AS run_by,
       EXISTS(SELECT 1 FROM artifacts a WHERE a.run_id=r.id AND a.kind=(CASE r.tool WHEN 'lh' THEN 'lh-html' ELSE 'pw-html' END)) AS has_html
       FROM runs r JOIN sessions s ON s.id=r.session_id JOIN projects p ON p.id=s.project_id
@@ -476,15 +484,15 @@ export class Store {
 
   // ─── Lighthouse results ──────────────────────────────────────────────────
   addLighthouseResults(runId, rows) {
-    const ins = this.db.prepare(`INSERT INTO lighthouse_results (id, run_id, url, performance, accessibility, best_practices, seo, lcp_ms, cls, tbt_ms, budget_failed, warnings, report_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    const ins = this.db.prepare(`INSERT INTO lighthouse_results (id, run_id, url, performance, accessibility, best_practices, seo, lcp_ms, cls, tbt_ms, budget_failed, warnings, report_path, form_factor, locale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     this.db.exec('BEGIN');
     try {
       this.db.prepare('DELETE FROM lighthouse_results WHERE run_id=?').run(runId);
-      for (const r of rows) ins.run(randomUUID(), runId, r.url, r.performance ?? null, r.accessibility ?? null, r.bestPractices ?? null, r.seo ?? null, r.lcpMs ?? null, r.cls ?? null, r.tbtMs ?? null, r.budgetFailed ?? null, r.warnings ?? null, r.reportPath ?? null);
+      for (const r of rows) ins.run(randomUUID(), runId, r.url, r.performance ?? null, r.accessibility ?? null, r.bestPractices ?? null, r.seo ?? null, r.lcpMs ?? null, r.cls ?? null, r.tbtMs ?? null, r.budgetFailed ?? null, r.warnings ?? null, r.reportPath ?? null, r.formFactor === 'desktop' ? 'desktop' : 'mobile', r.locale ?? null);
       this.db.exec('COMMIT');
     } catch (e) { this.db.exec('ROLLBACK'); throw e; }
   }
-  listLighthouseResults(runId) { return this.db.prepare('SELECT * FROM lighthouse_results WHERE run_id=? ORDER BY url').all(runId); }
+  listLighthouseResults(runId) { return this.db.prepare('SELECT * FROM lighthouse_results WHERE run_id=? ORDER BY url, form_factor').all(runId); }
   listLighthouseByProject({ projectId, limit = 20 } = {}) {
     let sql = `SELECT l.*, r.status AS run_status, r.queued_at, r.session_id, s.label AS session_label, s.env
       FROM lighthouse_results l
@@ -493,7 +501,7 @@ export class Store {
       WHERE 1=1`;
     const vals = [];
     if (projectId) { sql += ' AND s.project_id=?'; vals.push(projectId); }
-    sql += ' ORDER BY r.queued_at DESC, l.url LIMIT ?';
+    sql += ' ORDER BY r.queued_at DESC, l.url, l.form_factor LIMIT ?';
     vals.push(Math.min(Math.max(Number(limit) || 20, 1), 200));
     return this.db.prepare(sql).all(...vals);
   }

@@ -30,8 +30,8 @@ const scopeLabel = scope => (scope === 'both' ? 'Gabungan' : scope === 'pw' ? 'P
 function runBlock({ run, results }) {
   const out = [];
   const isPw = run.tool === 'pw';
-  out.push(`### ${isPw ? 'Playwright' : 'Lighthouse'} · ${cell(run.status)}`);
-  out.push(`Mulai ${date(run.started_at)} · selesai ${date(run.finished_at)} · durasi ${dur(run.duration_ms)} · exit ${cell(run.exit_code)}`);
+  out.push(`### ${isPw ? 'Playwright' : 'Lighthouse'} - ${cell(run.status)}`);
+  out.push(`Mulai ${date(run.started_at)} - selesai ${date(run.finished_at)} - durasi ${dur(run.duration_ms)} - exit ${cell(run.exit_code)}`);
   out.push('');
 
   if (isPw) {
@@ -48,15 +48,17 @@ function runBlock({ run, results }) {
       out.push('```');
     }
   } else {
+    const hasMode = results.some(r => r.form_factor);
     const rows = results.map(r => [
+      ...(hasMode ? [r.form_factor === 'desktop' ? 'Desktop' : 'Mobile'] : []),
       r.url, pct(r.performance), pct(r.accessibility), pct(r.best_practices), pct(r.seo),
       r.lcp_ms == null ? '-' : `${Math.round(r.lcp_ms)} ms`, r.budget_failed ?? '-',
     ]);
-    out.push(table(['URL', 'Perf', 'A11y', 'BP', 'SEO', 'LCP', 'Budget gagal'], rows));
+    out.push(table([...(hasMode ? ['Mode'] : []), 'URL', 'Perf', 'A11y', 'BP', 'SEO', 'LCP', 'Budget gagal'], rows));
     const kurang = results.filter(r => [r.performance, r.accessibility, r.best_practices, r.seo].some(v => v != null && v < 1));
     for (const r of kurang) {
       out.push('');
-      out.push(`#### ${cell(r.url)}`);
+      out.push(`#### ${r.form_factor === 'desktop' ? 'Desktop' : r.form_factor === 'mobile' ? 'Mobile' : ''} ${cell(r.url)}`.trim());
       const skor = [['performance', r.performance], ['accessibility', r.accessibility], ['best-practices', r.best_practices], ['seo', r.seo]]
         .filter(([, v]) => v != null && v < 1).map(([k, v]) => `${k} ${pct(v)}`);
       out.push(`Skor di bawah 100%: ${skor.join(', ')}`);
@@ -137,7 +139,7 @@ export function renderReportMarkdown({ session, project, report, runs, position,
 
   out.push('---');
   out.push('');
-  out.push(`Dibangun ${date(new Date().toISOString())} · cakupan ${cell(report.scope)} · ${runs.length} run · run_ids: ${report.run_ids ?? '[]'}`);
+  out.push(`Dibangun ${date(new Date().toISOString())} - cakupan ${cell(report.scope)} - ${runs.length} run - run_ids: ${report.run_ids ?? '[]'}`);
   return out.join('\n');
 }
 

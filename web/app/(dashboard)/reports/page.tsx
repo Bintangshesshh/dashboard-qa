@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, fmtDate, groupProjects, type Project, type Stats } from "../../../lib/playbook";
 import { RunBar } from "../../_components/run-bar";
 
@@ -10,6 +11,26 @@ export default function ReportsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<Record<string, Stats>>({});
   const [error, setError] = useState("");
+  const [q, setQ] = useState("");
+  const [shortcut, setShortcut] = useState("Ctrl+K");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [topbar, setTopbar] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setTopbar(document.getElementById("pb-reports-search-slot"));
+  }, []);
+
+  useEffect(() => {
+    setShortcut(/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K");
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     // all=true: report project arsip harus tetap bisa dibuka.
@@ -19,22 +40,38 @@ export default function ReportsPage() {
       .catch(e => setError(e.message));
   }, []);
 
+  const term = q.trim().toLowerCase();
+  const groups = groupProjects(projects)
+    .map(g => ({
+      ...g,
+      items: g.name.toLowerCase().includes(term)
+        ? g.items
+        : g.items.filter(p => p.name.toLowerCase().includes(term)),
+    }))
+    .filter(g => g.items.length > 0);
+
+  const search = <div className="pb-reports-search">
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+    </svg>
+    <input ref={searchRef} className="pb-input" value={q}
+      onChange={e => setQ(e.target.value)} placeholder="Cari grup atau project"
+      aria-label="Cari grup atau project" />
+    <kbd>{shortcut}</kbd>
+  </div>;
+
   return (
     <>
-      <div className="pb-head">
-        <div>
-          <h1>Laporan per project.</h1>
-          <p className="pb-lead">Pilih project untuk melihat sesi, run, dan laporannya.</p>
-        </div>
-      </div>
-
+      {topbar && createPortal(search, topbar)}
       {error && <div className="pb-err" role="alert">{error}</div>}
 
       {!error && projects.length === 0 ? (
         <p className="pb-empty">Belum ada project.</p>
+      ) : !error && groups.length === 0 ? (
+        <p className="pb-empty">Tidak ada grup atau project yang cocok.</p>
       ) : !error && (
         // Laporan dikelompokkan per grup project supaya daftar panjang tidak menumpuk.
-        groupProjects(projects).map(g => (
+        groups.map(g => (
           <section className="pb-group-block" key={g.id}>
             <div className="pb-group-label">
               <strong>{g.name}</strong>
@@ -54,8 +91,8 @@ export default function ReportsPage() {
                       <div>
                         <h3>{p.name}{!p.active && <span className="pb-badge closed">Arsip</span>}</h3>
                         <div className="pb-pcard-meta">
-                          {s?.sessions ?? 0} sesi · {s?.runs ?? 0} run
-                          {failedRuns > 0 && ` · ${failedRuns} gagal`}
+                          {s?.sessions ?? 0} sesi - {s?.runs ?? 0} run
+                          {failedRuns > 0 && ` - ${failedRuns} gagal`}
                         </div>
                       </div>
                       <span

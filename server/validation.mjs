@@ -156,6 +156,14 @@ export function checkLhConfig(config, { allowedOrigins = [] } = {}) {
     }
   }
 
+  // Field baru: config lama tanpa keduanya tetap valid, nilai lain ditolak.
+  if (cfg.formFactor !== undefined && !['mobile', 'desktop', 'both'].includes(cfg.formFactor)) {
+    fail('formFactor harus salah satu: mobile, desktop, both');
+  }
+  if (cfg.locale !== undefined && !['id', 'en'].includes(cfg.locale)) {
+    fail('locale harus salah satu: id, en');
+  }
+
   return cfg;
 }
 

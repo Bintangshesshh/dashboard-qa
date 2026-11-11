@@ -10,6 +10,7 @@ export type Project = {
   origins: string[]; allow_production: number; active: number;
   group_id: string | null; group_name: string | null;
   lastRunAt: string | null;
+  lastRunStatus?: string | null;
 };
 export type TestFile = {
   id: string; project_id: string; tool: "pw" | "lh"; path: string;
@@ -32,6 +33,7 @@ export type Run = {
   network?: { seq: number; at: string; url: string; status: number | null; method: string | null; failure: string | null; ms: number | null }[];
 };
 export type RunRow = Run & {
+  project_id: string;
   session_label: string; env: string; project_name: string; has_html: number;
   // Username pemilik sesi; 'sistem' kalau pembuatnya sudah dihapus.
   run_by: string;
@@ -77,6 +79,7 @@ export type LighthouseResult = {
   accessibility: number | null; best_practices: number | null; seo: number | null;
   lcp_ms: number | null; cls: number | null; tbt_ms: number | null;
   budget_failed: string | null; warnings: string | null; report_path: string | null;
+  form_factor: "mobile" | "desktop"; locale?: string | null;
 };
 export type LighthouseRow = LighthouseResult & {
   run_status: Run["status"]; queued_at: string; session_id: string;
@@ -230,7 +233,8 @@ export const api = {
 
   // `all` ikutkan project arsip; hanya dipakai Pengaturan dan halaman arsip (PRD FR-03).
   projects: (q: { all?: boolean } = {}) =>
-    request<Project[]>("/api/projects" + (q.all ? "?all=1" : "")),
+    // no-store: status & run terakhir harus segar setiap halaman dibuka.
+    request<Project[]>("/api/projects" + (q.all ? "?all=1" : ""), { cache: "no-store" }),
   createProject: (body: {
     name: string; base_url: string; staging_url?: string | null;
     local_url?: string | null; origins?: string[]; allow_production?: number;
@@ -340,10 +344,10 @@ export const api = {
     request<{ runId: string }>(`/api/sessions/${sessionId}/runs`, {
       method: "POST", body: JSON.stringify({ testFileId, ...opts }),
     }),
-  // Layar live + kontrol debug (pause/step). Hanya run Playwright server-side.
+  // Layar live + kontrol debug (pause/step/skip). Hanya run Playwright server-side.
   live: (runId: string) =>
     request<{ frames: LiveFrame[]; latest: number | null } & RunControl>(`/api/runs/${runId}/live`),
-  control: (runId: string, action: "pause" | "resume" | "step") =>
+  control: (runId: string, action: "pause" | "resume" | "step" | "skip") =>
     request<{ mode: string }>(`/api/runs/${runId}/control`, {
       method: "POST", body: JSON.stringify({ action }),
     }),
@@ -380,7 +384,7 @@ export type LogEntry = { seq: number; stream: string; text: string; at: string }
 // dengan timestamp log tanpa endpoint tambahan.
 export type LiveFrame = { n: number; at: string };
 export type RunControl = {
-  mode: "run" | "pause" | "step";
+  mode: "run" | "pause" | "step" | "skip";
   state: { label: string; at: number } | null;
   // Hanya true kalau run aktif memakai mode Debug (pause/step diizinkan server).
   debug?: boolean;

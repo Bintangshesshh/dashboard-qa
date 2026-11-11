@@ -1,15 +1,12 @@
 "use client";
 
-// /lighthouse (PRD §10.4): config numberOfRuns/URL/budget → test_files.config.
-// Config lhci digenerate saat run, bukan disimpan di repo. Layout menumpuk:
-// Project → Config → Terminal → Run → Hasil.
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
-import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig } from "../../_components/lh-config-editor";
+import LhConfigEditor, { LH_CATEGORIES, LhRunsLocale, extraUrlsOf, lhConfigError, parseLhConfig, patchLhConfig, validateExtraUrl } from "../../_components/lh-config-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
-  api, artifactUrl, fmtTime, groupProjects, pct, readLastEnv, readLastProject, rememberEnv, rememberProject, runStatusLabel,
+  api, artifactUrl, fmtDate, fmtTime, groupProjects, pct, readLastEnv, readLastProject, rememberEnv, rememberProject, runStatusLabel,
   type LighthouseResult, type LogEntry, type Project, type Run, type TestFile,
 } from "../../../lib/playbook";
 import { confirmAction, showErrorAlert, showSuccessToast } from "../../../lib/alerts";
@@ -30,8 +27,6 @@ export default function LighthousePage() {
   const [projectId, setProjectId] = useState("");
   // Default local: kasus utama menguji web yang jalan di laptop sendiri.
   const [env, setEnv] = useState<Env>("local");
-  // Konfirmasi production: ketik nama project. Guard sama ada di server.
-  const [confirmName, setConfirmName] = useState("");
 
   // Draft config berupa string JSON apa adanya; editor bersama yang mengubahnya.
   const [config, setConfig] = useState("");
@@ -45,8 +40,10 @@ export default function LighthousePage() {
   const [runId, setRunId] = useState<string | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [runTab, setRunTab] = useState<"log" | "console" | "network">("log");
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<HTMLElement>(null);
 
-  // Ganti project → pasang lagi run project itu (kalau ada), terminal direset.
   useEffect(() => {
     if (!projectId) return;
     setRun(null); setLogs([]);
@@ -61,6 +58,7 @@ export default function LighthousePage() {
     restored.current = runId;
     api.run(runId).catch(() => {
       sessionStorage.removeItem(`lh-run:${projectId}`);
+      sessionStorage.removeItem(`lh-run-focus:${projectId}`);
       setRunId(null); setLogs([]);
     });
   }, [runId, projectId]);
@@ -87,13 +85,12 @@ export default function LighthousePage() {
   const selected = files[0] ?? null;
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
-  // Server juga menolak production kalau project belum mengizinkannya; tombol
-  // jangan aktif dulu supaya user tidak menunggu error yang bisa dicegah.
-  const productionOk = env !== "production"
-    || (confirmName.trim() === (project?.name ?? "") && !!project?.allow_production);
+  const cfg = parseLhConfig(config);
+  const runs = cfg.numberOfRuns ?? 1;
+  const locale = cfg.locale ?? "id";
+  const productionBlocked = env === "production" && !project?.allow_production;
   const running = !!run && !FINAL.includes(run.status);
 
-  // Muat config hanya saat file berganti; autosave yang menulis balik tidak boleh reset ketikan.
   useEffect(() => {
     setConfig(selected?.config ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,20 +117,72 @@ export default function LighthousePage() {
     return () => { alive = false; clearTimeout(timer); };
   }, [runId]);
 
+  // Ringkasan project ikut run terbaru tanpa perlu reload halaman.
+  useEffect(() => {
+    if (!run || !FINAL.includes(run.status)) return;
+    setProjects(prev => prev.map(p => p.id === projectId
+      ? { ...p, lastRunAt: run.finished_at ?? p.lastRunAt, lastRunStatus: run.status }
+      : p));
+  }, [run, projectId]);
+
+  // Dari toast "run selesai": langsung arahkan ke card hasil/terminal run,
+  // supaya tidak perlu scroll melewati card konfigurasi yang tinggi.
+  useEffect(() => {
+    if (!projectId || !runId || !run) return;
+    const key = `lh-run-focus:${projectId}`;
+    let flagged = false;
+    try { flagged = sessionStorage.getItem(key) === "1"; } catch { /* storage diblokir */ }
+    if (!flagged) return;
+    const el = run.results?.length ? resultsRef.current : terminalRef.current;
+    if (!el) return;
+    try { sessionStorage.removeItem(key); } catch { /* storage diblokir */ }
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const frame = window.requestAnimationFrame(() =>
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [projectId, runId, run]);
+
+  // Toast diklik saat halaman Lighthouse sudah terbuka: pindah ke run itu dan
+  // gulir ke card hasil/terminal tanpa reload halaman.
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const detail = (event as CustomEvent<{ tool?: string; projectId?: string; runId?: string }>).detail;
+      if (!detail || detail.tool !== "lh" || !detail.runId) return;
+      try { sessionStorage.removeItem(`lh-run-focus:${detail.projectId ?? projectId}`); } catch { /* storage diblokir */ }
+      if (detail.projectId) setProjectId(detail.projectId);
+      setRunId(detail.runId);
+      const el = run?.results?.length ? resultsRef.current : terminalRef.current;
+      if (!el) return;
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.requestAnimationFrame(() =>
+        el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }));
+    };
+    window.addEventListener("pb-run-open", onOpen);
+    return () => window.removeEventListener("pb-run-open", onOpen);
+  }, [projectId, run]);
+
   const dirty = !!selected && config !== (selected.config ?? "");
 
   // Validasi client sebelum simpan: server tetap memeriksa hal yang sama.
   const validate = () => {
     if (!project) return "Project tidak ditemukan.";
     const cfg = parseLhConfig(config);
-    return lhConfigError({
+    const extra = extraUrlsOf(cfg, project);
+    const basic = lhConfigError({
       target,
-      extra: extraUrlsOf(cfg, project),
+      extra,
       runs: cfg.numberOfRuns ?? 1,
       scores: Object.fromEntries(LH_CATEGORIES.map(c => [
         c.key, Math.round((cfg.budgets?.[c.key]?.minScore ?? 0.6) * 100),
       ])),
     });
+    if (basic) return basic;
+    // Config lama juga tidak boleh menyimpan origin di luar allowlist project.
+    for (const url of extra) {
+      const checked = validateExtraUrl(url, target, project, []);
+      if (checked.error) return checked.error;
+    }
+    return "";
   };
 
   const saveConfig = async () => {
@@ -195,15 +244,13 @@ export default function LighthousePage() {
     setRunId(null); setRun(null); setLogs([]);
     try {
       if (!target) throw new Error(`Project ini belum punya URL untuk env ${env}`);
-      if (env === "production" && confirmName.trim() !== project?.name)
-        throw new Error(`Ketik nama project (${project?.name}) untuk konfirmasi production.`);
       if (!selected) throw new Error("Project ini belum punya konfigurasi Lighthouse.");
       const msg = validate();
       if (msg) throw new Error(msg);
       // Flush autosave yang masih menunggu supaya run memakai config terbaru.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; await saveConfig(); }
-      // Konfirmasi production diketik user; guard yang sama ada di server.
-      const created = await api.createSession(projectId, env, env === "production" ? confirmName : undefined);
+      // Server memvalidasi izin production sebelum membuat sesi.
+      const created = await api.createSession(projectId, env);
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`lh-run:${projectId}`, runId);
       setRunId(runId);
@@ -222,14 +269,17 @@ export default function LighthousePage() {
     catch (e) { setError((e as Error).message); return false; }
   };
 
-  const runWithConfirm = async () => {
-    if (!(await confirmAction({
-      icon: "question",
-      title: "Jalankan audit Lighthouse?",
-      text: `Audit memakai config tersimpan di env ${env}.`,
-      confirmButtonText: "Ya, Jalankan",
-    }))) return;
-    if (await start()) showSuccessToast("Audit Lighthouse dimulai.");
+  const scrollToTerminal = () => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    terminalRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  };
+
+  const runNow = async () => {
+    if (!(await start())) return;
+    // Terminal adalah tempat progres run; aktifkan tabnya lalu arahkan layar.
+    setRunTab("log");
+    window.requestAnimationFrame(scrollToTerminal);
+    showSuccessToast("Audit Lighthouse dimulai.");
   };
 
   const stopWithConfirm = async () => {
@@ -247,29 +297,17 @@ export default function LighthousePage() {
 
   return (
     <>
-      <div className="pb-head">
-        <div>
-          <h1>Audit performa.</h1>
-        </div>
-        <div className="pb-filters">
-          <span className="pb-save-state" aria-live="polite">{saveState}</span>
-          <button className="pb-btn primary" onClick={runWithConfirm}
-            disabled={starting || running || !selected || !target || !productionOk}>
-            {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
-          </button>
-          {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
-        </div>
-      </div>
       {error && <div className="pb-err" role="alert">{error}</div>}
 
-      <section className="pb-card" style={{ marginBottom: 16 }}>
-        <div className="pb-row" style={{ justifyContent: "space-between", gap: 16 }}>
-          <label className="pb-field" style={{ minWidth: 240 }}>
+      <div className="pb-lh-page-grid">
+      <section className="pb-card pb-lh-project-panel" style={{ marginBottom: 0 }}>
+        <div className="pb-lh-selectors">
+          <label className="pb-field">
             Project
             <select className="pb-select" value={projectId}
               onChange={e => {
                 const id = e.target.value;
-                setProjectId(id); rememberProject(id); setConfirmName("");
+                setProjectId(id); rememberProject(id);
               }}>
               {groupProjects(projects).map(g => (
                 <optgroup key={g.id} label={g.name}>
@@ -281,51 +319,92 @@ export default function LighthousePage() {
           <label className="pb-field">
             Environment
             <select className="pb-select" value={env}
-              onChange={e => { const v = e.target.value as Env; setEnv(v); rememberEnv(v); setConfirmName(""); }}>
+              onChange={e => { const v = e.target.value as Env; setEnv(v); rememberEnv(v); }}>
               {ENVS.map(v => <option key={v} value={v}>{v}</option>)}
             </select>
           </label>
-          <p className="pb-muted" style={{ fontSize: 12, margin: 0 }}>
-            Target {env}: <span className="pb-mono">{target || "belum diisi di project"}</span>
-          </p>
-        </div>
-        {env === "production" && (
-          <label className="pb-field" style={{ marginTop: 12 }}>
-            Ketik <strong>{project?.name ?? "nama project"}</strong> untuk konfirmasi production
-            <input className="pb-input" value={confirmName} onChange={e => setConfirmName(e.target.value)} />
+          <label className="pb-field">
+            Target {env}
+            <input className="pb-input pb-mono" value={target} readOnly
+              placeholder="belum diisi di project" aria-label={`Target ${env}`} />
           </label>
-        )}
+        </div>
+        <div className="pb-lh-project-info">
+          <div className="pb-card-sub">Ringkasan project</div>
+          <div className="pb-kv">
+            <div className="pb-kv-row"><span>Grup</span><strong>{project?.group_name ?? "Tanpa grup"}</strong></div>
+            <div className="pb-kv-row"><span>Run terakhir</span><strong>{project?.lastRunAt ? fmtDate(project.lastRunAt) : "Belum pernah"}</strong></div>
+            <div className="pb-kv-row">
+              <span>Status</span>
+              {project?.lastRunStatus
+                ? <span className={`pb-badge ${project.lastRunStatus}`}>
+                  {project.lastRunStatus === "passed" ? "Berhasil" : runStatusLabel(project.lastRunStatus)}
+                </span>
+                : <strong className="pb-muted">Belum ada</strong>}
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section className="pb-card" style={{ marginBottom: 16 }}>
-        <div className="pb-card-head" style={{ marginBottom: 12 }}>
+      <form id="lh-config-form" className="pb-card" style={{ marginBottom: 0 }}
+        onSubmit={e => { e.preventDefault(); void runNow(); }}>
+        <div className="pb-card-head" style={{ alignItems: "center", flexWrap: "wrap" }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 15 }}>Konfigurasi</h2>
-            <div className="pb-card-sub pb-mono">{selected?.path ?? "belum ada konfigurasi"}</div>
+            <div className="pb-row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <h2 style={{ margin: 0, fontSize: 15 }}>Konfigurasi Audit</h2>
+              <span className={`pb-save-state${dirty ? " dirty" : ""}`} aria-live="polite"> {saveState}</span>
+            </div>
+          </div>
+          <div className="pb-row" style={{ gap: 8, alignItems: "center" }}>
+            <button type="submit" className="pb-btn primary pb-lh-run-button"
+              disabled={starting || running || !selected || !target || productionBlocked}>
+              {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
+            </button>
+            {running && <button type="button" className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
           </div>
         </div>
         {selected && project ? (
-          <LhConfigEditor project={project} value={config} target={target}
-            disabled={running} onChange={setConfig} idPrefix="lh-page" />
+          <>
+            <LhRunsLocale
+              runs={runs}
+              locale={locale}
+              disabled={running}
+              onChange={patch => {
+                const nextPatch: Parameters<typeof patchLhConfig>[1] = {};
+                if (patch.runs !== undefined) nextPatch.numberOfRuns = patch.runs;
+                if (patch.locale !== undefined) nextPatch.locale = patch.locale;
+                setConfig(patchLhConfig(config, nextPatch));
+              }}
+            />
+            <LhConfigEditor project={project} value={config} target={target}
+              showTarget={false}
+              showRunsAndLocale={false}
+              disabled={running} onChange={setConfig} idPrefix="lh-page" />
+          </>
         ) : (
           <div className="pb-empty">
             <p style={{ margin: 0 }}>Project ini belum punya konfigurasi Lighthouse.</p>
-            <button className="pb-btn sm primary" style={{ marginTop: 10 }}
+            <button type="button" className="pb-btn sm primary" style={{ marginTop: 10 }}
               onClick={addConfig} disabled={!project || saving}>
               {saving ? "Membuat…" : "Buat config"}
             </button>
           </div>
         )}
-      </section>
+      </form>
+      </div>
 
-      <RunPanel
-        logs={logs}
-        run={run}
-        live={running}
-        downloadHref={runId ? `/api/runs/${runId}/logs/download` : null}
-      />
+      <div id="run-terminal" className="pb-lh-terminal" ref={terminalRef}>
+        <RunPanel
+          logs={logs}
+          run={run}
+          live={running}
+          activeTab={runTab}
+          onTabChange={setRunTab}
+          downloadHref={runId ? `/api/runs/${runId}/logs/download` : null}
+        />
+      </div>
       {done && run && (
-        <section className="pb-card">
+        <section className="pb-card" ref={resultsRef}>
           <div className="pb-card-head">
             <div>
               <h2>Hasil audit</h2>
@@ -337,11 +416,12 @@ export default function LighthousePage() {
             <p className="pb-empty">Tidak ada hasil Lighthouse pada run ini.</p>
           ) : (
             <div className="pb-table-wrap"><table className="pb-table">
-              <thead><tr><th>URL</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
+              <thead><tr><th>URL</th><th>Mode</th><th>Perf</th><th>A11y</th><th>BP</th><th>SEO</th><th>LCP</th><th>Skor tidak memenuhi</th><th /></tr></thead>
               <tbody>
                 {results.map(r => (
                   <tr key={r.id}>
                     <td className="mono">{r.url}</td>
+                    <td>{r.form_factor === "desktop" ? "Desktop" : "Mobile"}</td>
                     <td>{pct(r.performance)}</td>
                     <td>{pct(r.accessibility)}</td>
                     <td>{pct(r.best_practices)}</td>
@@ -354,9 +434,9 @@ export default function LighthousePage() {
                           ))
                         : "-"}
                     </td>
-                    <td style={{ textAlign: "right" }}>
+                    <td className="pb-lh-result-actions" style={{ textAlign: "right" }}>
                       {r.report_path
-                        ? <ArtifactLink href={artifactUrl(r.run_id, r.report_path)}>Buka report</ArtifactLink>
+                        ? <ArtifactLink probeHref={artifactUrl(r.run_id, r.report_path)} href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/reports/${encodeURIComponent(run!.session_id)}/lh-report?run=${encodeURIComponent(r.run_id)}&result=${encodeURIComponent(r.id)}`}>Buka report</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>-</span>}
                     </td>
                   </tr>

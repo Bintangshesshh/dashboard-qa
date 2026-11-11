@@ -42,7 +42,7 @@ const runSpan = run => {
   return Number.isFinite(duration) && duration >= 0 ? duration : null;
 };
 const testMs = test => (test.results || []).reduce((sum, result) => sum + (Number(result.duration) || 0), 0);
-const CAT_SHORT = { performance: 'Perf', accessibility: 'A11y', 'best-practices': 'BP', 'best practices': 'BP', seo: 'SEO' };
+const CAT_SHORT = { performance: 'Performa', accessibility: 'Aksesibilitas', 'best-practices': 'Praktik terbaik', 'best practices': 'Praktik terbaik', seo: 'SEO' };
 const catShort = title => CAT_SHORT[String(title ?? '').toLowerCase()] || title || 'Lainnya';
 
 // Pembungkus semua halaman report: nav + hero + panel. Satu tempat untuk <head> dan tema.
@@ -60,7 +60,7 @@ export const doc = ({ title, brand, sub = '', actions = '', hero = '', body = ''
 <main class="container" id="main">${hero}${body}</main></body></html>`;
 
 export // title is plain text, or ready-made markup when it already carries its own heading.
-const panel = (title, body, note = '', id = '') => `<section class="panel"${id ? ` id="${esc(id)}"` : ''}><div class="panel-head"><div>
+  const panel = (title, body, note = '', id = '') => `<section class="panel"${id ? ` id="${esc(id)}"` : ''}><div class="panel-head"><div>
 ${title.startsWith('<') ? title : `<h2>${title}</h2>`}${note ? `<p>${note}</p>` : ''}</div></div><div class="panel-body">${body}</div></section>`;
 
 // cls menerima nama tone lama (success/danger/warn) supaya pemanggil tidak perlu berubah.
@@ -107,8 +107,8 @@ function testResult(test) {
       + failedSteps(result.steps)
       + `${result.attachments?.length > 0 ? `<details><summary>Metadata lampiran</summary>${pre(result.attachments)}</details>` : ''}</div>`;
   }).join('');
-  return `<article><h3>${esc(test.title)}</h3><p class="mono mut">${esc(location(test))} · project: ${esc(test.projectName || 'tidak diketahui')}`
-    + ` · diharapkan: ${esc(test.expectedStatus || '-')} · hasil: ${esc(test.status || '-')}</p>${attempts}</article>`;
+  return `<article><h3>${esc(test.title)}</h3><p class="mono mut">${esc(location(test))} - project: ${esc(test.projectName || 'tidak diketahui')}`
+    + ` - diharapkan: ${esc(test.expectedStatus || '-')} - hasil: ${esc(test.status || '-')}</p>${attempts}</article>`;
 }
 
 const slowRow = (title, ms, max, meta = '') => `<li class="slow-row">
@@ -140,17 +140,17 @@ function playwrightSection(run, data) {
   const diag = `<div class="diagnosis"><h3>Kenapa run selama ini?</h3>
 <div class="diag-grid">
 <div class="diag"><span class="diag-label">Durasi run</span><span class="diag-value">${fmtMs(wall)}</span><span class="diag-sub">dari mulai sampai selesai</span></div>
-<div class="diag"><span class="diag-label">Total test</span><span class="diag-value">${fmtMs(totalTest)}</span><span class="diag-sub">${attempts} percobaan · ${rows.length} test</span></div>
+<div class="diag"><span class="diag-label">Total test</span><span class="diag-value">${fmtMs(totalTest)}</span><span class="diag-sub">${attempts} percobaan - ${rows.length} test</span></div>
 <div class="diag"><span class="diag-label">Retry</span><span class="diag-value">${retries}</span><span class="diag-sub">${retries ? 'percobaan ulang menambah waktu' : 'tidak ada percobaan ulang'}</span></div>
 <div class="diag"><span class="diag-label">Tes terlama</span><span class="diag-value">${fmtMs(slowTests[0]?.total)}</span><span class="diag-sub">${esc(slowTests[0]?.test.title || '-')}</span></div>
 </div>
 ${overhead != null ? `<p class="diag-note">${overhead >= 0
-    ? `${fmtMs(overhead)} dari durasi run tidak tercatat di durasi test (setup, browser launch, atau antrean runner).`
-    : `Total durasi test ${fmtMs(totalTest)} lebih besar dari wall-clock ${fmtMs(wall)} karena test berjalan paralel.`}</p>` : ''}
+      ? `${fmtMs(overhead)} dari durasi run tidak tercatat di durasi test (setup, browser launch, atau antrean runner).`
+      : `Total durasi test ${fmtMs(totalTest)} lebih besar dari wall-clock ${fmtMs(wall)} karena test berjalan paralel.`}</p>` : ''}
 ${slowTests.length ? `<h3>Tes terlama</h3><ol class="slow-list">${slowTests.map(({ test, total }) => slowRow(test.title,
-    total, maxTest, `${esc(location(test) || test.file || '-')} · ${totalTest ? Math.round(total / totalTest * 100) : 0}% total test`)).join('')}</ol>` : ''}
+        total, maxTest, `${esc(location(test) || test.file || '-')} - ${totalTest ? Math.round(total / totalTest * 100) : 0}% total test`)).join('')}</ol>` : ''}
 ${slowSteps.length ? `<h3>Langkah terlama</h3><ol class="slow-list">${slowSteps.map(({ step, test }) => slowRow(`${test} / ${step.title}`,
-    step.duration, maxStep, esc(location(step.location) || 'lokasi tidak tersedia'))).join('')}</ol>` : ''}
+          step.duration, maxStep, esc(location(step.location) || 'lokasi tidak tersedia'))).join('')}</ol>` : ''}
 </div>`;
 
   const list = rows.map((test, i) => `<tr><td class="mono">${i + 1}</td><td>${esc(test.title)}</td>
@@ -191,7 +191,7 @@ const scoreBadge = value => {
 const auditSavings = audit => {
   const ms = Number(audit.details?.overallSavingsMs) || 0;
   const bytes = Number(audit.details?.overallSavingsBytes) || 0;
-  return [ms ? `hemat ${fmtMs(ms)}` : '', bytes ? `hemat ${fmtBytes(bytes)}` : ''].filter(Boolean).join(' · ');
+  return [ms ? `hemat ${fmtMs(ms)}` : '', bytes ? `hemat ${fmtBytes(bytes)}` : ''].filter(Boolean).join(' - ');
 };
 
 function lighthouseSection(data) {
@@ -214,9 +214,9 @@ function lighthouseSection(data) {
 <div class="cause-head"><span class="cause-name">${esc(a.title || a.id)}</span>${scoreBadge(a.score)}
 <span class="category-tag">${esc(catShort(auditCat[a.id] || 'Lainnya'))}</span>${a.displayValue ? `<span class="cause-value">${esc(a.displayValue)}</span>` : ''}</div>
 ${a.errorMessage ? `<p class="cause-why" role="alert">${esc(a.errorMessage)}</p>` : (a.explanation || a.description)
-    ? `<p class="cause-why">${esc(a.explanation || a.description)}</p>` : ''}</li>`).join('');
+      ? `<p class="cause-why">${esc(a.explanation || a.description)}</p>` : ''}</li>`).join('');
   const metricDefs = [['FCP', 'first-contentful-paint'], ['LCP', 'largest-contentful-paint'],
-    ['TBT', 'total-blocking-time'], ['CLS', 'cumulative-layout-shift']];
+  ['TBT', 'total-blocking-time'], ['CLS', 'cumulative-layout-shift']];
   const metrics = metricDefs.map(([name, id]) => ({ name, audit: data.audits?.[id] }))
     .filter(({ audit }) => audit?.displayValue)
     .map(({ name, audit }) => {
@@ -230,10 +230,11 @@ ${a.errorMessage ? `<p class="cause-why" role="alert">${esc(a.errorMessage)}</p>
 <td><span class="category-tag">${esc(catShort(auditCat[a.id] || 'Lainnya'))}</span></td>
 <td><strong>${esc(a.title || a.id)}</strong>${a.errorMessage ? ' <span class="b bad">error</span>' : ''}</td>
 <td>${scoreBadge(a.score)}</td>
-<td class="mono">${[a.displayValue, auditSavings(a)].filter(Boolean).map(esc).join(' · ') || '-'}</td>
+<td class="mono">${[a.displayValue, auditSavings(a)].filter(Boolean).map(esc).join(' - ') || '-'}</td>
 <td class="audit-desc">${esc(a.explanation || a.description || '')}
 ${a.details ? `<details class="audit-more"><summary>Elemen terdampak dan nilai terukur</summary>${pre(a.details)}</details>` : ''}</td></tr>`).join('');
-  return `<p class="mono">URL: ${esc(data.finalDisplayedUrl || data.finalUrl || data.requestedUrl)} · diambil: ${esc(data.fetchTime)}</p>`
+  const device = data.configSettings?.formFactor === 'desktop' ? 'Desktop' : 'Mobile';
+  return `<p class="mono"><span class="b">${device}</span> - URL: ${esc(data.finalDisplayedUrl || data.finalUrl || data.requestedUrl)} - diambil: ${esc(data.fetchTime)}</p>`
     + `<h3>Skor kategori</h3><ul class="scores">${categories}</ul>`
     + `${metrics ? `<div class="cwv-grid">${metrics}</div>` : ''}`
     + `<div class="diagnosis"><h3>Kenapa skor segini?</h3>
@@ -251,9 +252,9 @@ function stepSection(data) {
   const failed = data.tests.filter(test => flattenSteps(test.steps).some(step => step.error)
     || ['failed', 'timedOut', 'interrupted'].includes(test.status));
   return `<p>${failed.length} percobaan perlu diperiksa / ${data.tests.length} percobaan tercatat.</p>`
-    + failed.map(test => `<article><h3>${esc(test.title)} · ${esc(test.status)}</h3>`
-      + `<p class="mono mut">${esc(location(test.location || test))} · project: ${esc(test.projectName || 'tidak diketahui')}`
-      + ` · percobaan ${(test.retry || 0) + 1}</p>${failedSteps(test.steps)}</article>`).join('')
+    + failed.map(test => `<article><h3>${esc(test.title)} - ${esc(test.status)}</h3>`
+      + `<p class="mono mut">${esc(location(test.location || test))} - project: ${esc(test.projectName || 'tidak diketahui')}`
+      + ` - percobaan ${(test.retry || 0) + 1}</p>${failedSteps(test.steps)}</article>`).join('')
     + `<details><summary>Semua langkah tercatat</summary>${pre(data.tests)}</details>`;
 }
 
@@ -308,14 +309,14 @@ export function runSignal(report) {
     const total = rows.reduce((sum, test) => sum + testMs(test), 0);
     const slowest = rows.reduce((max, test) => Math.max(max, testMs(test)), 0);
     const failed = rows.filter(needsAttention).length;
-    return `${rows.length} test · ${fmtMs(total)}${failed ? ` · ${failed} perlu diperiksa` : ''} · terlama ${fmtMs(slowest)}`;
+    return `${rows.length} test - ${fmtMs(total)}${failed ? ` - ${failed} perlu diperiksa` : ''} - terlama ${fmtMs(slowest)}`;
   }
   const lh = report.reports?.find(r => r.kind === 'lighthouse');
   if (lh) {
     return Object.entries(lh.data.categories)
       .sort((a, b) => (a[1].score ?? 1) - (b[1].score ?? 1))
       .map(([id, c]) => `${catShort(c.title || id)} ${typeof c.score === 'number' ? Math.round(c.score * 100) : '-'}`)
-      .join(' · ');
+      .join(' - ');
   }
   return report.reports?.length ? `${report.reports.length} sumber JSON` : (report.run?.status ?? '-');
 }
@@ -324,26 +325,26 @@ function issuePanel(report) {
   const items = [];
   if (report.run?.error) {
     const error = typeof report.run.error === 'string' ? report.run.error : (report.run.error.message || JSON.stringify(report.run.error));
-    items.push(`<strong>Error run</strong> · ${esc(error)}`);
+    items.push(`<strong>Error run</strong> - ${esc(error)}`);
   }
   for (const source of report.reports) {
     if (source.kind === 'playwright') {
       for (const test of tests(source.data.suites).filter(needsAttention)) {
-        items.push(`<strong>${esc(test.title)}</strong> · ${esc(location(test) || test.file || '-')} · ${esc(test.status || 'gagal')}`);
+        items.push(`<strong>${esc(test.title)}</strong> - ${esc(location(test) || test.file || '-')} - ${esc(test.status || 'gagal')}`);
       }
     } else if (source.kind === 'lighthouse') {
       for (const [id, category] of Object.entries(source.data.categories)) {
         if (typeof category.score === 'number' && category.score < 0.9) {
-          items.push(`<strong>Skor ${esc(category.title || id)}</strong> · ${Math.round(category.score * 100)}/100`);
+          items.push(`<strong>Skor ${esc(category.title || id)}</strong> - ${Math.round(category.score * 100)}/100`);
         }
       }
       for (const audit of Object.values(source.data.audits)) {
-        if (audit.errorMessage) items.push(`<strong>Audit error</strong> · ${esc(audit.title || audit.id)}`);
+        if (audit.errorMessage) items.push(`<strong>Audit error</strong> - ${esc(audit.title || audit.id)}`);
       }
     } else if (source.kind === 'steps') {
       for (const test of source.data.tests.filter(t => flattenSteps(t.steps).some(step => step.error)
         || ['failed', 'timedOut', 'interrupted'].includes(t.status))) {
-        items.push(`<strong>${esc(test.title)}</strong> · ${esc(test.status)}`);
+        items.push(`<strong>${esc(test.title)}</strong> - ${esc(test.status)}`);
       }
     }
   }
@@ -380,7 +381,7 @@ export function runReportHtml(report) {
 <p class="lead">Hanya fakta run yang teramati. Artifact yang hilang bukan berarti lulus. Metadata dan log adalah snapshot saat dokumen ini dibangun.</p>
 <div class="meta-strip">
 <div class="meta-item"><span class="mut">Target</span>${/^https?:/.test(target)
-    ? `<a class="target-url" href="${esc(target)}" target="_blank" rel="noopener">${esc(target)}</a>` : esc(target)}</div>
+      ? `<a class="target-url" href="${esc(target)}" target="_blank" rel="noopener">${esc(target)}</a>` : esc(target)}</div>
 <div class="meta-divider"></div>
 <div class="meta-item"><span class="mut">Tool</span><span class="env-tag">${tool}</span></div>
 <div class="meta-divider"></div>
@@ -394,7 +395,7 @@ ${run.error ? `<div class="snapshot-banner" role="alert">${errorDetail(run.error
   const runTone = run.status === 'passed' ? 'success' : ['failed', 'cancelled', 'interrupted'].includes(run.status) ? 'danger' : 'warn';
   const kpi = tiles([
     ['Status', statusBadge(run.status), `exit ${run.exitCode ?? '-'}`, runTone],
-    ['Artifact', String(report.files.length), `${html.length} html · ${screenshots.length} gambar`],
+    ['Artifact', String(report.files.length), `${html.length} html - ${screenshots.length} gambar`],
     ['Selesai', esc(fmtWib(run.finishedAt)), 'WIB'],
     ['Peringatan', String(report.warnings.length), report.warnings.length ? 'perlu dibaca' : 'tidak ada', report.warnings.length ? 'warn' : ''],
   ]);
@@ -402,7 +403,7 @@ ${run.error ? `<div class="snapshot-banner" role="alert">${errorDetail(run.error
   const body = `${kpi}
 ${panel('Yang perlu dibenahi', issuePanel(report), '', 'masalah')}
 ${report.warnings.length > 0 ? panel('Peringatan', `<ul>${report.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>`, '', 'peringatan') : ''}
-${report.reports.map(r => panel(`${esc(r.kind === 'steps' ? 'Langkah' : r.kind === 'lighthouse' ? 'Lighthouse' : 'Playwright')} · ${esc(r.path)}`, `${sectionBody(r, run)}
+${report.reports.map(r => panel(`${esc(r.kind === 'steps' ? 'Langkah' : r.kind === 'lighthouse' ? 'Lighthouse' : 'Playwright')} - ${esc(r.path)}`, `${sectionBody(r, run)}
 <p class="mut">${download(r.path, 'Unduh JSON sumber')}</p>`)).join('')}
 <h2 class="section-title">Lampiran &amp; ekspor</h2>
 ${panel('Teks ringkas (salin tempel)', `<p>Blok siap salin ke tiket atau dokumen. Tersedia juga sebagai <a href="ringkas.txt" download>ringkas.txt</a>.</p>
@@ -423,7 +424,7 @@ ${panel('Log runner', `<div class="terminal-log"><div class="terminal-head"><spa
 <details><summary>Tampilkan log runner asli</summary>${pre(report.logs)}</details></div>`, '', 'log-runner')}`;
 
   return doc({
-    title: `${run.suiteName || run.id} · ${run.status}`,
+    title: `${run.suiteName || run.id} - ${run.status}`,
     brand: run.suiteName || run.id,
     sub: `run ${run.id}`,
     actions: `${statusBadge(run.status)}<a class="btn sm" href="ringkas.txt" download>ringkas.txt</a>`,

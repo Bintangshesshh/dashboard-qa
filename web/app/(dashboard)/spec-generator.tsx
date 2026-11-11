@@ -64,11 +64,6 @@ export function SpecGenerator({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (loading || !url.trim()) return;
-    if (!(await confirmAction({
-      title: "Generate template spec?",
-      text: `Crawl ${url.trim()} dari mesin server.`,
-      confirmButtonText: "Ya, Generate",
-    }))) return;
     setLoading(true);
     setError("");
     setNotice("");
@@ -84,10 +79,6 @@ export function SpecGenerator({
 
   const download = async () => {
     if (!result) return;
-    if (!(await confirmAction({
-      title: "Download generated-flow.spec.ts?",
-      confirmButtonText: "Ya, Download",
-    }))) return;
     const blob = new Blob([result.code], { type: "text/typescript;charset=utf-8" });
     const href = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -110,11 +101,6 @@ export function SpecGenerator({
       text: `${existingFile.path} akan diganti dengan hasil generate ini.`,
       confirmButtonText: "Ya, Timpa",
     }))) return;
-    if (!existingFile && !(await confirmAction({
-      title: "Simpan spec ke project?",
-      text: `${path} akan dibuat dari hasil generate ini.`,
-      confirmButtonText: "Ya, Simpan",
-    }))) return;
     setSaving(true);
     setError("");
     setNotice("");
@@ -122,12 +108,12 @@ export function SpecGenerator({
       const saved = existingFile
         ? await api.patchTestFile(existingFile.id, { code: result.code, force: true })
         : await api.createTestFile({
-            projectId,
-            tool: "pw",
-            path,
-            label: `${projectName || projectSlug || "Project"} Playwright (${journey ? "journey" : "generated"})`,
-            code: result.code,
-          });
+          projectId,
+          tool: "pw",
+          path,
+          label: `${projectName || projectSlug || "Project"} Playwright (${journey ? "journey" : "generated"})`,
+          code: result.code,
+        });
       setNotice(`Tersimpan ke ${saved.path}. Spec langsung bisa dijalankan.`);
       showSuccessToast(`Spec tersimpan ke ${saved.path}.`);
       onSaved?.(saved);
@@ -139,7 +125,7 @@ export function SpecGenerator({
   };
 
   const summary = result
-    ? `${result.pages.length} halaman · ${result.pages.reduce((n, p) => n + p.inputs, 0)} input · ${result.pages.reduce((n, p) => n + p.buttons, 0)} tombol${(result as any).journey ? " · journey mode" : ""}`
+    ? `${result.pages.length} halaman - ${result.pages.reduce((n, p) => n + p.inputs, 0)} input - ${result.pages.reduce((n, p) => n + p.buttons, 0)} tombol${(result as any).journey ? " - journey mode" : ""}`
     : "";
 
   return (

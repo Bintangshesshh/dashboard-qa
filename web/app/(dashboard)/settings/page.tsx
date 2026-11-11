@@ -3,15 +3,16 @@
 // Semua endpoint settings butuh admin; viewer kena 403 dan hanya melihat pesan galat.
 // Tab: Project, Playwright, Lighthouse, Report, Akses, Bantuan.
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   api, fmtDate, fmtTime, readLastProject, rememberProject,
   type Project, type ProjectGroup, type Settings, type TestFile,
 } from "../../../lib/playbook";
-import { confirmAction, confirmRun, promptText, showErrorAlert, showInfoToast, showSuccessToast } from "../../../lib/alerts";
+import { confirmAction, confirmRun, showErrorAlert, showInfoToast, showSuccessToast } from "../../../lib/alerts";
 import { SpecGenerator } from "../spec-generator";
 import { LhciCard, NewGroupForm, NewProjectForm, ProjectRow, PwCard } from "./project-panels";
 import { Bantuan } from "./bantuan";
+import { SettingsLayout } from "./SettingsLayout";
 
 const num = (value: string) => Number(value) || 0;
 
@@ -30,14 +31,13 @@ const fmtMinutes = (value: string) => {
 };
 
 type TabId = "project" | "pw" | "lh" | "report" | "bantuan";
+type MainTab = "general" | "projects" | "qa" | "system";
 
-// Urutan tab mengikuti alur kerja: siapkan project dulu, baru pengaturan per tool.
-const TABS: { id: TabId; label: string }[] = [
-  { id: "project", label: "Project" },
-  { id: "pw", label: "Playwright" },
-  { id: "lh", label: "Lighthouse CI" },
-  { id: "report", label: "Report" },
-  { id: "bantuan", label: "Bantuan" },
+const TABS: { id: MainTab; label: string }[] = [
+  { id: "general", label: "Umum & Retensi" },
+  { id: "projects", label: "Kelola Project" },
+  { id: "qa", label: "Konfigurasi QA" },
+  { id: "system", label: "System & Dokumentasi" },
 ];
 
 const TAB_HINT: Record<TabId, string> = {
@@ -94,12 +94,12 @@ const SECTIONS: SettingSection[] = [
     id: "sesi",
     tab: "report",
     title: "Pembagian sesi",
-    desc: "Sesi baru dibuat setelah idle selama ini, jadi run berjauhan tidak menumpuk di satu laporan.",
+    desc: "Pembagian sesi dibagi perberapa menit.",
     fields: [
       {
         key: "session_reuse_minutes", label: "Reuse sesi", suffix: "menit",
         min: 1, max: 10080,
-        help: "Idle dihitung dari run terakhir. Lebih pendek = laporan lebih ringkas per sesi.",
+        help: "Idle dihitung dari run terakhir.",
         format: fmtMinutes,
       },
     ],
@@ -108,12 +108,12 @@ const SECTIONS: SettingSection[] = [
     id: "upload",
     tab: "report",
     title: "Upload artifact",
-    desc: "Batas ukuran satu upload artifact dari runner.",
+    desc: "Batas ukuran satu upload dari runner.",
     fields: [
       {
         key: "max_upload_mb", label: "Batas upload artifact", suffix: "MB",
         min: 1, max: 1024,
-        help: "Ukuran maksimum satu upload artifact dari runner.",
+        help: "Ukuran maksimum satu upload dari runner.",
         format: value => `${num(value).toLocaleString("id-ID")} MB`,
       },
     ],
@@ -122,12 +122,12 @@ const SECTIONS: SettingSection[] = [
     id: "retensi",
     tab: "report",
     title: "Retensi",
-    desc: "Berapa lama data disimpan sebelum dibersihkan otomatis.",
+    desc: "Berapa lama data disimpan.",
     fields: [
       {
         key: "artifact_retention_days", label: "Artifact", suffix: "hari",
         min: 1, max: 365,
-        help: "Screenshot, trace, dan file hasil test dihapus setelah umur ini.",
+        help: "Screenshot, trace, dan file hasil test dihapus setelah retensi.",
         format: fmtDays,
       },
       {
@@ -139,7 +139,7 @@ const SECTIONS: SettingSection[] = [
       {
         key: "log_retention_days", label: "Log run", suffix: "hari",
         min: 1, max: 365,
-        help: "Teks log runner disimpan selama ini sebelum dipangkas.",
+        help: "Teks log runner disimpan selama ini.",
         format: fmtDays,
       },
     ],
@@ -148,12 +148,12 @@ const SECTIONS: SettingSection[] = [
     id: "tampilan",
     tab: "report",
     title: "Tampilan ringkasan",
-    desc: "Rentang hari yang dipakai Overview saat pertama dibuka.",
+    desc: "Rentang hari yang dipakai Overview.",
     fields: [
       {
         key: "range_default_days", label: "Range default", suffix: "hari",
         min: 1, max: 365,
-        help: "Rentang hari yang dipilih otomatis saat Ringkasan pertama dibuka.",
+        help: "Rentang hari yang dipilih.",
         format: fmtDays,
       },
     ],
@@ -161,7 +161,9 @@ const SECTIONS: SettingSection[] = [
 ];
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<TabId>("pw");
+  const [tab, setTab] = useState<MainTab>("qa");
+  const [qaTab, setQaTab] = useState<"pw" | "lh">("pw");
+  const [qaProjectId, setQaProjectId] = useState("");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Partial<Record<keyof Settings, string>>>({});
   const [savedAt, setSavedAt] = useState<Record<string, string>>({});
@@ -169,27 +171,34 @@ export default function SettingsPage() {
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [addPanel, setAddPanel] = useState<"group" | "project" | null>(null);
-  const [genProjectId, setGenProjectId] = useState("");
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [groupName, setGroupName] = useState("");
   const [files, setFiles] = useState<TestFile[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  // Draft config QA (PwCard/LhciCard) ikut satu savebar dengan setelan umum.
+  const [qaDirty, setQaDirty] = useState(false);
+  const [qaResetKey, setQaResetKey] = useState(0);
+  const qaSaveRef = useRef<(() => Promise<boolean>) | null>(null);
+  const handleQaDirtyChange = useCallback((dirty: boolean) => setQaDirty(dirty), []);
+  const registerQaSave = useCallback((save: (() => Promise<boolean>) | null) => {
+    qaSaveRef.current = save;
+  }, []);
 
   const load = () => {
     api.settings().then(s => { setSettings(s); setDraft({}); setSavedAt({}); })
       .catch(e => setError(e.message));
-    api.projects({ all: true }).then(setProjects).catch(() => {});
-    api.projectGroups().then(setGroups).catch(() => {});
-    api.testFiles({ all: true }).then(setFiles).catch(() => {});
+    api.projects({ all: true }).then(setProjects).catch(() => { });
+    api.projectGroups().then(setGroups).catch(() => { });
+    api.testFiles({ all: true }).then(setFiles).catch(() => { });
   };
 
   useEffect(load, []);
 
-  // Pilihan generator ikut project terakhir yang masih aktif; kalau tidak ada, yang pertama.
+  // Satu pilihan project untuk toolbar dan generator spec; awali dari project terakhir yang aktif.
   useEffect(() => {
-    setGenProjectId(current => {
+    setQaProjectId(current => {
       const active = projects.filter(p => p.active);
       if (active.some(p => p.id === current)) return current;
       const last = readLastProject();
@@ -199,6 +208,11 @@ export default function SettingsPage() {
 
   const sectionDirty = (section: SettingSection) =>
     section.fields.some(f => draft[f.key] !== undefined && draft[f.key] !== settings?.[f.key]);
+  const settingsDirty = Object.entries(draft).some(([key, value]) => value !== undefined && value !== String(settings?.[key as keyof Settings]));
+  // QA dihitung satu kelompok: card hanya mengirim status dirty, bukan daftar field.
+  const settingsChangeCount = SECTIONS.reduce((total, section) => total + section.fields.filter(
+    f => draft[f.key] !== undefined && draft[f.key] !== String(settings?.[f.key])).length, 0);
+  const changeCount = settingsChangeCount + (qaDirty ? 1 : 0);
 
   const fieldInvalid = (field: SettingField) => {
     const raw = draft[field.key];
@@ -207,53 +221,47 @@ export default function SettingsPage() {
     return raw === "" || !Number.isSafeInteger(n) || n < field.min || n > field.max;
   };
 
-  const saveSection = async (section: SettingSection) => {
+  const saveAllSettings = async () => {
     if (!settings) return;
+    if (SECTIONS.some(s => s.fields.some(fieldInvalid))) return;
     const body: Partial<Record<keyof Settings, number>> = {};
-    for (const field of section.fields) {
+    for (const section of SECTIONS) for (const field of section.fields) {
       const value = draft[field.key];
-      if (value !== undefined && value !== "" && value !== settings[field.key]) {
-        body[field.key] = Number(value);
-      }
+      if (value !== undefined && Number(value) !== Number(settings[field.key])) body[field.key] = Number(value);
     }
-    if (!Object.keys(body).length) { setNotice("Tidak ada perubahan di bagian ini."); return; }
-    if (!(await confirmAction({
-      title: `Simpan ${section.title}?`,
-      text: "Nilai baru berlaku untuk run berikutnya.",
-      confirmButtonText: "Ya, Simpan",
-    }))) return;
-    setBusy(true); setError(""); setNotice("");
+    const hasSettings = Object.keys(body).length > 0;
+    if (!hasSettings && !qaDirty) return;
+    setBusy(true); setError("");
     try {
-      setSettings(await api.patchSettings(body));
-      setDraft(current => {
-        const next = { ...current };
-        for (const key of Object.keys(body)) delete next[key as keyof Settings];
-        return next;
-      });
-      setSavedAt(current => ({ ...current, [section.id]: new Date().toISOString() }));
-      showSuccessToast(`${section.title} tersimpan.`);
+      // Draft QA disimpan dulu: kalau validasi/server menolak, setelan umum tidak ikut berubah.
+      if (qaDirty && qaSaveRef.current) {
+        const ok = await qaSaveRef.current();
+        if (!ok) return;
+      }
+      if (hasSettings) {
+        setSettings(await api.patchSettings(body));
+        setDraft({});
+        const now = new Date().toISOString();
+        setSavedAt(current => {
+          const next = { ...current };
+          for (const section of SECTIONS) {
+            if (section.fields.some(f => f.key in body)) next[section.id] = now;
+          }
+          return next;
+        });
+      }
+      showSuccessToast("Semua pengaturan tersimpan.");
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
 
-  const resetSection = async (section: SettingSection) => {
-    if (!(await confirmAction({
-      icon: "question",
-      title: `Reset ${section.title}?`,
-      text: "Perubahan yang belum disimpan akan dibuang.",
-      confirmButtonText: "Ya, Reset",
-    }))) return;
-    setDraft(current => {
-      const next = { ...current };
-      for (const field of section.fields) delete next[field.key];
-      return next;
-    });
-    setSavedAt(current => {
-      if (!current[section.id]) return current;
-      const next = { ...current };
-      delete next[section.id];
-      return next;
-    });
-    showInfoToast(`${section.title} direset.`);
+  // Satu tombol batal untuk kedua sumber draft: setelan umum dan config QA.
+  const resetAllSettings = () => {
+    setDraft({});
+    setSavedAt({});
+    setQaResetKey(key => key + 1);
+    qaSaveRef.current = null;
+    setQaDirty(false);
+    showInfoToast("Perubahan yang belum disimpan dibuang.");
   };
 
   // Error diteruskan ke form: isian tidak boleh hilang saat gagal.
@@ -292,17 +300,24 @@ export default function SettingsPage() {
   };
 
   const removeGroup = async (g: ProjectGroup) => {
+    const count = projects.filter(p => p.group_id === g.id).length;
     if (!(await confirmAction({
       icon: "warning",
       title: `Hapus grup "${g.name}"?`,
-      text: "Project di dalamnya harus dipindahkan dulu.",
+      text: count
+        ? `${count} project di grup ini akan dipindah ke Tanpa grup. Project, riwayat, dan laporannya tidak ikut terhapus.`
+        : "Grup kosong akan dihapus.",
       confirmButtonText: "Ya, Hapus",
     }))) return;
     setError(""); setNotice("");
     try {
       await api.deleteProjectGroup(g.id);
       setGroups(prev => prev.filter(x => x.id !== g.id));
-      showSuccessToast(`Grup ${g.name} dihapus.`);
+      setProjects(prev => prev.map(p =>
+        p.group_id === g.id ? { ...p, group_id: null, group_name: null } : p));
+      showSuccessToast(count
+        ? `Grup ${g.name} dihapus; ${count} project dipindah ke Tanpa grup.`
+        : `Grup ${g.name} dihapus.`);
     } catch (e) { setError((e as Error).message); }
   };
 
@@ -317,14 +332,22 @@ export default function SettingsPage() {
     } catch (e) { setError((e as Error).message); }
   };
 
-  const saveTestFile = async (file: TestFile, patch: Parameters<typeof api.patchTestFile>[1]) => {
+  const saveTestFile = async (
+    file: TestFile,
+    patch: Parameters<typeof api.patchTestFile>[1],
+    { silent = false }: { silent?: boolean } = {},
+  ) => {
     setError(""); setNotice("");
     try {
       const updated = await api.patchTestFile(file.id, patch);
       setFiles(prev => prev.map(x => (x.id === file.id ? updated : x)));
       setNotice(`${file.label} disimpan.`);
-      showSuccessToast(`${file.label} disimpan.`);
-    } catch (e) { setError((e as Error).message); }
+      if (!silent) showSuccessToast(`${file.label} disimpan.`);
+    } catch (e) {
+      setError((e as Error).message);
+      // Card QA butuh tahu gagal supaya draft tidak dianggap tersimpan.
+      throw e;
+    }
   };
 
   // Test file milik project. Error diteruskan ke form supaya isian tidak hilang.
@@ -366,17 +389,12 @@ export default function SettingsPage() {
 
   // Hapus permanen: project berriwayat ikut menghapus sesi, run, dan report.
   const deleteProject = async (p: Project) => {
-    const typed = await promptText({
+    if (!(await confirmAction({
       icon: "warning",
       title: `Hapus permanen ${p.name}?`,
-      text: `Ketik nama project untuk konfirmasi. Semua sesi, run, dan laporan project ini ikut terhapus dan tidak bisa dikembalikan.`,
+      text: "Semua sesi, run, dan laporan project ini ikut terhapus dan tidak bisa dikembalikan.",
       confirmButtonText: "Hapus permanen",
-    });
-    if (typed == null) return;
-    if (typed.trim() !== p.name) {
-      showErrorAlert("Nama tidak cocok", `Ketik persis "${p.name}" untuk menghapus.`);
-      return;
-    }
+    }))) return;
     setError(""); setNotice("");
     try {
       await api.deleteProject(p.id, true);
@@ -410,7 +428,6 @@ export default function SettingsPage() {
             <label className="pb-set-field" key={field.key}>
               <span className="pb-set-field-top">
                 <span className="pb-set-label">{field.label}</span>
-                <span className="pb-set-current">sekarang {field.format(settings[field.key])}</span>
               </span>
               <span className="pb-input-unit">
                 <input
@@ -432,22 +449,13 @@ export default function SettingsPage() {
             </label>
           ))}
         </div>
-        <div className="pb-set-foot">
-          <button className="pb-btn primary" onClick={() => saveSection(section)}
-            disabled={busy || !dirty || section.fields.some(fieldInvalid)}
-            title={section.fields.some(fieldInvalid) ? "Ada nilai di luar rentang." : undefined}>
-            Simpan
-          </button>
-          <button className="pb-btn" onClick={() => resetSection(section)}
-            disabled={busy || !dirty}>Reset</button>
-          <span className="pb-spacer" />
-          <span className="pb-set-status">Berlaku untuk run berikutnya.</span>
-        </div>
+        <div className="pb-set-foot"><span className="pb-set-status">Berlaku untuk run berikutnya.</span></div>
       </section>
     );
   };
 
   const tabSections = (id: TabId) => SECTIONS.filter(s => s.tab === id).map(renderSection);
+  const mainTab = tab;
   const visibleProjects = showArchived ? projects : projects.filter(p => p.active);
   const byGroup = (id: string | null) =>
     visibleProjects.filter(p => (p.group_id ?? null) === id)
@@ -457,38 +465,39 @@ export default function SettingsPage() {
     .sort((a, b) => a.name.localeCompare(b.name));
   const pwFiles = files.filter(f => f.tool === "pw");
   const lhFiles = files.filter(f => f.tool === "lh");
+  const selectedProject = activeProjects.find(p => p.id === qaProjectId) ?? activeProjects[0] ?? null;
   const genProjects = activeProjects.map(p => ({ id: p.id, name: p.name }));
-  const genProject = activeProjects.find(p => p.id === genProjectId) ?? null;
+  const genProject = selectedProject;
   const genFile = genProject ? pwFiles.find(f => f.project_id === genProject.id) ?? null : null;
   const genUrl = genProject ? (genProject.local_url || genProject.base_url || "") : "";
 
   return (
     <>
-      <div className="pb-head">
-        <div>
-          <h1>Pengaturan.</h1>
-          <p className="pb-lead">{TAB_HINT[tab]}</p>
-        </div>
-      </div>
       {error && <div className="pb-err" role="alert">{error}</div>}
       {notice && <div className="pb-note flash">{notice}</div>}
 
-      <div className="pb-tabs pb-set-tabbar" role="tablist" aria-label="Bagian pengaturan">
-        {TABS.map(t => (
-          <button key={t.id} role="tab" aria-selected={tab === t.id}
-            className={`pb-tab ${tab === t.id ? "active" : ""}`}
-            onClick={() => { setTab(t.id); setNotice(""); }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SettingsLayout tabs={TABS} activeTab={mainTab} onSelect={id => { const next = id as MainTab; setTab(next); setNotice(""); }}>
 
-      <div className="pb-set-tab-body">
-        {tab === "pw" && (
+        {mainTab === "qa" && (
+          <>
+            <div className="pb-set-toolbar">
+              <label className="pb-field">Project konfigurasi
+                <select className="pb-select" value={selectedProject?.id ?? ""}
+                  onChange={e => { setQaProjectId(e.target.value); rememberProject(e.target.value); }}>
+                  {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+              <div className="pb-tabs" role="tablist" aria-label="Runner QA">
+                {([["pw", "Playwright"], ["lh", "Lighthouse"]] as const).map(([id, label]) => <button key={id} className={`pb-tab ${qaTab === id ? "active" : ""}`} role="tab" aria-selected={qaTab === id} onClick={() => setQaTab(id)}>{label}</button>)}
+              </div>
+            </div>
+          </>
+        )}
+        {mainTab === "qa" && qaTab === "pw" && (
           <>
             <SpecGenerator
               projectOptions={genProjects}
-              onProjectChange={id => { setGenProjectId(id); rememberProject(id); }}
+              onProjectChange={id => { setQaProjectId(id); rememberProject(id); }}
               defaultUrl={genUrl}
               projectId={genProject?.id}
               projectSlug={genProject?.slug}
@@ -509,7 +518,9 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <span className="pb-set-status">
-                  {pwFiles.filter(f => f.enabled).length} spec aktif dari {pwFiles.length}
+                  {selectedProject
+                    ? `${pwFiles.filter(f => f.project_id === selectedProject.id && f.enabled).length} spec aktif dari ${pwFiles.filter(f => f.project_id === selectedProject.id).length}`
+                    : "0 spec aktif dari 0"}
                 </span>
               </div>
               {genProjects.length === 0 && (
@@ -517,9 +528,10 @@ export default function SettingsPage() {
                   Belum ada project aktif. Tambahkan project dulu di tab Project.
                 </p>
               )}
-              {projects.map(p => {
+              {selectedProject && (() => {
+                const p = selectedProject;
                 const own = pwFiles.filter(f => f.project_id === p.id);
-                if (!own.length) return null;
+                if (!own.length) return <p className="pb-empty">Belum ada spec Playwright untuk {p.name}.</p>;
                 return (
                   <div className="pb-spec-list" key={p.id}>
                     <div className="pb-spec-head">
@@ -529,7 +541,7 @@ export default function SettingsPage() {
                     {own.map(f => (
                       <label className="pb-spec-row" key={f.id}>
                         <input type="checkbox" checked={!!f.enabled}
-                          onChange={e => saveTestFile(f, { enabled: e.target.checked ? 1 : 0 })} />
+                          onChange={e => { void saveTestFile(f, { enabled: e.target.checked ? 1 : 0 }).catch(() => {}); }} />
                         <span className="pb-spec-name">{f.label}</span>
                         <span className="pb-spec-path">{f.path}</span>
                         <span className={`pb-badge ${f.enabled ? "passed" : "closed"}`}>
@@ -539,8 +551,8 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 );
-              })}
-              {pwFiles.length === 0 && <p className="pb-empty">Belum ada spec Playwright.</p>}
+              })()}
+
             </section>
             {tabSections("pw")}
 
@@ -554,11 +566,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              {activeProjects.map(p => (
-                <PwCard key={p.id} project={p}
-                  file={pwFiles.find(f => f.project_id === p.id) ?? null}
-                  onSave={saveTestFile} />
-              ))}
+              {selectedProject && <PwCard key={`${selectedProject.id}-${qaResetKey}`} project={selectedProject}
+                file={pwFiles.find(f => f.project_id === selectedProject.id) ?? null}
+                onSave={(f, patch) => saveTestFile(f, patch, { silent: true })}
+                onDirtyChange={handleQaDirtyChange} registerSave={registerQaSave} />}
               {activeProjects.length === 0 && (
                 <p className="pb-empty">Belum ada project aktif.</p>
               )}
@@ -566,7 +577,7 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "lh" && (
+        {mainTab === "qa" && qaTab === "lh" && (
           <>
             <section className="pb-card">
               <div className="pb-card-head">
@@ -578,13 +589,10 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              {activeProjects.map(p => {
-                const file = lhFiles.find(f => f.project_id === p.id) ?? null;
-                return (
-                  <LhciCard key={p.id} project={p} file={file}
-                    onSave={saveTestFile} onAddFile={addTestFile} />
-                );
-              })}
+              {selectedProject && <LhciCard key={`${selectedProject.id}-${qaResetKey}`} project={selectedProject}
+                file={lhFiles.find(f => f.project_id === selectedProject.id) ?? null}
+                onSave={(f, patch) => saveTestFile(f, patch, { silent: true })} onAddFile={addTestFile}
+                onDirtyChange={handleQaDirtyChange} registerSave={registerQaSave} />}
               {activeProjects.length === 0 && (
                 <p className="pb-empty">Belum ada project aktif.</p>
               )}
@@ -593,27 +601,13 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "report" && (
+        {mainTab === "general" && (
           <>
             {tabSections("report")}
-            <section className="pb-card">
-              <div className="pb-card-head">
-                <div>
-                  <h2>Isi report</h2>
-                  <div className="pb-card-sub">
-                    Report sesi memuat log runner, daftar artifact, dan skor Lighthouse terakhir.
-                  </div>
-                </div>
-                <Link className="pb-link-muted" href="/reports">Buka Reports</Link>
-              </div>
-              <p className="pb-hint">
-                Retensi di atas menentukan berapa lama file report di disk masih bisa dibuka.
-              </p>
-            </section>
           </>
         )}
 
-        {tab === "project" && (
+        {mainTab === "projects" && (
           <>
             <section className="pb-card">
               <div className="pb-card-head">
@@ -645,7 +639,7 @@ export default function SettingsPage() {
                   + Project
                 </button>
                 <span className="pb-spacer" />
-                <span className="pb-set-status">{projects.length} project · {groups.length} grup</span>
+                <span className="pb-set-status">{projects.length} project - {groups.length} grup</span>
               </div>
 
               {addPanel === "group" && (
@@ -664,13 +658,6 @@ export default function SettingsPage() {
                     onCreate={async body => { await createProject(body); setAddPanel(null); }} />
                 </div>
               )}
-
-              <div className="pb-note" style={{ marginTop: 14 }}>
-                <p className="pb-note-title">Env local dijalankan dari mesin server dashboard</p>
-                Kalau dashboard dihosting, isi <code>local_url</code> dengan URL tunnel
-                (cloudflared/ngrok) ke web lokal, bukan 127.0.0.1. Origin-nya wajib terdaftar
-                di origins project atau <code>TARGET_ALLOWLIST</code>.
-              </div>
 
               {groups.length === 0 && orphans.length === 0 && (
                 <p className="pb-empty">
@@ -717,8 +704,8 @@ export default function SettingsPage() {
                             })}>
                             Ganti nama
                           </button>
-                          <button className="pb-btn sm danger" disabled={own.length > 0}
-                            title={own.length > 0 ? "Pindahkan project dulu" : undefined}
+                          <button className="pb-btn sm danger"
+                            title={own.length > 0 ? "Project akan dipindah ke Tanpa grup" : undefined}
                             onClick={() => removeGroup(g)}>Hapus grup</button>
                         </>
                       )}
@@ -752,9 +739,18 @@ export default function SettingsPage() {
           </>
         )}
 
-        {tab === "bantuan" && <Bantuan />}
+        {mainTab === "system" && <Bantuan />}
 
-      </div>
+      </SettingsLayout>
+      {(settingsDirty || qaDirty) && <div className="settings-savebar" role="status">
+        <span className="settings-savebar-text">
+          <strong>{changeCount} perubahan belum disimpan</strong>
+          <span className="pb-muted">Berlaku untuk run berikutnya.</span>
+        </span>
+        <span className="pb-spacer" />
+        <button className="pb-btn" disabled={busy} onClick={resetAllSettings}>Batal</button>
+        <button className="pb-btn primary" disabled={busy || SECTIONS.some(s => s.fields.some(fieldInvalid))} onClick={saveAllSettings}>{busy ? "Menyimpan…" : "Simpan Semua"}</button>
+      </div>}
     </>
   );
 }

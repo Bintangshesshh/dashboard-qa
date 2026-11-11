@@ -1,30 +1,85 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, type Project, type User } from "../../lib/playbook";
-import { confirmAction, showLogoutConfirm, showSuccessToast } from "../../lib/alerts";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import "./shell.css";
+import { api, ApiError, rememberProject, runStatusLabel, type Project, type User } from "../../lib/playbook";
+import { showLogoutConfirm, showRunToast, showSuccessToast } from "../../lib/alerts";
+import { readLastProject, readLastEnv } from "../../lib/playbook";
+
+const FINAL_RUN = new Set(["passed", "failed", "cancelled", "interrupted"]);
+type RunNotif = {
+  id: string; runId: string; projectId: string; tool: "pw" | "lh";
+  title: string; text: string;
+};
 
 const NAV = [
-  { href: "/", label: "Ringkasan" },
-  { href: "/playwright", label: "Playwright" },
-  { href: "/lighthouse", label: "Lighthouse" },
-  { href: "/reports", label: "Laporan" },
+  { href: "/", label: "Ringkasan", icon: "home" },
+  { href: "/playwright", label: "Playwright", icon: "pw" },
+  { href: "/lighthouse", label: "Lighthouse", icon: "lh" },
+  { href: "/reports", label: "Laporan", icon: "reports" },
 ];
 // Menu admin (role admin saja).
-const ADMIN_NAV: { href: string; label: string }[] = [{ href: "/settings", label: "Pengaturan" }];
+const ADMIN_NAV: { href: string; label: string; icon: string }[] = [{ href: "/settings", label: "Pengaturan", icon: "settings" }];
+
+function NavIcon({ name, className = "" }: { name: string; className?: string }) {
+  const icons: Record<string, ReactElement> = {
+    home: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>,
+    playwright: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M9 9h6M9 15h4" /></svg>,
+    lighthouse: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /><circle cx="12" cy="12" r="3" /></svg>,
+    reports: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>,
+    settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>,
+  };
+  return icons[name] || <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden="true"><circle cx="12" cy="12" r="10" /></svg>;
+}
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const drawer = drawerRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusable = () => Array.from(drawer?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? []).filter(element => element.getClientRects().length > 0);
+    focusable()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setDrawerOpen(false); return; }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) { event.preventDefault(); return; }
+      if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
+      else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      menuRef.current?.focus();
+    };
+  }, [drawerOpen]);
+
+  useEffect(() => { setDrawerOpen(false); }, [path]);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const close = () => { if (media.matches) setDrawerOpen(false); };
+    media.addEventListener("change", close);
+    return () => media.removeEventListener("change", close);
+  }, []);
   // PRD §10.8: backend mati → banner, halaman tetap dirender.
   const [down, setDown] = useState(false);
   // Breadcrumb butuh nama project + label sesi.
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessionInfo, setSessionInfo] = useState<{ label: string; projectId: string } | null>(null);
+  const seenRuns = useRef<Set<string> | null>(null);
 
   const ping = useCallback(async () => {
     try {
@@ -42,7 +97,65 @@ export function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => { void ping(); }, [ping, path]);
 
   // Project arsip tetap perlu namanya untuk breadcrumb.
-  useEffect(() => { api.projects({ all: true }).then(setProjects).catch(() => {}); }, []);
+  useEffect(() => { api.projects({ all: true }).then(setProjects).catch(() => { }); }, []);
+
+  // Notifikasi ringan saat run Playwright/Lighthouse selesai. Polling ini juga
+  // menangkap run yang dimulai dari halaman lain. Memakai toast SweetAlert yang
+  // sama dengan notifikasi aksi lain (kanan atas), bukan komponen kustom.
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    seenRuns.current = null;
+    const openRun = (notif: RunNotif) => {
+      rememberProject(notif.projectId);
+      try {
+        sessionStorage.setItem(`${notif.tool}-run:${notif.projectId}`, notif.runId);
+        // Lighthouse langsung diarahkan ke card run, bukan ke atas halaman.
+        if (notif.tool === "lh") sessionStorage.setItem(`lh-run-focus:${notif.projectId}`, "1");
+      } catch { /* storage diblokir */ }
+      router.push(notif.tool === "lh" ? "/lighthouse" : "/playwright");
+      // Kalau halaman tujuan sudah terbuka, event ini membuatnya pindah ke run
+      // tersebut tanpa perlu remount.
+      window.dispatchEvent(new CustomEvent("pb-run-open", {
+        detail: { tool: notif.tool, projectId: notif.projectId, runId: notif.runId },
+      }));
+    };
+    const tick = async () => {
+      try {
+        const rows = await api.runs({ limit: 30 });
+        if (!alive) return;
+        if (!seenRuns.current) {
+          // Baseline: run final yang sudah ada saat halaman dibuka tidak perlu
+          // dinotifikasi. Run yang masih berjalan sengaja tidak ditandai.
+          seenRuns.current = new Set(rows.filter(r => FINAL_RUN.has(r.status)).map(r => r.id));
+          return;
+        }
+        const seen = seenRuns.current;
+        const finished = rows.filter(r => FINAL_RUN.has(r.status) && !seen.has(r.id));
+        for (const r of finished) seen.add(r.id);
+        if (!finished.length) return;
+        // Tampilkan yang paling baru lebih dulu jika satu polling menemukan banyak.
+        for (const r of finished) {
+          const notif: RunNotif = {
+            id: r.id, runId: r.id, projectId: r.project_id, tool: r.tool,
+            title: `${r.tool === "lh" ? "Lighthouse" : "Playwright"} selesai`,
+            text: `${r.project_name} - ${r.env} - ${r.status === "passed" ? "Berhasil" : runStatusLabel(r.status)}`,
+          };
+          const passed = r.status === "passed";
+          void showRunToast({
+            title: notif.title,
+            text: notif.text,
+            icon: passed ? "success" : r.status === "failed" ? "error" : "warning",
+            duration: 12000,
+            onClick: () => openRun(notif),
+          });
+        }
+      } catch { /* polling gagal sesaat: coba lagi di interval berikutnya */ }
+    };
+    void tick();
+    const timer = window.setInterval(tick, 4000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [user?.id]);
 
   const seg = path.split("/").filter(Boolean);
   const isSession = seg[0] === "reports" && seg[1] && seg[1] !== "project";
@@ -51,24 +164,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
     let live = true;
     api.session(seg[1])
       .then(s => { if (live) setSessionInfo({ label: s.label, projectId: s.project_id }); })
-      .catch(() => {});
+      .catch(() => { });
     return () => { live = false; };
   }, [isSession, seg[1]]);
 
   const logout = async () => {
     if (!(await showLogoutConfirm())) return;
-    await api.logout().catch(() => {});
+    await api.logout().catch(() => { });
     showSuccessToast("Logout berhasil.");
     router.replace("/login");
   };
 
   const retryPing = async () => {
-    if (!(await confirmAction({
-      icon: "question",
-      title: "Coba lagi?",
-      text: "Periksa koneksi ke backend.",
-      confirmButtonText: "Ya, Coba",
-    }))) return;
     if (await ping()) showSuccessToast("Backend tersambung kembali.");
   };
 
@@ -77,11 +184,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const screen = [...NAV, ...(user?.role === "admin" ? ADMIN_NAV : [])]
     .filter(i => isActive(i.href))
     .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "Ringkasan";
-  const navItem = (item: { href: string; label: string }) => (
-    <Link key={item.href} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>
-      {item.label}
-    </Link>
-  );
 
   // Tiap level breadcrumb bisa diklik; level terakhir tebal.
   const crumbs: { label: string; href: string }[] = [{ label: "Playbook", href: "/" }];
@@ -99,66 +201,117 @@ export function Shell({ children }: { children: React.ReactNode }) {
     crumbs.push({ label: screen, href: "/" + seg[0] });
   }
 
+  // Last project/env untuk metadata sidebar
+  const lastProjectId = readLastProject();
+  const lastEnv = readLastEnv();
+  const activeProject = projects.find(p => p.id === lastProjectId);
+  const activeEnv = lastEnv || "local";
+
+  const navItem = (item: { href: string; label: string; icon: string }) => (
+    <Link
+      key={item.href}
+      href={item.href}
+      aria-current={isActive(item.href) ? "page" : undefined}
+      className={`pb-nav-btn ${isActive(item.href) ? "active" : ""}`}
+      data-label={item.label}
+    >
+      {item.icon === "pw" || item.icon === "lh"
+        ? <img src={`/tools/${item.icon === "pw" ? "playwright" : "lighthouse"}.png`} className="pb-nav-icon" alt="" />
+        : <NavIcon name={item.icon} className="pb-nav-icon" />}
+      <span>{item.label}</span>
+    </Link>
+  );
+
+  const isLhViewer = seg[0] === "reports" && seg[2] === "lh-report";
+  // trailingSlash: true membuat usePathname() memberi "/reports/".
+  const cleanPath = path.replace(/\/+$/, "");
+  const isReportsIndex = cleanPath === "/reports";
+  const isReportsProject = /^\/reports\/project\/[^/]+$/.test(cleanPath);
+  const hasReportsSearch = isReportsIndex || isReportsProject;
+
   return (
-    <div className="pb-shell">
-      <aside className="pb-side">
-        <div className="pb-brand">
-          <div>
-            <div className="pb-brand-name">Playbook</div>
-            <div className="pb-brand-sub">Eureka Group</div>
+    <div className={`pb-shell ${collapsed ? "pb-shell-collapsed" : ""} ${drawerOpen ? "pb-drawer-open" : ""} ${isLhViewer ? "pb-shell-lh-viewer" : ""}`}>
+      {drawerOpen && <div className="pb-drawer-backdrop" aria-hidden="true" onClick={() => setDrawerOpen(false)} />}
+      <aside id="pb-sidebar" ref={drawerRef} className="pb-side" aria-label="Sidebar" {...(drawerOpen ? { role: "dialog", "aria-modal": true } : {})}>
+        {/* Header Section - Playbook QA branding + metadata */}
+        <div className="pb-side-header">
+          <div className="pb-side-brand">
+            <div className="pb-brand-text">
+              <div className="pb-brand-name">Playbook</div>
+              <div className="pb-brand-badge">Eureka Group</div>
+            </div>
+            <button className="pb-side-toggle pb-collapse-toggle" type="button" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"} aria-expanded={!collapsed} aria-controls="pb-sidebar">{collapsed ? "›" : "‹"}</button>
+            <button className="pb-side-toggle pb-drawer-close" type="button" onClick={() => setDrawerOpen(false)} aria-label="Tutup menu">×</button>
           </div>
+          {activeProject && (
+            <div className="pb-side-meta">
+              <div><span className="pb-meta-label">Target: </span><span className="pb-meta-value">{activeProject.name}</span></div>
+              <div><span className="pb-meta-label">Env: </span><span className="pb-meta-value pb-meta-env">{activeEnv}</span></div>
+            </div>
+          )}
         </div>
-        <nav className="pb-nav" aria-label="Navigasi utama">
-          <div className="pb-nav-label">Ruang kerja</div>
-          {NAV.map(navItem)}
+
+
+        {/* Navigation Menu */}
+        <nav className="pb-side-nav" aria-label="Navigasi utama">
+          <div className="pb-nav-section">
+            <div className="pb-nav-section-title">Ruang kerja</div>
+            {NAV.map(navItem)}
+          </div>
           {user?.role === "admin" && (
-            <>
-              <div className="pb-nav-label pb-nav-label-gap">Admin</div>
+            <div className="pb-nav-section">
+              <div className="pb-nav-section-title">Admin</div>
               {ADMIN_NAV.map(navItem)}
-            </>
+            </div>
           )}
         </nav>
 
+        <button type="button" className="pb-nav-btn pb-logout" onClick={logout} aria-label="Keluar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="pb-nav-icon" aria-hidden="true"><path d="M10 17l5-5-5-5M15 12H3M12 3h6a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-6" /></svg>
+          <span>Keluar</span>
+        </button>
+        {/* Footer - User Profile + Theme Switcher */}
         <div className="pb-side-foot">
-          <ThemePref />
           {user && (
-            <div className="pb-user-row">
-              <span className="pb-avatar" aria-hidden="true">{user.username[0].toUpperCase()}</span>
-              <span className="pb-user-meta">
+            <div className="pb-user-card">
+              <div className="pb-user-avatar" aria-hidden="true">{user.username[0].toUpperCase()}</div>
+              <div className="pb-user-info">
                 <strong>{user.username}</strong>
                 <span>{user.role}</span>
-              </span>
+              </div>
             </div>
           )}
-          <button className="pb-logout" onClick={logout}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-              <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /><path d="M15 8l4 4-4 4M19 12H9" />
-            </svg>
-            Logout
-          </button>
+          <ThemePref />
         </div>
       </aside>
 
       <div className="pb-mainwrap">
-        <header className="pb-topbar">
+        {!isLhViewer && <header className="pb-topbar">
+          <button ref={menuRef} className="pb-menu-toggle" type="button" onClick={() => setDrawerOpen(true)} aria-label="Buka menu" aria-expanded={drawerOpen} aria-controls="pb-sidebar">☰</button>
           <div style={{ minWidth: 0 }}>
             <div className="pb-topbar-title">{screen}</div>
             <div className="pb-topbar-sub">Eureka Group - Playbook QA</div>
           </div>
-          <nav className="pb-crumb" aria-label="Breadcrumb">
-            {crumbs.map((c, i) => {
-              const last = i === crumbs.length - 1;
-              return (
-                <span className="pb-crumb-item" key={c.href + i}>
-                  {i > 0 && <span className="pb-crumb-sep" aria-hidden="true">/</span>}
-                  {last
-                    ? <strong aria-current="page">{c.label}</strong>
-                    : <Link href={c.href}>{c.label}</Link>}
-                </span>
-              );
-            })}
-          </nav>
-        </header>
+          <div className={`pb-topbar-right${hasReportsSearch ? " pb-topbar-reports" : ""}`}>
+            <div id="pb-topbar-actions" className="pb-topbar-actions" />
+            <div id="pb-reports-search-slot" className="pb-reports-search-slot" hidden={!hasReportsSearch} />
+            {path !== "/" && !hasReportsSearch && (
+              <nav className="pb-crumb" aria-label="Breadcrumb">
+                {crumbs.map((c, i) => {
+                  const last = i === crumbs.length - 1;
+                  return (
+                    <span className="pb-crumb-item" key={c.href + i}>
+                      {i > 0 && <span className="pb-crumb-sep" aria-hidden="true">/</span>}
+                      {last
+                        ? <strong aria-current="page">{c.label}</strong>
+                        : <Link href={c.href}>{c.label}</Link>}
+                    </span>
+                  );
+                })}
+              </nav>
+            )}
+          </div>
+        </header>}
 
         <main className="pb-main">
           {down && (
@@ -213,9 +366,10 @@ function ThemePref() {
           key={p.pref}
           type="button"
           aria-pressed={pref === p.pref}
+          aria-label={p.label}
           onClick={() => { setPref(p.pref); applyTheme(p.pref); }}
         >
-          {p.label}
+          <span className="pb-theme-label">{p.label}</span><span className="pb-theme-icon" aria-hidden="true">{p.pref === "system" ? "◐" : p.pref === "light" ? "☀" : "☾"}</span>
         </button>
       ))}
     </div>

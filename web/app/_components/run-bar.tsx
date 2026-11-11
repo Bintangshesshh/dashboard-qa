@@ -13,7 +13,7 @@ export function RunBar({ runs, label }: { runs: RunMark[]; label?: string }) {
         <span
           key={r.id}
           className={`pb-runbar-seg ${state(r.status)}`}
-          title={`${r.tool === "lh" ? "Lighthouse" : "Playwright"} · ${runStatusLabel(r.status)} · ${r.session_label}${r.finished_at ? ` · ${fmtTime(r.finished_at)}` : ""}`}
+          title={`${r.tool === "lh" ? "Lighthouse" : "Playwright"} - ${runStatusLabel(r.status)} - ${r.session_label}${r.finished_at ? ` - ${fmtTime(r.finished_at)}` : ""}`}
         />
       ))}
     </div>

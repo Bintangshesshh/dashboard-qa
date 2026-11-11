@@ -2,7 +2,6 @@
 
 // Satu throw di client component sebelumnya = layar putih tanpa navigasi.
 // Boundary ini menjaga shell tetap hidup dan memberi jalan pulang.
-import { confirmAction, showInfoToast } from "../lib/alerts";
 
 export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
@@ -20,16 +19,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
           {error.digest ? `\n${error.digest}` : ""}
         </pre>
         <div className="pb-row" style={{ marginTop: 12 }}>
-          <button className="pb-btn primary" onClick={async () => {
-            if (!(await confirmAction({
-              icon: "warning",
-              title: "Coba muat ulang?",
-              text: "Halaman akan dicoba dimuat ulang.",
-              confirmButtonText: "Ya, Coba Lagi",
-            }))) return;
-            reset();
-            showInfoToast("Memuat ulang halaman…");
-          }}>Coba lagi</button>
+          <button className="pb-btn primary" onClick={reset}>Coba lagi</button>
           <a className="pb-btn" href="/">Ke Overview</a>
         </div>
       </div>

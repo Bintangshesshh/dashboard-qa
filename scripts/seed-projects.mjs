@@ -51,5 +51,5 @@ try {
 const rows = db.prepare('SELECT p.id, p.slug, p.name, p.base_url, p.group_id FROM projects p ORDER BY p.id').all();
 console.table(rows);
 const groupCount = db.prepare('SELECT COUNT(*) AS n FROM project_groups').get().n;
-console.log(`projects: ${rows.length}, groups: ${groupCount} · db: ${file}`);
+console.log(`projects: ${rows.length}, groups: ${groupCount} - db: ${file}`);
 db.close();
