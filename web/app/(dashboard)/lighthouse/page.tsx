@@ -393,7 +393,7 @@ export default function LighthousePage() {
       </form>
       </div>
 
-      <div id="run-terminal" ref={terminalRef}>
+      <div id="run-terminal" className="pb-lh-terminal" ref={terminalRef}>
         <RunPanel
           logs={logs}
           run={run}

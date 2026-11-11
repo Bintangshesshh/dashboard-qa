@@ -171,7 +171,6 @@ export default function SettingsPage() {
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [addPanel, setAddPanel] = useState<"group" | "project" | null>(null);
-  const [genProjectId, setGenProjectId] = useState("");
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [groupName, setGroupName] = useState("");
   const [files, setFiles] = useState<TestFile[]>([]);
@@ -197,9 +196,9 @@ export default function SettingsPage() {
 
   useEffect(load, []);
 
-  // Pilihan generator ikut project terakhir yang masih aktif; kalau tidak ada, yang pertama.
+  // Satu pilihan project untuk toolbar dan generator spec; awali dari project terakhir yang aktif.
   useEffect(() => {
-    setGenProjectId(current => {
+    setQaProjectId(current => {
       const active = projects.filter(p => p.active);
       if (active.some(p => p.id === current)) return current;
       const last = readLastProject();
@@ -468,7 +467,7 @@ export default function SettingsPage() {
   const lhFiles = files.filter(f => f.tool === "lh");
   const selectedProject = activeProjects.find(p => p.id === qaProjectId) ?? activeProjects[0] ?? null;
   const genProjects = activeProjects.map(p => ({ id: p.id, name: p.name }));
-  const genProject = activeProjects.find(p => p.id === genProjectId) ?? null;
+  const genProject = selectedProject;
   const genFile = genProject ? pwFiles.find(f => f.project_id === genProject.id) ?? null : null;
   const genUrl = genProject ? (genProject.local_url || genProject.base_url || "") : "";
 
@@ -483,7 +482,8 @@ export default function SettingsPage() {
           <>
             <div className="pb-set-toolbar">
               <label className="pb-field">Project konfigurasi
-                <select className="pb-select" value={selectedProject?.id ?? ""} onChange={e => setQaProjectId(e.target.value)}>
+                <select className="pb-select" value={selectedProject?.id ?? ""}
+                  onChange={e => { setQaProjectId(e.target.value); rememberProject(e.target.value); }}>
                   {activeProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </label>
@@ -497,7 +497,7 @@ export default function SettingsPage() {
           <>
             <SpecGenerator
               projectOptions={genProjects}
-              onProjectChange={id => { setGenProjectId(id); rememberProject(id); }}
+              onProjectChange={id => { setQaProjectId(id); rememberProject(id); }}
               defaultUrl={genUrl}
               projectId={genProject?.id}
               projectSlug={genProject?.slug}

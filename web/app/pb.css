@@ -1368,11 +1368,12 @@ button { cursor: pointer; }
   gap: 16px;
   align-items: stretch;
 }
-/* Run dan Laporan sama tinggi; isi yang panjang discroll di dalam card. */
+/* Run dan Laporan sama tinggi dan mengecil mengikuti isi; isi panjang discroll di dalam card. */
 .pb-sess-panel {
   display: flex;
   flex-direction: column;
-  height: clamp(340px, 52vh, 520px);
+  height: auto;
+  max-height: clamp(340px, 52vh, 520px);
   min-height: 0;
   overflow: hidden;
   padding: 18px;
@@ -1993,6 +1994,25 @@ button { cursor: pointer; }
   .pb-run-split { scroll-behavior: auto; }
   .pb-zoom,
   .pb-zoom img { transition: none; animation: none; }
+}
+
+/* Terminal Lighthouse setinggi terminal Playwright sejak sebelum run dimulai. */
+.pb-lh-terminal { --run-card-h: clamp(440px, 52vh, 640px); }
+.pb-lh-terminal > .pb-card {
+  height: var(--run-card-h);
+  display: flex;
+  flex-direction: column;
+}
+.pb-lh-terminal pre.pb-term {
+  flex: 1;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto;
+}
+@media (max-width: 1100px) {
+  .pb-lh-terminal { --run-card-h: auto; }
+  .pb-lh-terminal > .pb-card { height: auto; }
+  .pb-lh-terminal pre.pb-term { flex: none; max-height: 340px !important; }
 }
 
 /* ---------- Lighthouse: form ringkas + bar budget vertikal ---------- */
