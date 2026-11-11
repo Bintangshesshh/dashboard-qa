@@ -26,6 +26,7 @@ export default function LighthouseReport() {
   }, [runId, sessionId]);
 
   const results = ((run?.results ?? []) as LighthouseResult[]).filter(r => r.report_path);
+  const urls = [...new Set(results.map(r => r.url))];
   const result = results.find(r => r.id === selected) ?? results[0];
   const url = result?.report_path ? artifactUrl(run!.id, result.report_path) : null;
   const state = useProbe(url);
@@ -51,7 +52,17 @@ export default function LighthouseReport() {
             disabled={!results.some(r => r.url === result.url && r.form_factor === device)}
             onClick={() => selectDevice(device)}>{device === "mobile" ? "Mobile" : "Desktop"}</button>)}
         </div>
-        <p className="lh-viewer-url">{result.url}</p>
+        {urls.length > 1
+          ? <label className="lh-viewer-url-select">
+              <select aria-label="Pilih URL report" value={result.url} onChange={e => {
+                const next = results.find(r => r.url === e.target.value && r.form_factor === result.form_factor)
+                  ?? results.find(r => r.url === e.target.value);
+                if (next) setSelected(next.id);
+              }}>
+                {urls.map(item => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+          : <p className="lh-viewer-url">{result.url}</p>}
       </>}
     </header>
     {error ? <p role="alert">{error}</p> : !run ? <p>Memuat report…</p> : state !== "ok" ? <ArtifactNote state={state} /> :

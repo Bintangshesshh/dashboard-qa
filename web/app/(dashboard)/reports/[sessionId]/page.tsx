@@ -470,7 +470,7 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
       <RunTerminal runId={run.id} />
 
       {html && (
-        <p style={{ marginTop: 14 }}>
+        <p className="pb-report-actions">
           {isPw
             ? <NativeReportLink runId={run.id} path={html.path} label="Report Playwright" />
             : <Link className="pb-btn sm" href={lhViewerHref(run, (results as LighthouseResult[]).find(r => r.report_path)?.id)}>
@@ -506,7 +506,6 @@ function NativeReportLink({ runId, path, label }: { runId: string; path: string;
     <>
       <a className="pb-btn sm" href={artifactUrl(runId, path)} target="_blank" rel="noreferrer">{label}</a>{" "}
       {/* download attribute hanya berlaku same-origin, dan /artifacts memang same-origin. */}
-      <a className="pb-btn sm" href={artifactUrl(runId, path)} download>Unduh</a>
     </>
   );
 }

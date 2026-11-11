@@ -23,7 +23,18 @@
 }
 .lh-viewer-tabs button:disabled { opacity: .45; cursor: not-allowed; }
 .lh-viewer-tabs button:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
-.lh-viewer-url-select { max-width: min(100%, 480px); }
-.lh-viewer-header select { max-width: 100%; }
+.lh-viewer-url-select { width: min(100%, 560px); }
+.lh-viewer-header select {
+  width: 100%;
+  max-width: 100%;
+  padding: 7px 30px 7px 10px;
+  border: 1px solid rgba(51, 65, 85, .8);
+  border-radius: 9px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font: 12px var(--mono, monospace);
+  cursor: pointer;
+}
+.lh-viewer-header select:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
 .lh-viewer-url { margin: 0; max-width: 100%; overflow-wrap: anywhere; color: rgba(56, 189, 248, .8); font: 12px var(--mono, monospace); }
 .lh-viewer iframe { flex: 1; width: 100%; min-height: 75vh; border: 0; background: white; }
