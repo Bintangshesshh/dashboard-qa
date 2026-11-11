@@ -229,6 +229,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   );
 
   const isLhViewer = seg[0] === "reports" && seg[2] === "lh-report";
+  const isReportsIndex = path === "/reports";
 
   return (
     <div className={`pb-shell ${collapsed ? "pb-shell-collapsed" : ""} ${drawerOpen ? "pb-drawer-open" : ""} ${isLhViewer ? "pb-shell-lh-viewer" : ""}`}>
@@ -289,13 +290,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <div className="pb-mainwrap">
         {!isLhViewer && <header className="pb-topbar">
           <button ref={menuRef} className="pb-menu-toggle" type="button" onClick={() => setDrawerOpen(true)} aria-label="Buka menu" aria-expanded={drawerOpen} aria-controls="pb-sidebar">☰</button>
-          <div style={{ minWidth: 0 }}>
+          {!isReportsIndex && <div style={{ minWidth: 0 }}>
             <div className="pb-topbar-title">{screen}</div>
             <div className="pb-topbar-sub">Eureka Group - Playbook QA</div>
-          </div>
-          <div className="pb-topbar-right">
+          </div>}
+          <div className={`pb-topbar-right${isReportsIndex ? " pb-topbar-reports" : ""}`}>
             <div id="pb-topbar-actions" className="pb-topbar-actions" />
-            {path !== "/" && (
+            <div id="pb-reports-search-slot" className="pb-reports-search-slot" hidden={!isReportsIndex} />
+            {path !== "/" && !isReportsIndex && (
               <nav className="pb-crumb" aria-label="Breadcrumb">
                 {crumbs.map((c, i) => {
                   const last = i === crumbs.length - 1;

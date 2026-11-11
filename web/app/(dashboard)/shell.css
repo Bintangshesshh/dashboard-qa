@@ -14,6 +14,10 @@
 .pb-shell .pb-logout { margin: 0 12px 12px; cursor: pointer; font-family: inherit; text-align: left; }
 .pb-shell .pb-theme-icon { display: none; }
 .pb-shell .pb-topbar { position: sticky; top: 0; }
+.pb-shell .pb-topbar-reports { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+.pb-shell .pb-reports-search-slot { width: min(100%, 448px); }
+.pb-shell .pb-reports-search-slot[hidden] { display: none; }
+.pb-shell .pb-reports-search-slot[hidden] { display: none; }
 .pb-shell .pb-side-toggle:focus-visible, .pb-shell .pb-menu-toggle:focus-visible,
 .pb-shell .pb-nav-btn:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
 

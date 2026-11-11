@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, fmtDate, rememberProject, reportUrl, runStatusLabel, type Project, type Session } from "../../../../../lib/playbook";
 import { ArtifactLink } from "../../../../_components/report-link";
-import { confirmAction, promptText, showSuccessToast } from "../../../../../lib/alerts";
+import { showSuccessToast } from "../../../../../lib/alerts";
 
 export default function ProjectReports() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -34,34 +34,17 @@ export default function ProjectReports() {
   }, [projectId, load]);
 
   const quickCheck = async () => {
-    if (!project) return;
-    if (!(await confirmAction({
-      icon: "question",
-      title: "Jalankan quick check?",
-      text: `Quick check akan dijalankan untuk ${project.name}.`,
-      confirmButtonText: "Ya, Jalankan",
-    }))) return;
-    setBusy(true); setError(""); setNotice("");
-    // Urutan env: staging, production (wajib konfirmasi), lalu local.
-    // local_url bukan default karena biasanya menunjuk dev server dashboard.
+    if (!project || busy) return;
+    // Urutan env: staging, production, lalu local. Server tetap memvalidasi
+    // izin production sebelum membuat run.
     const env = project.staging_url ? "staging" : project.base_url ? "production" : "local";
-    let confirm: string | undefined;
-    if (env === "production") {
-      const typed = await promptText({
-        icon: "warning",
-        title: "Konfirmasi production",
-        text: `Ketik nama project (${project.name}) untuk menjalankan quick check di situs production.`,
-      });
-      if (typed !== project.name) {
-        setBusy(false);
-        if (typed !== null) setNotice("Nama project tidak cocok. Quick check production dibatalkan.");
-        else setNotice("Quick check production dibatalkan.");
-        return;
-      }
-      confirm = typed;
+    if (env === "production" && !project.allow_production) {
+      setError("Quick check production diblokir untuk project ini.");
+      return;
     }
+    setBusy(true); setError(""); setNotice("");
     try {
-      const r = await api.quickCheck(projectId, env, confirm, "project");
+      const r = await api.quickCheck(projectId, env, undefined, "project");
       setNotice(`Quick check jalan (${r.runIds.length} run).`);
       showSuccessToast(`Quick check jalan (${r.runIds.length} run).`);
       load();

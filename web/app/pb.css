@@ -745,6 +745,11 @@ button { cursor: pointer; }
 .pb-pcard-foot strong { font-weight: 400; color: var(--fg-2); }
 
 /* Controls */
+.pb-lh-result-actions { min-width: 106px; white-space: nowrap; }
+.pb-lh-result-actions > a { vertical-align: middle; white-space: nowrap; }
+@media (max-width: 900px) {
+  .pb-lh-result-actions { display: table-cell; vertical-align: middle; }
+}
 .pb-reports-search {
   position: relative;
   display: flex;

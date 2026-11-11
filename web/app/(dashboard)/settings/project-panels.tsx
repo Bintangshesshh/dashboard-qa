@@ -221,11 +221,7 @@ export function NewGroupForm({ onCreate }: { onCreate: (name: string) => Promise
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (!name.trim()) return;
-    if (!(await confirmAction({
-      title: `Tambah grup "${name.trim()}"?`,
-      confirmButtonText: "Ya, Tambah",
-    }))) return;
+    if (busy || !name.trim()) return;
     setBusy(true);
     try { await onCreate(name.trim()); setName(""); }
     catch { /* pesan sudah tampil di halaman; isian dibiarkan */ }
@@ -259,11 +255,6 @@ export function NewProjectForm({ groups, onCreate }: {
 
   const submit = async () => {
     if (busy || !name.trim() || !base.trim()) return;
-    if (!(await confirmAction({
-      title: `Tambah project "${name.trim()}"?`,
-      text: base.trim(),
-      confirmButtonText: "Ya, Tambah",
-    }))) return;
     setBusy(true); setError("");
     try {
       await onCreate({
@@ -354,14 +345,7 @@ export function ProjectRow({ project, groups, files, onSave, onAddFile, onRemove
           <option value="">tanpa grup</option>
           {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-        <button className="pb-btn sm" onClick={() => confirmRun({
-          title: archived ? `Pulihkan ${project.name}?` : `Arsipkan ${project.name}?`,
-          text: archived
-            ? "Project aktif lagi dan bisa dijalankan."
-            : "Riwayat tetap tersimpan, tapi project tidak bisa dijalankan.",
-          icon: "warning",
-          confirmButtonText: archived ? "Ya, Pulihkan" : "Ya, Arsipkan",
-        }, () => onSave(project, { active: archived ? 1 : 0 }))}>
+        <button className="pb-btn sm" onClick={() => onSave(project, { active: archived ? 1 : 0 })}>
           {archived ? "Pulihkan" : "Arsipkan"}
         </button>
       </div>

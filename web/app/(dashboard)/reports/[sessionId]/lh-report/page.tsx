@@ -29,7 +29,6 @@ export default function LighthouseReport() {
   const result = results.find(r => r.id === selected) ?? results[0];
   const url = result?.report_path ? artifactUrl(run!.id, result.report_path) : null;
   const state = useProbe(url);
-  const urls = [...new Set(results.map(r => r.url))];
 
   useEffect(() => {
     if (!result) return;
@@ -46,14 +45,13 @@ export default function LighthouseReport() {
     <header className="lh-viewer-header">
       <h1>Report Lighthouse</h1>
       {result && <>
+        <div className="lh-viewer-tabs" role="group" aria-label="Perangkat">
+          {(["mobile", "desktop"] as const).map(device => <button key={device} type="button"
+            aria-pressed={result.form_factor === device}
+            disabled={!results.some(r => r.url === result.url && r.form_factor === device)}
+            onClick={() => selectDevice(device)}>{device === "mobile" ? "Mobile" : "Desktop"}</button>)}
+        </div>
         <p className="lh-viewer-url">{result.url}</p>
-        {urls.length > 1 && <label className="lh-viewer-url-select">
-          <select aria-label="Pilih URL report" value={result.url} onChange={e => {
-            const next = results.find(r => r.url === e.target.value && r.form_factor === result.form_factor)
-              ?? results.find(r => r.url === e.target.value);
-            if (next) setSelected(next.id);
-          }}>{urls.map(item => <option key={item} value={item}>{item}</option>)}</select>
-        </label>}
       </>}
     </header>
     {error ? <p role="alert">{error}</p> : !run ? <p>Memuat report…</p> : state !== "ok" ? <ArtifactNote state={state} /> :
@@ -62,6 +60,12 @@ export default function LighthouseReport() {
           // Report mode both lama menyimpan pemilih URL di dalam iframe.
           try {
             const doc = e.currentTarget.contentDocument;
+            if (doc && !doc.getElementById("pb-lh-report-chrome")) {
+              const style = doc.createElement("style");
+              style.id = "pb-lh-report-chrome";
+              style.textContent = ".tabs,.panel>label,.panel>.url{display:none!important}.panel.active{height:100vh}.panel>iframe{height:100vh!important}";
+              doc.head.append(style);
+            }
             const select = doc?.querySelector<HTMLSelectElement>(`[data-panel="${result!.form_factor}"] select[data-src]`);
             const option = select && [...select.options].find(item => item.textContent === result!.url);
             if (select && option) { select.value = option.value; select.dispatchEvent(new Event("change")); }

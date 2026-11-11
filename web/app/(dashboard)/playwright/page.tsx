@@ -310,7 +310,7 @@ export default function PlaywrightPage() {
         const saved = await save();
         if (!saved) throw new Error("Kode belum tersimpan. Selesaikan error simpan sebelum run.");
       }
-      // Konfirmasi production lewat dialog; server tetap wajib allow_production.
+      // Server memvalidasi izin production sebelum membuat sesi.
       const created = await api.createSession(
         projectId, env, undefined, fresh,
       );

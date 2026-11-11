@@ -113,14 +113,9 @@ export default function SessionDetail() {
     return () => clearTimeout(t);
   }, [openRun]);
 
-  const publish = async (scope: "pw" | "lh" | "both", verb = "Buat") => {
+  const publish = async (scope: "pw" | "lh" | "both") => {
     const label = scope === "both" ? "Gabungan" : scope === "pw" ? "Playwright" : "Lighthouse";
-    if (!(await confirmAction({
-      icon: "question",
-      title: `${verb} laporan ${label}?`,
-      text: "Laporan dibangun dari run yang sudah selesai.",
-      confirmButtonText: `Ya, ${verb}`,
-    }))) return;
+    if (busy || runActive) return;
     setError(""); setNotice("");
     setBusy(scope);
     try {
@@ -211,7 +206,7 @@ export default function SessionDetail() {
     ) : <p className="pb-empty">Memuat sesi…</p>;
   }
 
-  const runs = session.runs ?? [];
+  const runs = [...(session.runs ?? [])].sort((a, b) => Date.parse(b.queued_at) - Date.parse(a.queued_at));
   const tools = new Set(runs.filter(r => FINAL.includes(r.status)).map(r => r.tool));
   const hasPw = tools.has("pw");
   const hasLh = tools.has("lh");
@@ -390,7 +385,7 @@ export default function SessionDetail() {
                       {/* Teks polos siap salin; isi sama dengan tabel HTML. */}
                       {canOpen && <CopyRingkas reportId={rep.id} runIds={ids} />}
                       <button className="pb-btn sm"
-                        onClick={() => publish(rep.scope, rep.status === "ready" || rep.status === "stale" ? "Perbarui" : "Terbitkan")}
+                        onClick={() => publish(rep.scope)}
                         disabled={busy === rep.scope || !canPublish(rep) || runActive}
                         title={runActive ? "Tunggu run yang sedang berjalan selesai." : undefined}>
                         {busy === rep.scope ? "…" : rep.status === "ready" ? "Perbarui laporan" : rep.status === "stale" ? "Perbarui laporan" : "Terbitkan"}
@@ -477,11 +472,11 @@ function RunPanel({ run, retention, onClose }: { run: Run; retention: number; on
       {html && (
         <p style={{ marginTop: 14 }}>
           {isPw
-            ? <NativeReportLink runId={run.id} path={html.path} label="Report asli Playwright" />
+            ? <NativeReportLink runId={run.id} path={html.path} label="Report Playwright" />
             : <Link className="pb-btn sm" href={lhViewerHref(run, (results as LighthouseResult[]).find(r => r.report_path)?.id)}>
-                Report asli Lighthouse
+                Report Lighthouse
               </Link>}
-          {report?.path && <ArtifactLink href={artifactUrl(run.id, report.path)}>JSON mentah</ArtifactLink>}
+          {report?.path && <ArtifactLink href={artifactUrl(run.id, report.path)}>File JSON</ArtifactLink>}
         </p>
       )}
       {!html && !(run.artifacts?.length) && FINAL.includes(run.status) && (
@@ -506,7 +501,7 @@ function NativeReportLink({ runId, path, label }: { runId: string; path: string;
   const state = useProbe(artifactUrl(runId, path));
   if (state === "checking") return <span className="pb-muted" style={{ fontSize: 12 }}>cek report…</span>;
   if (state === "auth") return <LoginAgain />;
-  if (state !== "ok") return <span className="pb-muted" style={{ fontSize: 12 }}>report asli hilang - dibuang retensi</span>;
+  if (state !== "ok") return <span className="pb-muted" style={{ fontSize: 12 }}>report hilang - dibuang retensi</span>;
   return (
     <>
       <a className="pb-btn sm" href={artifactUrl(runId, path)} target="_blank" rel="noreferrer">{label}</a>{" "}

@@ -515,7 +515,9 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <span className="pb-set-status">
-                  {pwFiles.filter(f => f.enabled).length} spec aktif dari {pwFiles.length}
+                  {selectedProject
+                    ? `${pwFiles.filter(f => f.project_id === selectedProject.id && f.enabled).length} spec aktif dari ${pwFiles.filter(f => f.project_id === selectedProject.id).length}`
+                    : "0 spec aktif dari 0"}
                 </span>
               </div>
               {genProjects.length === 0 && (
@@ -523,9 +525,10 @@ export default function SettingsPage() {
                   Belum ada project aktif. Tambahkan project dulu di tab Project.
                 </p>
               )}
-              {projects.map(p => {
+              {selectedProject && (() => {
+                const p = selectedProject;
                 const own = pwFiles.filter(f => f.project_id === p.id);
-                if (!own.length) return null;
+                if (!own.length) return <p className="pb-empty">Belum ada spec Playwright untuk {p.name}.</p>;
                 return (
                   <div className="pb-spec-list" key={p.id}>
                     <div className="pb-spec-head">
@@ -545,8 +548,8 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 );
-              })}
-              {pwFiles.length === 0 && <p className="pb-empty">Belum ada spec Playwright.</p>}
+              })()}
+
             </section>
             {tabSections("pw")}
 

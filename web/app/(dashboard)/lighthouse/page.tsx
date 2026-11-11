@@ -249,7 +249,7 @@ export default function LighthousePage() {
       if (msg) throw new Error(msg);
       // Flush autosave yang masih menunggu supaya run memakai config terbaru.
       if (pending.current) { clearTimeout(pending.current); pending.current = null; await saveConfig(); }
-      // Konfirmasi production lewat dialog; server tetap menolak project tanpa allow_production.
+      // Server memvalidasi izin production sebelum membuat sesi.
       const created = await api.createSession(projectId, env);
       const { runId } = await api.createRun(created.session.id, selected.id);
       sessionStorage.setItem(`lh-run:${projectId}`, runId);
@@ -434,9 +434,9 @@ export default function LighthousePage() {
                           ))
                         : "-"}
                     </td>
-                    <td style={{ textAlign: "right" }}>
+                    <td className="pb-lh-result-actions" style={{ textAlign: "right" }}>
                       {r.report_path
-                        ? <ArtifactLink probeHref={artifactUrl(r.run_id, r.report_path)} href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/reports/${encodeURIComponent(run!.session_id)}/lh-report/?run=${encodeURIComponent(r.run_id)}&result=${encodeURIComponent(r.id)}`}>Buka report</ArtifactLink>
+                        ? <ArtifactLink probeHref={artifactUrl(r.run_id, r.report_path)} href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/reports/${encodeURIComponent(run!.session_id)}/lh-report?run=${encodeURIComponent(r.run_id)}&result=${encodeURIComponent(r.id)}`}>Buka report</ArtifactLink>
                         : <span className="pb-muted" style={{ fontSize: 12 }}>-</span>}
                     </td>
                   </tr>

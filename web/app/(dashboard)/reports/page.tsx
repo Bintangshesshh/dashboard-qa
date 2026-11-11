@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, fmtDate, groupProjects, type Project, type Stats } from "../../../lib/playbook";
 import { RunBar } from "../../_components/run-bar";
 
@@ -13,6 +14,11 @@ export default function ReportsPage() {
   const [q, setQ] = useState("");
   const [shortcut, setShortcut] = useState("Ctrl+K");
   const searchRef = useRef<HTMLInputElement>(null);
+  const [topbar, setTopbar] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setTopbar(document.getElementById("pb-reports-search-slot"));
+  }, []);
 
   useEffect(() => {
     setShortcut(/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K");
@@ -44,20 +50,19 @@ export default function ReportsPage() {
     }))
     .filter(g => g.items.length > 0);
 
+  const search = <div className="pb-reports-search">
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+    </svg>
+    <input ref={searchRef} className="pb-input" value={q}
+      onChange={e => setQ(e.target.value)} placeholder="Cari grup atau project"
+      aria-label="Cari grup atau project" />
+    <kbd>{shortcut}</kbd>
+  </div>;
+
   return (
     <>
-      <div className="pb-head" style={{ justifyContent: "flex-end", marginBottom: 20 }}>
-        <div className="pb-reports-search">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
-          </svg>
-          <input ref={searchRef} className="pb-input" value={q}
-            onChange={e => setQ(e.target.value)} placeholder="Cari grup atau project"
-            aria-label="Cari grup atau project" />
-          <kbd>{shortcut}</kbd>
-        </div>
-      </div>
-
+      {topbar && createPortal(search, topbar)}
       {error && <div className="pb-err" role="alert">{error}</div>}
 
       {!error && projects.length === 0 ? (
