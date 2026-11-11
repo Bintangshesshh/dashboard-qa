@@ -262,6 +262,7 @@ export class Store {
     // status adalah alias, bukan kolom: saring di query luar agar LIMIT membatasi baris yang cocok.
     const rows = this.db.prepare(
       'SELECT * FROM (SELECT s.*, ' + SESSION_STATUS_SQL + ' AS status,' +
+      ' (SELECT MAX(COALESCE(finished_at, started_at, queued_at)) FROM runs WHERE session_id=s.id) AS last_run_at,' +
       ' coalesce(c.run_count, 0) AS run_count,' +
       ' coalesce(c.pw_count, 0) AS pw_count,' +
       ' coalesce(c.lh_count, 0) AS lh_count,' +

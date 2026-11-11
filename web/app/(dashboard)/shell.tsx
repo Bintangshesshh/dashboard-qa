@@ -230,7 +230,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   const isLhViewer = seg[0] === "reports" && seg[2] === "lh-report";
   // trailingSlash: true membuat usePathname() memberi "/reports/".
-  const isReportsIndex = path.replace(/\/+$/, "") === "/reports";
+  const cleanPath = path.replace(/\/+$/, "");
+  const isReportsIndex = cleanPath === "/reports";
+  const isReportsProject = /^\/reports\/project\/[^/]+$/.test(cleanPath);
+  const hasReportsSearch = isReportsIndex || isReportsProject;
 
   return (
     <div className={`pb-shell ${collapsed ? "pb-shell-collapsed" : ""} ${drawerOpen ? "pb-drawer-open" : ""} ${isLhViewer ? "pb-shell-lh-viewer" : ""}`}>
@@ -295,10 +298,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="pb-topbar-title">{screen}</div>
             <div className="pb-topbar-sub">Eureka Group - Playbook QA</div>
           </div>
-          <div className={`pb-topbar-right${isReportsIndex ? " pb-topbar-reports" : ""}`}>
+          <div className={`pb-topbar-right${hasReportsSearch ? " pb-topbar-reports" : ""}`}>
             <div id="pb-topbar-actions" className="pb-topbar-actions" />
-            <div id="pb-reports-search-slot" className="pb-reports-search-slot" hidden={!isReportsIndex} />
-            {path !== "/" && !isReportsIndex && (
+            <div id="pb-reports-search-slot" className="pb-reports-search-slot" hidden={!hasReportsSearch} />
+            {path !== "/" && !hasReportsSearch && (
               <nav className="pb-crumb" aria-label="Breadcrumb">
                 {crumbs.map((c, i) => {
                   const last = i === crumbs.length - 1;
