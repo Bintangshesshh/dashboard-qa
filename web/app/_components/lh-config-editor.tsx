@@ -142,16 +142,19 @@ export function LhRunsLocale({
   locale = "id",
   disabled,
   onChange,
+  part = "both",
 }: {
   runs?: number;
   locale?: NonNullable<LhConfig["locale"]>;
   disabled?: boolean;
   onChange: (patch: { runs?: number; locale?: NonNullable<LhConfig["locale"]> }) => void;
+  // Dipisah supaya pill bahasa bisa sejajar dengan kolom skor minimum.
+  part?: "both" | "runs" | "locale";
 }) {
   const clamp = (v: number) => Math.min(MAX_RUNS, Math.max(1, v));
   return (
-    <div className="pb-lh-inline">
-      <div className="pb-field pb-lh-runs">
+    <div className={`pb-lh-inline${part === "both" ? "" : " pb-lh-inline-single"}`}>
+      {part !== "locale" && (<div className="pb-field pb-lh-runs">
         <span>Jumlah run per URL (1-{MAX_RUNS})</span>
         <div className="pb-seg" role="group" aria-label="Jumlah run per URL">
           {[1, 2, 3].map(n => (
@@ -174,9 +177,9 @@ export function LhRunsLocale({
               onClick={() => onChange({ runs: clamp(runs + 1) })}>+</button>
           </span>
         </div>
-      </div>
+      </div>)}
 
-      <div className="pb-field">
+      {part !== "runs" && (<div className="pb-field">
         <span>Bahasa report</span>
         <div className="pb-seg" role="group" aria-label="Bahasa report Lighthouse">
           {([["id", "Indonesia"], ["en", "Inggris"]] as const).map(([value, label]) => (
@@ -185,7 +188,7 @@ export function LhRunsLocale({
               onClick={() => { onChange({ locale: value }); }}>{label}</button>
           ))}
         </div>
-      </div>
+      </div>)}
     </div>
   );
 }
@@ -286,17 +289,10 @@ export default function LhConfigEditor({
     <div className="pb-lh-form">
       <div className="pb-lh-columns">
         <div className="pb-lh-col">
-          {showTarget && (
-            <div className="pb-field">
-              <span>Target project (dari URL project)</span>
-              <input className="pb-input pb-mono" value={target} readOnly aria-label="Target utama"
-                placeholder="belum diisi di project" />
-              {!target.trim() && <span className="pb-err" role="alert">Isi URL project dulu sebelum menyimpan config.</span>}
-            </div>
-          )}
 
           {showRunsAndLocale && (
             <LhRunsLocale
+              part="runs"
               runs={runs}
               locale={locale}
               disabled={disabled}
@@ -334,6 +330,19 @@ export default function LhConfigEditor({
         </div>
 
         <div className="pb-lh-col">
+          {showRunsAndLocale && (
+            <LhRunsLocale
+              part="locale"
+              runs={runs}
+              locale={locale}
+              disabled={disabled}
+              onChange={patch => {
+                if (patch.runs !== undefined) setRuns(patch.runs);
+                if (patch.locale !== undefined) setLocale(patch.locale);
+                emit(patch);
+              }}
+            />
+          )}
           <div className="pb-lh-budget-cell">
             <span>Skor minimum per kategori</span>
             <div className="pb-lh-budgets">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArtifactLink } from "../../_components/report-link";
-import LhConfigEditor, { LH_CATEGORIES, LhRunsLocale, extraUrlsOf, lhConfigError, parseLhConfig, patchLhConfig, validateExtraUrl } from "../../_components/lh-config-editor";
+import LhConfigEditor, { LH_CATEGORIES, extraUrlsOf, lhConfigError, parseLhConfig, validateExtraUrl } from "../../_components/lh-config-editor";
 import { RunPanel } from "../run-panel";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -86,8 +86,6 @@ export default function LighthousePage() {
   const project = projects.find(p => p.id === projectId);
   const target = resolvedUrl(project, env);
   const cfg = parseLhConfig(config);
-  const runs = cfg.numberOfRuns ?? 1;
-  const locale = cfg.locale ?? "id";
   const productionBlocked = env === "production" && !project?.allow_production;
   const running = !!run && !FINAL.includes(run.status);
 
@@ -364,23 +362,9 @@ export default function LighthousePage() {
           </div>
         </div>
         {selected && project ? (
-          <>
-            <LhRunsLocale
-              runs={runs}
-              locale={locale}
-              disabled={running}
-              onChange={patch => {
-                const nextPatch: Parameters<typeof patchLhConfig>[1] = {};
-                if (patch.runs !== undefined) nextPatch.numberOfRuns = patch.runs;
-                if (patch.locale !== undefined) nextPatch.locale = patch.locale;
-                setConfig(patchLhConfig(config, nextPatch));
-              }}
-            />
-            <LhConfigEditor project={project} value={config} target={target}
-              showTarget={false}
-              showRunsAndLocale={false}
-              disabled={running} onChange={setConfig} idPrefix="lh-page" />
-          </>
+          <LhConfigEditor project={project} value={config} target={target}
+            showTarget={false}
+            disabled={running} onChange={setConfig} idPrefix="lh-page" />
         ) : (
           <div className="pb-empty">
             <p style={{ margin: 0 }}>Project ini belum punya konfigurasi Lighthouse.</p>
