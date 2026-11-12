@@ -426,11 +426,6 @@ export default function PlaywrightPage() {
               disabled={starting || running || !selected || !target || productionBlocked}>
               {starting ? "Mengantre…" : running ? "Berjalan…" : "Run"}
             </button>
-            <button className="pb-btn" onClick={() => runNow(true)}
-              disabled={starting || running || !selected || !target || productionBlocked}
-              title="Tutup sesi terbuka yang idle lalu mulai sesi baru">
-              Sesi baru
-            </button>
             {running && <button className="pb-btn" onClick={stopWithConfirm}>Stop</button>}
           </div>
         </div>

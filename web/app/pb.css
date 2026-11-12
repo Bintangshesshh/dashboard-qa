@@ -888,6 +888,26 @@ button { cursor: pointer; }
 /* Tab pengaturan: bar tab menempel di atas, isi tab menumpuk dengan jarak sama. */
 .pb-set-tabbar { margin-bottom: 16px; }
 .pb-set-tab-body { display: grid; gap: 16px; }
+/* Umum & Retensi: 3 card ringkas dalam satu baris, Retensi lebar penuh di bawahnya. */
+.pb-set-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.pb-set-cards > .pb-card { height: 100%; min-width: 0; }
+.pb-set-cards .pb-set-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.pb-set-cards .pb-input-unit { width: min(100%, 220px); }
+.pb-set-cards .pb-set-help { font-size: 12px; }
+/* Retensi butuh ruang lebih: 3 field sejajar selebar grid. */
+.pb-set-cards .pb-set-card-wide { grid-column: 1 / -1; }
+.pb-set-cards .pb-set-card-wide .pb-set-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 20px; }
+@media (max-width: 900px) {
+  .pb-set-cards { grid-template-columns: minmax(0, 1fr); }
+  .pb-set-cards .pb-set-card-wide .pb-set-grid { grid-template-columns: minmax(0, 1fr); }
+  .pb-set-cards .pb-input-unit { width: 100%; }
+}
+/* Konfigurasi QA Playwright: Spec Playwright dan Antrean & log run satu baris. */
+.pb-pw-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.pb-pw-row > .pb-card { height: 100%; min-width: 0; }
+@media (max-width: 900px) {
+  .pb-pw-row { grid-template-columns: minmax(0, 1fr); }
+}
 /* Daftar spec Playwright per project. */
 .pb-spec-list + .pb-spec-list { margin-top: 16px; }
 .pb-spec-head {
@@ -2238,8 +2258,35 @@ button { cursor: pointer; }
   align-items: start;
 }
 .pb-lh-inline .pb-field { min-width: 0; }
-.pb-lh-inline .pb-seg { flex-wrap: wrap; }
-.pb-lh-inline .pb-seg button { flex: 1 1 auto; padding-left: 8px; padding-right: 8px; }
+/* Pill jumlah run & bahasa selalu satu baris dengan tinggi yang sama di
+   halaman Lighthouse maupun Pengaturan, walau kolomnya menyempit. */
+.pb-lh-inline .pb-seg {
+  flex-wrap: nowrap;
+  height: 36px;
+  width: max-content;
+  max-width: 100%;
+}
+.pb-lh-inline .pb-seg button {
+  flex: 0 0 auto;
+  min-width: 36px;
+  height: 28px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+/* Tombol stepper ikut aturan .pb-seg button (min-width 44px) sehingga
+   menyisakan ruang kosong di dalam pill. Kembalikan ke ukuran aslinya. */
+.pb-lh-inline .pb-seg .pb-lh-step {
+  min-width: 24px;
+  width: 24px;
+  padding: 0;
+}
+.pb-lh-inline .pb-seg .pb-lh-step-v { width: 32px; }
+.pb-lh-inline .pb-seg .pb-lh-stepper { gap: 0; padding: 2px 0; }
+.pb-lh-inline .pb-lh-stepper { flex: 0 0 auto; }
+@media (pointer: coarse) {
+  .pb-lh-inline .pb-seg { height: 52px; }
+  .pb-lh-inline .pb-seg button { height: 44px; }
+}
 .pb-lh-columns > .pb-lh-col:first-child { flex: 1.35 1 0 !important; }
 .pb-lh-columns > .pb-lh-col:last-child { flex: 1 1 0 !important; }
 
@@ -2396,6 +2443,10 @@ button { cursor: pointer; }
   margin-bottom: 16px;
 }
 #lh-config-form .pb-lh-inline .pb-field { min-width: 0; }
+/* Runs dan bahasa dipisah ke kolom berbeda, jadi wrapper-nya hanya punya satu
+   field. Paksa satu kolom agar tidak menyisakan separuh lebar kosong. */
+#lh-config-form .pb-lh-inline.pb-lh-inline-single,
+.pb-lh-inline.pb-lh-inline-single { grid-template-columns: minmax(0, 1fr) !important; }
 @media (max-width: 720px) {
   #lh-config-form .pb-lh-inline { grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important; }
 }

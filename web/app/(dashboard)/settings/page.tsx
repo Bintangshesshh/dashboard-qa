@@ -65,6 +65,8 @@ type SettingSection = {
   tab: TabId;
   title: string;
   desc: string;
+  // Card lebar penuh di grid Umum & Retensi (mis. Retensi yang punya 3 field).
+  span?: boolean;
   fields: SettingField[];
 };
 
@@ -85,7 +87,7 @@ const SECTIONS: SettingSection[] = [
       {
         key: "log_max_bytes", label: "Batas log per run", suffix: "byte",
         min: 1024, max: 104857600,
-        help: "Log lebih panjang dari ini dipotong agar database tidak membengkak.",
+        help: "Log lebih panjang tidak disarankan.",
         format: fmtBytes,
       },
     ],
@@ -119,32 +121,6 @@ const SECTIONS: SettingSection[] = [
     ],
   },
   {
-    id: "retensi",
-    tab: "report",
-    title: "Retensi",
-    desc: "Berapa lama data disimpan.",
-    fields: [
-      {
-        key: "artifact_retention_days", label: "Artifact", suffix: "hari",
-        min: 1, max: 365,
-        help: "Screenshot, trace, dan file hasil test dihapus setelah retensi.",
-        format: fmtDays,
-      },
-      {
-        key: "report_retention_days", label: "Report HTML", suffix: "hari",
-        min: 1, max: 365,
-        help: "Laporan yang dibuka dari dashboard tetap bisa diakses selama ini.",
-        format: fmtDays,
-      },
-      {
-        key: "log_retention_days", label: "Log run", suffix: "hari",
-        min: 1, max: 365,
-        help: "Teks log runner disimpan selama ini.",
-        format: fmtDays,
-      },
-    ],
-  },
-  {
     id: "tampilan",
     tab: "report",
     title: "Tampilan ringkasan",
@@ -154,6 +130,33 @@ const SECTIONS: SettingSection[] = [
         key: "range_default_days", label: "Range default", suffix: "hari",
         min: 1, max: 365,
         help: "Rentang hari yang dipilih.",
+        format: fmtDays,
+      },
+    ],
+  },
+  {
+    id: "retensi",
+    tab: "report",
+    title: "Retensi",
+    desc: "Berapa lama data disimpan.",
+    span: true,
+    fields: [
+      {
+        key: "artifact_retention_days", label: "Artifact", suffix: "hari",
+        min: 1, max: 365,
+        help: "File hasil test dihapus setelah retensi.",
+        format: fmtDays,
+      },
+      {
+        key: "report_retention_days", label: "Report HTML", suffix: "hari",
+        min: 1, max: 365,
+        help: "Laporan yang ada tetap bisa diakses.",
+        format: fmtDays,
+      },
+      {
+        key: "log_retention_days", label: "Log run", suffix: "hari",
+        min: 1, max: 365,
+        help: "Teks log runner disimpan selama ini.",
         format: fmtDays,
       },
     ],
@@ -413,7 +416,7 @@ export default function SettingsPage() {
     const dirty = sectionDirty(section);
     const saved = savedAt[section.id];
     return (
-      <section className="pb-card" key={section.id}>
+      <section className={`pb-card${section.span ? " pb-set-card-wide" : ""}`} key={section.id}>
         <div className="pb-card-head">
           <div>
             <h2>{section.title}</h2>
@@ -449,7 +452,6 @@ export default function SettingsPage() {
             </label>
           ))}
         </div>
-        <div className="pb-set-foot"><span className="pb-set-status">Berlaku untuk run berikutnya.</span></div>
       </section>
     );
   };
@@ -509,61 +511,59 @@ export default function SettingsPage() {
               }}
             />
 
-            <section className="pb-card">
-              <div className="pb-card-head">
-                <div>
-                  <h2>Spec Playwright</h2>
-                  <div className="pb-card-sub">
-                    Spec nonaktif tetap tersimpan tapi tidak ditawarkan saat memilih run.
-                  </div>
-                </div>
-                <span className="pb-set-status">
-                  {selectedProject
-                    ? `${pwFiles.filter(f => f.project_id === selectedProject.id && f.enabled).length} spec aktif dari ${pwFiles.filter(f => f.project_id === selectedProject.id).length}`
-                    : "0 spec aktif dari 0"}
-                </span>
-              </div>
-              {genProjects.length === 0 && (
-                <p className="pb-empty">
-                  Belum ada project aktif. Tambahkan project dulu di tab Project.
-                </p>
-              )}
-              {selectedProject && (() => {
-                const p = selectedProject;
-                const own = pwFiles.filter(f => f.project_id === p.id);
-                if (!own.length) return <p className="pb-empty">Belum ada spec Playwright untuk {p.name}.</p>;
-                return (
-                  <div className="pb-spec-list" key={p.id}>
-                    <div className="pb-spec-head">
-                      <strong>{p.name}</strong>
-                      <span className="pb-muted pb-mono">{own.length} spec</span>
+            <div className="pb-pw-row">
+              <section className="pb-card">
+                <div className="pb-card-head">
+                  <div>
+                    <h2>Spec Playwright</h2>
+                    <div className="pb-card-sub">
+                      Spec dinonaktifkan, tidak bisa dipilih untuk run.
                     </div>
-                    {own.map(f => (
-                      <label className="pb-spec-row" key={f.id}>
-                        <input type="checkbox" checked={!!f.enabled}
-                          onChange={e => { void saveTestFile(f, { enabled: e.target.checked ? 1 : 0 }).catch(() => {}); }} />
-                        <span className="pb-spec-name">{f.label}</span>
-                        <span className="pb-spec-path">{f.path}</span>
-                        <span className={`pb-badge ${f.enabled ? "passed" : "closed"}`}>
-                          {f.enabled ? "aktif" : "nonaktif"}
-                        </span>
-                      </label>
-                    ))}
                   </div>
-                );
-              })()}
+                  <span className="pb-set-status">
+                    {selectedProject
+                      ? `${pwFiles.filter(f => f.project_id === selectedProject.id && f.enabled).length} spec aktif dari ${pwFiles.filter(f => f.project_id === selectedProject.id).length}`
+                      : "0 spec aktif dari 0"}
+                  </span>
+                </div>
+                {genProjects.length === 0 && (
+                  <p className="pb-empty">
+                    Belum ada project aktif. Tambahkan project dulu di tab Project.
+                  </p>
+                )}
+                {selectedProject && (() => {
+                  const p = selectedProject;
+                  const own = pwFiles.filter(f => f.project_id === p.id);
+                  if (!own.length) return <p className="pb-empty">Belum ada spec Playwright untuk {p.name}.</p>;
+                  return (
+                    <div className="pb-spec-list" key={p.id}>
+                      <div className="pb-spec-head">
+                        <strong>{p.name}</strong>
+                        <span className="pb-muted pb-mono">{own.length} spec</span>
+                      </div>
+                      {own.map(f => (
+                        <label className="pb-spec-row" key={f.id}>
+                          <input type="checkbox" checked={!!f.enabled}
+                            onChange={e => { void saveTestFile(f, { enabled: e.target.checked ? 1 : 0 }).catch(() => {}); }} />
+                          <span className="pb-spec-name">{f.label}</span>
+                          <span className="pb-spec-path">{f.path}</span>
+                          <span className={`pb-badge ${f.enabled ? "passed" : "closed"}`}>
+                            {f.enabled ? "aktif" : "nonaktif"}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })()}
 
-            </section>
-            {tabSections("pw")}
+              </section>
+              {tabSections("pw")}
+            </div>
 
             <section className="pb-card">
               <div className="pb-card-head">
                 <div>
                   <h2>Setelan Playwright per project</h2>
-                  <div className="pb-card-sub">
-                    Nilai ini ditulis ke <code className="pb-mono">test_files.config</code> spec
-                    pertama project dan dipakai saat config runner digenerate.
-                  </div>
                 </div>
               </div>
               {selectedProject && <PwCard key={`${selectedProject.id}-${qaResetKey}`} project={selectedProject}
@@ -583,10 +583,6 @@ export default function SettingsPage() {
               <div className="pb-card-head">
                 <div>
                   <h2>Konfigurasi Lighthouse CI</h2>
-                  <div className="pb-card-sub">
-                    Nilai ini ditulis ke <code className="pb-mono">test_files.config</code> dan dipakai
-                    saat lhci digenerate. Target utama project selalu ikut diaudit.
-                  </div>
                 </div>
               </div>
               {selectedProject && <LhciCard key={`${selectedProject.id}-${qaResetKey}`} project={selectedProject}
@@ -602,9 +598,9 @@ export default function SettingsPage() {
         )}
 
         {mainTab === "general" && (
-          <>
+          <div className="pb-set-cards">
             {tabSections("report")}
-          </>
+          </div>
         )}
 
         {mainTab === "projects" && (
@@ -745,7 +741,6 @@ export default function SettingsPage() {
       {(settingsDirty || qaDirty) && <div className="settings-savebar" role="status">
         <span className="settings-savebar-text">
           <strong>{changeCount} perubahan belum disimpan</strong>
-          <span className="pb-muted">Berlaku untuk run berikutnya.</span>
         </span>
         <span className="pb-spacer" />
         <button className="pb-btn" disabled={busy} onClick={resetAllSettings}>Batal</button>

@@ -81,7 +81,7 @@ export function LhciCard({ project, file, onSave, onAddFile, onDirtyChange, regi
   };
 
   return (
-    <div className="pb-proj-card">
+    <div className="pb-proj-card" id="lh-config-form">
       <div className="pb-row pb-proj-head">
         <strong>{project.name}</strong>
         <span className="pb-muted pb-mono">{file?.path ?? "belum ada config"}</span>
